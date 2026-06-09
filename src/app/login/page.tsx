@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -96,6 +97,15 @@ export default function LoginPage() {
           {error && (
             <p className="rounded-xl bg-clay-soft px-3 py-2 text-sm text-[#8c3c1f]">{error}</p>
           )}
+
+          <div className="text-right">
+            <Link
+              href="/forgot-password"
+              className="text-xs font-medium text-forest-700 hover:underline"
+            >
+              Lupa kata sandi?
+            </Link>
+          </div>
 
           <Button type="submit" size="lg" className="w-full" disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}

@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL, isSupabaseConfigured } from "./config";
 
-const PUBLIC_PREFIXES = ["/login", "/offline", "/icons", "/manifest.webmanifest", "/sw.js", "/auth"];
+const PUBLIC_PREFIXES = ["/login", "/forgot-password", "/offline", "/icons", "/manifest.webmanifest", "/sw.js", "/auth"];
 
 function isPublic(path: string): boolean {
   return PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(p + "/") || path.startsWith(p));
