@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Treelogy HR — Design Tokens
+   Organic-green brand palette · Data-Dense dashboard system
+   ============================================================ */
+@theme {
+  /* Brand greens */
+  --color-forest-50: #f1f5ec;
+  --color-forest-100: #dde7d1;
+  --color-forest-200: #bccfa5;
+  --color-forest-300: #99b577;
+  --color-forest-400: #7d9c57;
+  --color-forest-500: #5f7e3e;
+  --color-forest-600: #3d5a2e;
+  --color-forest-700: #324a26;
+  --color-forest-800: #283b20;
+  --color-forest-900: #1f2e1a;
+  --color-forest-950: #131d10;
+
+  /* Supporting brand tones */
+  --color-olive: #6b7548;
+  --color-matcha: #8ba859;
+  --color-lime: #a4c26a;
+  --color-bark: #26331e;
+  --color-cream: #f6f4ea;
+  --color-sand: #ece8d8;
+
+  /* Semantic accents */
+  --color-gold: #e0a82e;
+  --color-gold-soft: #f6e6bf;
+  --color-clay: #c2603f;
+  --color-clay-soft: #f3ddd3;
+  --color-sky: #4a7ba6;
+  --color-sky-soft: #d8e6f0;
+
+  /* Neutrals (warm-tinted) */
+  --color-ink: #1f241b;
+  --color-muted: #5c6354;
+  --color-faint: #8b9082;
+  --color-line: #e2e0d2;
+  --color-panel: #ffffff;
+
+  /* Typography (wired to next/font variables in layout.tsx) */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+
+  /* Radii */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(31, 46, 26, 0.04), 0 6px 20px rgba(31, 46, 26, 0.06);
+  --shadow-pop: 0 12px 40px rgba(31, 46, 26, 0.14);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3, h4, h5 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #cdd2c0;
+    border-radius: 9999px;
+    border: 3px solid var(--color-cream);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: #b6bda5; }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+  .grain {
+    background-image: radial-gradient(rgba(31, 46, 26, 0.025) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+  .card {
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-in { animation: slide-in-left 0.22s ease-out; }
+.animate-sheet { animation: slide-in-right 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+.fade-up { animation: fade-up 0.3s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
