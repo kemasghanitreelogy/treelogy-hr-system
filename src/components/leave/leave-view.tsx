@@ -172,8 +172,8 @@ function BalancesView({
 
   return (
     <div className="space-y-4">
-      <Card className="bg-bark text-cream">
-        <CardContent className="flex items-center gap-4">
+      <Card className="overflow-hidden">
+        <CardContent className="flex items-center gap-4 bg-bark text-cream">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-forest-700">
             <PiggyBank className="h-6 w-6 text-lime" />
           </span>
