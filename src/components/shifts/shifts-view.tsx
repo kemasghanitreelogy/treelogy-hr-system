@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, RequestBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
 
 export function ShiftsView({
   shifts,
@@ -21,9 +22,11 @@ export function ShiftsView({
 }) {
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const [swapList, setSwapList] = useState(swaps);
+  const toast = useToast();
 
   function decide(id: string, status: RequestStatus) {
     setSwapList((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
+    toast.success(status === "approved" ? "Tukar libur disetujui ✓" : "Tukar libur ditolak ✓");
   }
 
   const pendingSwaps = swapList.filter((s) => s.status === "pending").length;

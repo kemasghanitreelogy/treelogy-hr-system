@@ -6,6 +6,7 @@ import type { AttendanceSettings } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
+import { useToast } from "@/components/ui/toast";
 
 export function AttendanceSettingsCard({ initial }: { initial: AttendanceSettings }) {
   const [open, setOpen] = useState(false);
@@ -13,6 +14,7 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
   const [busy, setBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const toast = useToast();
 
   function set<K extends keyof AttendanceSettings>(k: K, v: AttendanceSettings[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -46,9 +48,9 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error();
-      setMsg({ tone: "ok", text: "Pengaturan tersimpan." });
+      toast.success("Pengaturan absensi tersimpan ✓");
     } catch {
-      setMsg({ tone: "error", text: "Gagal menyimpan (perlu izin HR)." });
+      toast.error("Gagal menyimpan pengaturan (perlu izin HR).");
     } finally {
       setBusy(false);
     }

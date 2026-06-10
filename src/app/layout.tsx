@@ -3,6 +3,7 @@ import { Inter, Sora } from "next/font/google";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { ToastProvider } from "@/components/ui/toast";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -61,9 +62,11 @@ export default function RootLayout({
   return (
     <html lang="id" className={`${inter.variable} ${sora.variable}`}>
       <body className="grain">
-        {children}
-        <ServiceWorkerRegister />
-        <InstallPrompt />
+        <ToastProvider>
+          {children}
+          <ServiceWorkerRegister />
+          <InstallPrompt />
+        </ToastProvider>
       </body>
     </html>
   );

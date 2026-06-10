@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ConfirmDialog } from "@/components/ui/confirm";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import { RoleForm } from "./role-form";
 
 type Tab = "roles" | "users";
@@ -30,6 +31,7 @@ export function AccessView({
   const [tab, setTab] = useState<Tab>("roles");
   const [roles, setRoles] = useState(initialRoles);
   const [users, setUsers] = useState(initialUsers);
+  const toast = useToast();
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const countByRole = useMemo(() => {
@@ -45,13 +47,16 @@ export function AccessView({
   const [assignError, setAssignError] = useState<string | null>(null);
 
   function saveRole(r: Role) {
-    setRoles((prev) => (prev.some((x) => x.id === r.id) ? prev.map((x) => (x.id === r.id ? r : x)) : [...prev, r]));
+    const isEdit = roles.some((x) => x.id === r.id);
+    setRoles((prev) => (isEdit ? prev.map((x) => (x.id === r.id ? r : x)) : [...prev, r]));
     setEditing(null);
     setCreating(false);
+    toast.success(isEdit ? `Peran "${r.name}" diperbarui ✓` : `Peran "${r.name}" ditambahkan ✓`);
   }
   function deleteRole(r: Role) {
     setRoles((prev) => prev.filter((x) => x.id !== r.id));
     setToDelete(null);
+    toast.success(`Peran "${r.name}" dihapus ✓`);
   }
   async function assignRole(userId: string, roleId: string) {
     const target = users.find((u) => u.id === userId);
@@ -74,6 +79,9 @@ export function AccessView({
             ? "Karyawan ini belum punya akun login, jadi peran belum bisa ditetapkan."
             : "Gagal menyimpan peran. Pastikan Anda punya hak akses pengguna.",
         );
+      } else {
+        const roleName = roles.find((r) => r.id === roleId)?.name ?? "baru";
+        toast.success(`Peran diubah ke "${roleName}" ✓`);
       }
     } catch {
       setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, roleId: prevRoleId } : u)));
@@ -180,6 +188,9 @@ export function AccessView({
       {/* Delete confirm */}
       <ConfirmDialog
         open={!!toDelete}
+        tone="danger"
+        icon={<Trash2 className="h-6 w-6" />}
+        confirmLabel="Hapus peran"
         title={`Hapus peran "${toDelete?.name}"?`}
         message={
           (countByRole.get(toDelete?.id ?? "") ?? 0) > 0

@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { useToast } from "@/components/ui/toast";
 
 const LEAVE_LABEL: Record<LeaveType, string> = {
   annual: "Cuti tahunan",
@@ -36,14 +37,17 @@ export function LeaveView({
   const [adding, setAdding] = useState(false);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const toast = useToast();
 
   function decide(id: string, status: RequestStatus) {
     setList((prev) => prev.map((r) => (r.id === id ? { ...r, status, approver: "Dewi Lestari" } : r)));
+    toast.success(status === "approved" ? "Pengajuan disetujui ✓" : "Pengajuan ditolak ✓");
   }
 
   function addRequest(r: LeaveRequest) {
     setList((prev) => [r, ...prev]);
     setAdding(false);
+    toast.success("Pengajuan cuti/izin terkirim ✓");
   }
 
   const pending = list.filter((r) => r.status === "pending").length;

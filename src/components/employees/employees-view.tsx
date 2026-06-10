@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Wallet } from "lucide-react";
+import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, UserX, Wallet } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type StatusFilter = "all" | "active" | "inactive";
 type RoleLite = { id: string; name: string; color: string };
@@ -38,6 +40,8 @@ export function EmployeesView({
   const [adding, setAdding] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [roleMap, setRoleMap] = useState<Record<string, string>>(roleByEmployee);
+  const [confirmDeactivate, setConfirmDeactivate] = useState<Employee | null>(null);
+  const toast = useToast();
 
   const filtered = useMemo(() => {
     return list.filter((e) => {
@@ -72,17 +76,28 @@ export function EmployeesView({
       if (res.ok && data.employee) {
         upsertLocal(data.employee);
         setSelected((s) => (s && s.id === emp.id ? data.employee : s));
+        toast.success(
+          next === "inactive"
+            ? `${emp.name} dinonaktifkan ✓`
+            : `${emp.name} diaktifkan kembali ✓`,
+        );
+      } else {
+        toast.error("Gagal memperbarui status. Pastikan Anda HR/admin.");
       }
+    } catch {
+      toast.error("Koneksi bermasalah. Coba lagi.");
     } finally {
       setTogglingId(null);
+      setConfirmDeactivate(null);
     }
   }
 
-  function onSaved(emp: Employee) {
+  function onSaved(emp: Employee, mode: "create" | "edit") {
     upsertLocal(emp);
     setAdding(false);
     setEditing(null);
     setSelected(emp);
+    toast.success(mode === "create" ? `${emp.name} ditambahkan ✓` : "Perubahan tersimpan ✓");
   }
 
   function applyHours(id: string, workStart: string, workEnd: string) {
@@ -221,7 +236,9 @@ export function EmployeesView({
                 variant={selected.status === "active" ? "outline" : "primary"}
                 className="flex-1"
                 disabled={togglingId === selected.id}
-                onClick={() => toggleStatus(selected)}
+                onClick={() =>
+                  selected.status === "active" ? setConfirmDeactivate(selected) : toggleStatus(selected)
+                }
               >
                 {togglingId === selected.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -254,16 +271,17 @@ export function EmployeesView({
             canAssignRoles={canAssignRoles}
             roles={roles}
             currentRoleId={roleMap[selected.id]}
-            onRoleAssigned={(empId, roleId) =>
-              setRoleMap((prev) => ({ ...prev, [empId]: roleId }))
-            }
+            onRoleAssigned={(empId, roleId) => {
+              setRoleMap((prev) => ({ ...prev, [empId]: roleId }));
+              toast.success("Peran sistem diperbarui ✓");
+            }}
           />
         )}
       </Sheet>
 
       {/* Add form */}
       <Sheet open={adding} onClose={() => setAdding(false)} title="Tambah Karyawan" description="Daftarkan karyawan baru ke database">
-        <EmployeeForm onSaved={onSaved} onCancel={() => setAdding(false)} />
+        <EmployeeForm onSaved={(e) => onSaved(e, "create")} onCancel={() => setAdding(false)} />
       </Sheet>
 
       {/* Edit form */}
@@ -273,8 +291,21 @@ export function EmployeesView({
         title="Edit Karyawan"
         description={editing ? `${editing.nik} · ${editing.name}` : ""}
       >
-        {editing && <EmployeeForm initial={editing} onSaved={onSaved} onCancel={() => setEditing(null)} />}
+        {editing && <EmployeeForm initial={editing} onSaved={(e) => onSaved(e, "edit")} onCancel={() => setEditing(null)} />}
       </Sheet>
+
+      {/* Deactivate confirmation */}
+      <ConfirmDialog
+        open={!!confirmDeactivate}
+        tone="danger"
+        icon={<UserX className="h-6 w-6" />}
+        title={`Nonaktifkan ${confirmDeactivate?.name ?? "karyawan"}?`}
+        message="Karyawan tidak akan muncul di absensi & payroll aktif. Anda bisa mengaktifkannya kembali kapan saja."
+        confirmLabel="Ya, nonaktifkan"
+        busy={!!confirmDeactivate && togglingId === confirmDeactivate.id}
+        onConfirm={() => confirmDeactivate && toggleStatus(confirmDeactivate)}
+        onCancel={() => setConfirmDeactivate(null)}
+      />
     </div>
   );
 }
@@ -409,8 +440,7 @@ function RoleCard({
         });
         return;
       }
-      onAssigned(emp.id, next);
-      setMsg({ ok: true, text: "Peran tersimpan ✓" });
+      onAssigned(emp.id, next); // success toast is raised by the parent
     } catch {
       setRoleId(prev);
       setMsg({ ok: false, text: "Koneksi bermasalah. Coba lagi." });
@@ -456,13 +486,12 @@ function WorkHoursCard({
   const [start, setStart] = useState(emp.workStart ?? "08:00");
   const [end, setEnd] = useState(emp.workEnd ?? "17:00");
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const toast = useToast();
 
   const dirty = start !== (emp.workStart ?? "08:00") || end !== (emp.workEnd ?? "17:00");
 
   async function save() {
     setSaving(true);
-    setMsg(null);
     try {
       const res = await fetch("/api/employees/hours", {
         method: "POST",
@@ -470,13 +499,13 @@ function WorkHoursCard({
         body: JSON.stringify({ id: emp.id, workStart: start, workEnd: end }),
       });
       if (!res.ok) {
-        setMsg({ ok: false, text: "Gagal menyimpan. Pastikan Anda HR/admin." });
+        toast.error("Gagal menyimpan jam kerja. Pastikan Anda HR/admin.");
         return;
       }
       onHours(emp.id, start, end);
-      setMsg({ ok: true, text: "Jam kerja tersimpan ✓" });
+      toast.success(`Jam kerja ${emp.name} tersimpan ✓`);
     } catch {
-      setMsg({ ok: false, text: "Koneksi bermasalah. Coba lagi." });
+      toast.error("Koneksi bermasalah. Coba lagi.");
     } finally {
       setSaving(false);
     }
@@ -501,9 +530,6 @@ function WorkHoursCard({
               <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
             </Field>
           </div>
-          {msg && (
-            <p className={cn("mt-2 text-xs", msg.ok ? "text-forest-600" : "text-clay")}>{msg.text}</p>
-          )}
           <Button className="mt-3 w-full" onClick={save} disabled={saving || !dirty}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
             Simpan jam kerja
