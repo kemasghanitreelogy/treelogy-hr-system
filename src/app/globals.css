@@ -144,6 +144,11 @@
   max-height: 100dvh;
 }
 
+/* Fullscreen camera: hide the app topbar + bottom nav for a clean frame. */
+body.camera-open .app-chrome {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;

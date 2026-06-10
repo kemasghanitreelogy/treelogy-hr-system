@@ -142,7 +142,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
 
       <div className="flex min-h-screen flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-cream/85 px-4 backdrop-blur-md sm:px-6">
+        <header className="app-chrome sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-cream/85 px-4 backdrop-blur-md sm:px-6">
           <button
             className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted transition-colors hover:bg-sand lg:hidden"
             onClick={() => setDrawerOpen(true)}
@@ -189,7 +189,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-cream/95 backdrop-blur-md lg:hidden">
+      <nav className="app-chrome fixed bottom-0 left-0 right-0 z-40 border-t border-line bg-cream/95 backdrop-blur-md lg:hidden">
         <div className="grid grid-cols-5">
           {bottomItems.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");

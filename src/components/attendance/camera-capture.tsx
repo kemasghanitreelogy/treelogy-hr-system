@@ -58,13 +58,16 @@ export function CameraCapture({
     return () => stop();
   }, [open, startCamera, stop]);
 
-  // Lock background scroll so the camera stays the only thing in frame.
+  // Lock background scroll and hide the app chrome (topbar + bottom nav)
+  // so the camera is the only thing on screen.
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("camera-open");
     return () => {
       document.body.style.overflow = prev;
+      document.body.classList.remove("camera-open");
     };
   }, [open]);
 
