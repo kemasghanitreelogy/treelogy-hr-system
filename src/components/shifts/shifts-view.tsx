@@ -83,7 +83,11 @@ export function ShiftsView({
               Pengganti hari libur untuk tim pabrik yang bekerja di hari istirahat/libur.
             </p>
           </div>
-          {pendingSwaps > 0 && <Badge tone="gold">{pendingSwaps} menunggu</Badge>}
+          {pendingSwaps > 0 && (
+            <Badge tone="gold" className="shrink-0 whitespace-nowrap">
+              {pendingSwaps} menunggu
+            </Badge>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           {swapList.map((s) => {
@@ -101,15 +105,15 @@ export function ShiftsView({
                   </div>
                 </div>
 
-                <div className="flex flex-1 items-center gap-3 text-sm">
-                  <div className="rounded-lg bg-clay-soft px-3 py-1.5 text-center">
+                <div className="flex flex-1 items-center gap-2 text-sm">
+                  <div className="flex-1 rounded-lg bg-clay-soft px-2 py-1.5 text-center">
                     <p className="text-[10px] uppercase tracking-wide text-[#8c3c1f]">Bekerja</p>
-                    <p className="font-medium text-[#8c3c1f]">{formatDate(s.workedDate)}</p>
+                    <p className="whitespace-nowrap font-medium text-[#8c3c1f]">{formatDate(s.workedDate)}</p>
                   </div>
                   <ArrowLeftRight className="h-4 w-4 shrink-0 text-faint" />
-                  <div className="rounded-lg bg-[#e9f0d8] px-3 py-1.5 text-center">
+                  <div className="flex-1 rounded-lg bg-[#e9f0d8] px-2 py-1.5 text-center">
                     <p className="text-[10px] uppercase tracking-wide text-forest-600">Libur ganti</p>
-                    <p className="font-medium text-forest-600">{formatDate(s.offDate)}</p>
+                    <p className="whitespace-nowrap font-medium text-forest-600">{formatDate(s.offDate)}</p>
                   </div>
                 </div>
 
