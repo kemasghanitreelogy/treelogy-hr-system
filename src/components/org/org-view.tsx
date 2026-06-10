@@ -269,8 +269,11 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   const totalHeads = TEAMS.reduce((s, t) => s + rootsOf(t).length, 0);
   const overTeam = overId ? byId.get(overId)?.team : undefined;
 
+  // NOTE: no `fade-up` on this root — its retained transform (animation-fill-mode:
+  // both) would establish a containing block and make the fixed-positioned
+  // DragOverlay drift away from the cursor.
   return (
-    <div className={cn("space-y-4 fade-up", canManage && changes.count > 0 && "pb-24")}>
+    <div className={cn("space-y-4", canManage && changes.count > 0 && "pb-24")}>
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Karyawan aktif" value={draft.length} />
         <Stat label="Divisi" value={TEAMS.length} />
