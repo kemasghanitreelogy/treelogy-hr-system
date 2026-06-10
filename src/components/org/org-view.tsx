@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import {
   closestCenter,
   DndContext,
@@ -13,10 +13,9 @@ import {
   useDroppable,
   useSensor,
   useSensors,
-  type Active,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
-  type Over,
 } from "@dnd-kit/core";
 import { Crown, GripVertical, Loader2, Pencil, Plus, RotateCcw, Save, Users2 } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
@@ -31,10 +30,17 @@ import { useToast } from "@/components/ui/toast";
 
 /** A working copy of an employee; `_new` marks a not-yet-persisted addition. */
 type Draft = Employee & { _new?: boolean };
+/** One row in a division's flattened tree. */
+interface Flat {
+  id: string;
+  emp: Draft;
+  depth: number;
+  parentId: string | null;
+}
 
+const INDENT = 22; // px per hierarchy level — also the horizontal drag step
 const byName = (a: Draft, b: Draft) => a.name.localeCompare(b.name);
 const clone = (list: Draft[]): Draft[] => list.map((e) => ({ ...e }));
-const TEAM_PREFIX = "team:";
 
 export function OrgView({ initial, canManage = false }: { initial: Employee[]; canManage?: boolean }) {
   const [base, setBase] = useState<Draft[]>(initial);
@@ -43,14 +49,11 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   const [adding, setAdding] = useState<Team | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  // Which node the pointer is over, and whether dropping there makes the dragged
-  // person a subordinate ("child") or a peer at the same level ("sibling").
-  const [nodeOver, setNodeOver] = useState<{ id: string; mode: "child" | "sibling" } | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [offsetLeft, setOffsetLeft] = useState(0);
   const counter = useRef(0);
   const toast = useToast();
 
-  // Touch-first: a short press-and-hold starts a drag so normal scrolling/taps
-  // still work on phones. Mouse drags after a tiny move; keyboard is supported too.
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -70,6 +73,20 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
     [draft, byId],
   );
   const rootsOf = (team: Team) => draft.filter((e) => e.team === team && !parentValid(e)).sort(byName);
+
+  const flatten = useCallback(
+    (team: Team): Flat[] => {
+      const out: Flat[] = [];
+      const walk = (emp: Draft, depth: number, parentId: string | null) => {
+        out.push({ id: emp.id, emp, depth, parentId });
+        for (const c of childrenOf(emp.id)) walk(c, depth + 1, emp.id);
+      };
+      for (const r of rootsOf(team)) walk(r, 0, null);
+      return out;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [draft, childrenOf],
+  );
 
   function descendantsOf(id: string): Set<string> {
     const out = new Set<string>();
@@ -131,37 +148,49 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
     setEditing(null);
   }
 
-  // ---- Drag & drop (dnd-kit) ----
+  // ---- Drag & drop (depth projection, Notion-style) ----
 
-  function onDragOver({ active, over }: DragOverEvent) {
-    if (!over) return setNodeOver(null);
-    const overId = String(over.id);
-    if (overId.startsWith(TEAM_PREFIX) || overId === String(active.id)) return setNodeOver(null);
-    setNodeOver({ id: overId, mode: dropMode(active, over) });
+  const activeEmp = activeId ? byId.get(activeId) : null;
+  const activeSubtree = useMemo(() => (activeId ? descendantsOf(activeId) : new Set<string>()), [activeId, draft]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flattened rows of the dragged person's division, minus its own subtree
+  // (the subtree travels with it). Drives both the live projection and rendering.
+  const activeItems = useMemo(
+    () => (activeEmp ? flatten(activeEmp.team).filter((i) => !activeSubtree.has(i.id)) : []),
+    [activeEmp, flatten, activeSubtree],
+  );
+  const projection =
+    activeId && overId ? getProjection(activeItems, activeId, overId, offsetLeft, INDENT) : null;
+
+  function resetDrag() {
+    setActiveId(null);
+    setOverId(null);
+    setOffsetLeft(0);
   }
 
   function onDragEnd({ active, over }: DragEndEvent) {
-    setActiveId(null);
-    setNodeOver(null);
-    if (!over) return;
     const id = String(active.id);
-    const overId = String(over.id);
-    if (overId.startsWith(TEAM_PREFIX)) {
-      moveNode(id, overId.slice(TEAM_PREFIX.length) as Team, null);
+    const node = byId.get(id);
+    resetDrag();
+    if (!over || !node) return;
+    const overEmp = byId.get(String(over.id));
+    // Dropped onto another division → move there as a head.
+    if (overEmp && overEmp.team !== node.team) {
+      moveNode(id, overEmp.team, null);
       return;
     }
-    if (overId === id) return;
-    const target = byId.get(overId);
-    if (!target) return;
-    // Centre of the row → subordinate of the target; top/bottom edge → peer
-    // (share the target's manager / become a co-head).
-    const mode = dropMode(active, over);
-    const newManagerId = mode === "child" ? target.id : target.managerId ?? null;
-    if (newManagerId && (newManagerId === id || descendantsOf(id).has(newManagerId))) {
-      toast.error("Tidak bisa memindahkan ke bawahannya sendiri.");
-      return;
-    }
-    moveNode(id, target.team, newManagerId);
+    // Within the division → use the projected parent/depth.
+    const proj = getProjection(
+      flatten(node.team).filter((i) => !descendantsOf(id).has(i.id)),
+      id,
+      String(over.id),
+      offsetLeft,
+      INDENT,
+    );
+    if (!proj) return;
+    let parentId = proj.parentId;
+    if (parentId === id || descendantsOf(id).has(parentId ?? "")) parentId = node.managerId ?? null;
+    moveNode(id, node.team, parentId);
   }
 
   // ---- Diff vs base ----
@@ -238,8 +267,7 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   }
 
   const totalHeads = TEAMS.reduce((s, t) => s + rootsOf(t).length, 0);
-  const dragging = !!activeId;
-  const activeEmp = activeId ? byId.get(activeId) : null;
+  const overTeam = overId ? byId.get(overId)?.team : undefined;
 
   return (
     <div className={cn("space-y-4 fade-up", canManage && changes.count > 0 && "pb-24")}>
@@ -251,10 +279,9 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
 
       {canManage && (
         <p className="flex items-center gap-1.5 text-xs text-faint">
-          <GripVertical className="h-3.5 w-3.5" /> Di HP, tahan sebentar lalu seret. Lepas di{" "}
-          <b className="font-semibold">tengah</b> nama untuk menjadikannya bawahan, di{" "}
-          <b className="font-semibold">tepi atas/bawah</b> untuk menjadikannya setara, atau di kotak “kepala
-          divisi” untuk menjadikannya kepala.
+          <GripVertical className="h-3.5 w-3.5" /> Tahan lalu seret. Geser <b className="font-semibold">ke kanan</b>{" "}
+          untuk jadi bawahan, <b className="font-semibold">ke kiri</b> untuk naik level. Lepas di kartu divisi lain
+          untuk pindah divisi.
         </p>
       )}
 
@@ -262,21 +289,28 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
         sensors={canManage ? sensors : []}
         collisionDetection={closestCenter}
         measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
-        onDragStart={(e) => setActiveId(String(e.active.id))}
-        onDragOver={onDragOver}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => {
-          setActiveId(null);
-          setNodeOver(null);
+        onDragStart={(e) => {
+          setActiveId(String(e.active.id));
+          setOffsetLeft(0);
         }}
+        onDragMove={({ delta }: DragMoveEvent) => setOffsetLeft(delta.x)}
+        onDragOver={({ over }: DragOverEvent) => setOverId(over ? String(over.id) : null)}
+        onDragEnd={onDragEnd}
+        onDragCancel={resetDrag}
       >
         <div className="grid gap-4 lg:grid-cols-2">
           {TEAMS.map((team) => {
             const meta = TEAM_META[team];
-            const roots = rootsOf(team);
+            const full = flatten(team);
+            const isActiveDivision = activeEmp?.team === team;
+            const items = isActiveDivision ? activeItems : full;
             const count = draft.filter((e) => e.team === team).length;
+            const crossTarget = !!activeEmp && overTeam === team && activeEmp.team !== team;
             return (
-              <section key={team} className="card overflow-hidden">
+              <section
+                key={team}
+                className={cn("card overflow-hidden transition-shadow", crossTarget && "ring-2 ring-forest-400")}
+              >
                 <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
                   <div className="flex items-center gap-2.5">
                     <span className={cn("rounded-lg px-2.5 py-1 text-xs font-semibold", meta.chip)}>{meta.label}</span>
@@ -288,23 +322,20 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
                     </Button>
                   )}
                 </header>
-                <div className="space-y-0.5 p-3">
-                  {roots.map((e) => (
-                    <Node
-                      key={e.id}
-                      emp={e}
-                      childrenOf={childrenOf}
-                      nodeOver={nodeOver}
-                      canManage={canManage}
-                      onEdit={setEditing}
-                    />
-                  ))}
-                  {canManage ? (
-                    <HeadDropZone team={team} label={meta.label} active={dragging} empty={roots.length === 0} />
+                <div className="p-3">
+                  {items.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-sm text-faint">
+                      {crossTarget ? "Lepas untuk pindah ke sini" : "Belum ada karyawan di divisi ini."}
+                    </p>
                   ) : (
-                    roots.length === 0 && (
-                      <p className="px-2 py-6 text-center text-sm text-faint">Belum ada karyawan di divisi ini.</p>
-                    )
+                    items.map((it) => (
+                      <Fragment key={it.id}>
+                        <Row item={it} canManage={canManage} dragging={it.id === activeId} onEdit={setEditing} />
+                        {projection && isActiveDivision && overId === it.id && (
+                          <Indicator depth={projection.depth} />
+                        )}
+                      </Fragment>
+                    ))
                   )}
                 </div>
               </section>
@@ -312,10 +343,11 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
           })}
         </div>
 
-        <DragOverlay dropAnimation={null}>{activeEmp ? <OverlayCard emp={activeEmp} /> : null}</DragOverlay>
+        <DragOverlay dropAnimation={null}>
+          {activeEmp ? <OverlayCard emp={activeEmp} reports={activeSubtree.size} /> : null}
+        </DragOverlay>
       </DndContext>
 
-      {/* Floating "save all" bar */}
       {canManage && changes.count > 0 && (
         <div className="fixed inset-x-0 bottom-20 z-40 flex justify-center px-4 sm:bottom-6">
           <div className="flex w-full max-w-xl items-center gap-3 rounded-2xl border border-line bg-panel px-4 py-3 shadow-pop">
@@ -374,22 +406,20 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Node({
-  emp,
-  childrenOf,
-  nodeOver,
+function Row({
+  item,
   canManage,
+  dragging,
   onEdit,
 }: {
-  emp: Draft;
-  childrenOf: (id: string) => Draft[];
-  nodeOver: { id: string; mode: "child" | "sibling" } | null;
+  item: Flat;
   canManage: boolean;
+  dragging: boolean;
   onEdit: (e: Draft) => void;
 }) {
-  const kids = childrenOf(emp.id);
-  const isHead = !emp.managerId;
-  const { attributes, listeners, setNodeRef: dragRef, isDragging } = useDraggable({ id: emp.id });
+  const { emp, depth } = item;
+  const isHead = depth === 0;
+  const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: emp.id });
   const { setNodeRef: dropRef } = useDroppable({ id: emp.id });
   const setRef = useCallback(
     (el: HTMLElement | null) => {
@@ -398,24 +428,17 @@ function Node({
     },
     [dragRef, dropRef],
   );
-  const overChild = canManage && !isDragging && nodeOver?.id === emp.id && nodeOver.mode === "child";
-  const overSibling = canManage && !isDragging && nodeOver?.id === emp.id && nodeOver.mode === "sibling";
 
   return (
-    <div>
-      {/* Peer-drop indicator: a level line above the row. */}
-      {overSibling && <div className="mx-2 mb-1 h-0.5 rounded-full bg-forest-400" />}
+    <div style={{ paddingLeft: depth * INDENT }} className="py-0.5">
       <div
         ref={canManage ? setRef : undefined}
         {...(canManage ? attributes : {})}
         {...(canManage ? listeners : {})}
         className={cn(
-          // No `touch-none`: the TouchSensor delay distinguishes a scroll swipe
-          // from a hold-drag, so the page still scrolls normally on phones.
-          "group flex items-center gap-2 rounded-xl px-2 py-2 transition-colors",
+          "group flex items-center gap-2 rounded-xl border border-transparent px-2 py-2 transition-colors",
           !canManage && "hover:bg-sand/60",
-          canManage && (isDragging ? "opacity-40" : "cursor-grab hover:bg-sand/60 active:cursor-grabbing"),
-          overChild && "bg-forest-50 ring-2 ring-forest-400",
+          canManage && (dragging ? "opacity-40" : "cursor-grab hover:border-line hover:bg-sand/60 active:cursor-grabbing"),
         )}
       >
         {canManage && (
@@ -432,10 +455,7 @@ function Node({
             )}
             {emp._new && <Badge tone="matcha">Baru</Badge>}
           </div>
-          <p className="truncate text-xs text-faint">
-            {emp.position}
-            {kids.length > 0 && <span className="text-muted"> · {kids.length} bawahan</span>}
-          </p>
+          <p className="truncate text-xs text-faint">{emp.position}</p>
         </div>
         {canManage && (
           <button
@@ -448,58 +468,30 @@ function Node({
           </button>
         )}
       </div>
-      {kids.length > 0 && (
-        <div className="ml-4 space-y-0.5 border-l border-line pl-2">
-          {kids.map((k) => (
-            <Node key={k.id} emp={k} childrenOf={childrenOf} nodeOver={nodeOver} canManage={canManage} onEdit={onEdit} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-function HeadDropZone({
-  team,
-  label,
-  active,
-  empty,
-}: {
-  team: Team;
-  label: string;
-  active: boolean;
-  empty: boolean;
-}) {
-  const { setNodeRef, isOver } = useDroppable({ id: `${TEAM_PREFIX}${team}` });
-  if (!active && !empty) return null;
+function Indicator({ depth }: { depth: number }) {
   return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "rounded-xl border-2 border-dashed px-3 py-4 text-center text-xs transition-colors",
-        !empty && "mt-1",
-        isOver ? "border-forest-400 bg-forest-50 font-medium text-forest-700" : "border-line text-faint",
-      )}
-    >
-      {isOver
-        ? `Lepas untuk jadikan kepala ${label}`
-        : empty
-          ? active
-            ? "Lepas di sini untuk jadi kepala divisi"
-            : "Belum ada karyawan — seret seseorang ke sini"
-          : "Jadikan kepala divisi"}
+    <div className="flex items-center gap-1.5 py-1" style={{ paddingLeft: depth * INDENT + 8 }}>
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-forest-500" />
+      <span className="h-0.5 flex-1 rounded-full bg-forest-500" />
     </div>
   );
 }
 
-function OverlayCard({ emp }: { emp: Draft }) {
+function OverlayCard({ emp, reports }: { emp: Draft; reports: number }) {
   return (
     <div className="flex cursor-grabbing items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 shadow-pop">
       <GripVertical className="h-4 w-4 shrink-0 text-faint" />
       <Avatar name={emp.name || "?"} size="sm" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-ink">{emp.name || "Tanpa nama"}</p>
-        <p className="truncate text-xs text-faint">{emp.position}</p>
+        <p className="truncate text-xs text-faint">
+          {emp.position}
+          {reports > 0 && ` · +${reports} bawahan`}
+        </p>
       </div>
     </div>
   );
@@ -638,16 +630,51 @@ function AddForm({
 
 // ---- pure helpers ----
 
+function arrayMove<T>(arr: T[], from: number, to: number): T[] {
+  const a = arr.slice();
+  const [moved] = a.splice(from, 1);
+  a.splice(to, 0, moved);
+  return a;
+}
+
 /**
- * Where the dragged row's centre sits over the target decides the relationship:
- * the middle band → subordinate ("child"); the top/bottom edge → peer ("sibling").
+ * Notion-style depth projection: given the flattened list, the dragged id, the
+ * row being hovered, and the horizontal drag offset, compute the target depth
+ * and parent. Horizontal offset (÷ indent) nudges the depth, clamped by the
+ * neighbours so the result is always a valid tree position.
  */
-function dropMode(active: Active, over: Over): "child" | "sibling" {
-  const ar = active.rect.current.translated;
-  const or = over.rect;
-  if (!ar || !or.height) return "child";
-  const rel = (ar.top + ar.height / 2 - or.top) / or.height;
-  return rel < 0.34 || rel > 0.66 ? "sibling" : "child";
+function getProjection(
+  items: Flat[],
+  activeId: string,
+  overId: string,
+  offsetLeft: number,
+  indent: number,
+): { depth: number; parentId: string | null } | null {
+  const overIndex = items.findIndex((i) => i.id === overId);
+  const activeIndex = items.findIndex((i) => i.id === activeId);
+  if (overIndex < 0 || activeIndex < 0) return null;
+  const active = items[activeIndex];
+  const moved = arrayMove(items, activeIndex, overIndex);
+  const prev = moved[overIndex - 1];
+  const next = moved[overIndex + 1];
+  const dragDepth = Math.round(offsetLeft / indent);
+  const projected = active.depth + dragDepth;
+  const maxDepth = prev ? prev.depth + 1 : 0;
+  const minDepth = next ? next.depth : 0;
+  const depth = Math.max(minDepth, Math.min(projected, maxDepth));
+
+  let parentId: string | null = null;
+  if (depth > 0 && prev) {
+    if (depth === prev.depth) parentId = prev.parentId;
+    else if (depth > prev.depth) parentId = prev.id;
+    else
+      parentId =
+        moved
+          .slice(0, overIndex)
+          .reverse()
+          .find((i) => i.depth === depth)?.parentId ?? null;
+  }
+  return { depth, parentId };
 }
 
 /** Descendants of `id` within a given list (same-division reporting links). */
