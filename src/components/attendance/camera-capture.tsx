@@ -62,6 +62,18 @@ export function CameraCapture({
     };
   }, [open, stop]);
 
+  // Lock background scroll so the camera stays the only thing in frame.
+  useEffect(() => {
+    if (!open) return;
+    const { overflow, position, width } = document.body.style;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+      document.body.style.position = position;
+      document.body.style.width = width;
+    };
+  }, [open]);
+
   function capture() {
     const video = videoRef.current;
     if (!video) return;
@@ -94,8 +106,14 @@ export function CameraCapture({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-bark">
-      <div className="flex items-center justify-between px-4 py-3 text-cream">
+    <div
+      className="fixed inset-0 z-[80] flex flex-col overflow-hidden bg-bark"
+      style={{ height: "100dvh", maxHeight: "100dvh" }}
+    >
+      <div
+        className="flex shrink-0 items-center justify-between px-4 py-3 text-cream"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+      >
         <span className="font-display text-base font-semibold">{title}</span>
         <button
           onClick={cancel}
@@ -152,7 +170,10 @@ export function CameraCapture({
       </div>
 
       {!error && (
-        <div className="flex items-center justify-center gap-6 px-6 py-7">
+        <div
+          className="flex shrink-0 items-center justify-center gap-6 px-6 py-6"
+          style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+        >
           <button
             onClick={cancel}
             className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full bg-forest-800 text-cream/80 transition hover:bg-forest-700"
