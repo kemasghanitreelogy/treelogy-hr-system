@@ -25,6 +25,8 @@ export interface Employee {
   location: "Factory · Bali" | "Farm · Bali" | "Office · Bali" | "Field";
   workStart?: string; // "HH:MM" — scheduled clock-in (WITA), set by HR
   workEnd?: string; // "HH:MM" — scheduled clock-out (WITA)
+  /** Direct supervisor (employee id); null = top of their division. Drives the org tree. */
+  managerId?: string | null;
 }
 
 export type AttendanceStatus =
@@ -90,6 +92,8 @@ export interface LeaveRequest {
   status: RequestStatus;
   approver?: string | null;
   requestedAt: string;
+  /** Storage path of the optional proof file (image/PDF); null when none. */
+  proofPath?: string | null;
 }
 
 export interface LeaveBalance {

@@ -3,6 +3,7 @@ import {
   CalendarDays,
   LayoutDashboard,
   Layers,
+  Network,
   ShieldCheck,
   Target,
   Users,
@@ -24,6 +25,7 @@ const ITEMS: Record<string, NavItem> = {
   "/leave": { href: "/leave", label: "Cuti & Izin", icon: CalendarDays, perm: "leave.view" },
   "/payroll": { href: "/payroll", label: "Payroll", icon: Wallet, perm: "payroll.view" },
   "/employees": { href: "/employees", label: "Karyawan", icon: Users, perm: "employees.view" },
+  "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", icon: Network, perm: "employees.manage" },
   "/shifts": { href: "/shifts", label: "Shift & Jadwal", icon: Layers, perm: "shifts.view" },
   "/kpi": { href: "/kpi", label: "KPI & Kinerja", icon: Target, perm: "kpi.view" },
   "/access": { href: "/access", label: "Peran & Akses", icon: ShieldCheck, perm: "access.roles" },
@@ -50,8 +52,8 @@ export function audienceFromPermissions(permissions: string[]): Audience {
 // Order by real-world usage frequency for each audience (Hick's Law + Serial Position:
 // most-used first = primacy; rarely-used config last).
 const ORDER: Record<Audience, string[]> = {
-  ops: ["/dashboard", "/attendance", "/leave", "/payroll", "/employees", "/shifts", "/kpi", "/access"],
-  self: ["/dashboard", "/attendance", "/leave", "/payroll", "/kpi", "/shifts", "/employees", "/access"],
+  ops: ["/dashboard", "/attendance", "/leave", "/payroll", "/employees", "/org-structure", "/shifts", "/kpi", "/access"],
+  self: ["/dashboard", "/attendance", "/leave", "/payroll", "/kpi", "/shifts", "/employees", "/org-structure", "/access"],
 };
 
 // Most-frequent destinations for the mobile thumb-zone bar (4 = sweet spot).

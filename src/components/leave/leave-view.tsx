@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Loader2, PiggyBank, Plus, X } from "lucide-react";
+import { Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate } from "@/lib/utils";
@@ -30,6 +30,8 @@ export function LeaveView({
   currentUserName = "HR",
   currentEmployeeId = null,
   canRequestForOthers = true,
+  canApproveAll = false,
+  approverTeam = null,
 }: {
   requests: LeaveRequest[];
   balances: LeaveBalance[];
@@ -37,6 +39,10 @@ export function LeaveView({
   currentUserName?: string;
   currentEmployeeId?: string | null;
   canRequestForOthers?: boolean;
+  /** HR/admin: may approve any request, any division. */
+  canApproveAll?: boolean;
+  /** Division a manager heads; may approve only this team's requests (not their own). */
+  approverTeam?: Team | null;
 }) {
   const [tab, setTab] = useState<Tab>("requests");
   const [list, setList] = useState(requests);
@@ -45,6 +51,18 @@ export function LeaveView({
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
+
+  // Who may act on a given request: HR/admin on anyone; a division manager only on
+  // their own team's members, and never on their own request.
+  const canDecide = useMemo(
+    () => (r: LeaveRequest) => {
+      if (canApproveAll) return true;
+      if (!approverTeam) return false;
+      if (r.employeeId === currentEmployeeId) return false;
+      return empMap.get(r.employeeId)?.team === approverTeam;
+    },
+    [canApproveAll, approverTeam, currentEmployeeId, empMap],
+  );
 
   async function decide(id: string, status: RequestStatus) {
     const prev = list.find((r) => r.id === id);
@@ -61,7 +79,7 @@ export function LeaveView({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
         setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
-        toast.error("Gagal memproses pengajuan. Pastikan Anda HR/admin.");
+        toast.error("Gagal memproses. Anda hanya bisa menyetujui karyawan di divisi Anda.");
         return;
       }
       setList((cur) => cur.map((r) => (r.id === id ? data.request : r)));
@@ -80,7 +98,8 @@ export function LeaveView({
     toast.success("Pengajuan cuti/izin terkirim ✓");
   }
 
-  const pending = list.filter((r) => r.status === "pending").length;
+  // Only count requests the current user can actually act on.
+  const pending = list.filter((r) => r.status === "pending" && canDecide(r)).length;
 
   return (
     <div className="space-y-4 fade-up">
@@ -124,9 +143,19 @@ export function LeaveView({
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-1 text-sm text-faint">{r.reason}</p>
+                  {r.proofPath && (
+                    <a
+                      href={`/api/leave/proof?path=${encodeURIComponent(r.proofPath)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-sky hover:underline"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" /> Lihat bukti
+                    </a>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 sm:w-auto">
-                  {r.status === "pending" ? (
+                  {r.status === "pending" && canDecide(r) ? (
                     <>
                       <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
                         <Check className="h-4 w-4" /> Setujui
@@ -278,6 +307,26 @@ function LeaveForm({
     endDate: "",
     reason: "",
   });
+  // Optional proof attachment (image or PDF), read client-side into a data URL.
+  const [proof, setProof] = useState<{ dataUrl: string; name: string } | null>(null);
+
+  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file after removal
+    if (!file) return;
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast.error("Hanya file gambar atau PDF yang didukung.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran file maksimal 5 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setProof({ dataUrl: String(reader.result), name: file.name });
+    reader.onerror = () => toast.error("Gagal membaca file.");
+    reader.readAsDataURL(file);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -305,15 +354,18 @@ function LeaveForm({
           startDate: form.startDate,
           endDate: form.endDate,
           reason: form.reason,
+          proofFile: proof?.dataUrl,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        toast.error(
-          data.error === "end_before_start"
-            ? "Tanggal selesai tidak boleh sebelum tanggal mulai."
-            : "Gagal mengajukan. Pastikan Anda HR/admin.",
-        );
+        const msg: Record<string, string> = {
+          end_before_start: "Tanggal selesai tidak boleh sebelum tanggal mulai.",
+          invalid_proof_type: "Bukti harus berupa gambar atau PDF.",
+          proof_too_large: "Ukuran file bukti maksimal 5 MB.",
+          proof_upload_failed: "Gagal mengunggah file bukti. Coba lagi.",
+        };
+        toast.error(msg[data.error as string] ?? "Gagal mengajukan. Pastikan Anda HR/admin.");
         return;
       }
       onSubmit(data.request as LeaveRequest);
@@ -362,6 +414,24 @@ function LeaveForm({
       </div>
       <Field label="Alasan">
         <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="cth. Acara keluarga…" />
+      </Field>
+      <Field label="Bukti (opsional)">
+        {proof ? (
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
+            <Paperclip className="h-4 w-4 shrink-0 text-muted" />
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">{proof.name}</span>
+            <button type="button" onClick={() => setProof(null)} className="shrink-0 text-faint transition-colors hover:text-ink" aria-label="Hapus lampiran">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line bg-sand/40 px-3 py-2.5 text-sm text-muted transition-colors hover:bg-sand">
+            <Paperclip className="h-4 w-4" />
+            Lampirkan gambar atau PDF
+            <input type="file" accept="image/*,application/pdf" className="hidden" onChange={pickFile} />
+          </label>
+        )}
+        <p className="mt-1 text-xs text-faint">Maks. 5 MB. Tidak wajib.</p>
       </Field>
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>Batal</Button>

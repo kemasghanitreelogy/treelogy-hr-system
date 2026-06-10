@@ -80,6 +80,7 @@ export const mapEmployee = (r: Row): Employee => ({
   location: r.location as Employee["location"],
   workStart: r.work_start ? hhmm(r.work_start) : "08:00",
   workEnd: r.work_end ? hhmm(r.work_end) : "17:00",
+  managerId: (r.manager_id as string) ?? null,
 });
 
 const numOrNull = (v: unknown) => (v == null ? null : Number(v));
@@ -127,6 +128,7 @@ export const mapLeave = (r: Row): LeaveRequest => ({
   status: r.status as LeaveRequest["status"],
   approver: (r.approver as string) ?? null,
   requestedAt: String(r.requested_at),
+  proofPath: (r.proof_path as string) ?? null,
 });
 
 const mapBalance = (r: Row): LeaveBalance => ({

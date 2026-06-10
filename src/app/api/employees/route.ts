@@ -31,6 +31,7 @@ interface Payload {
   workStart?: string;
   workEnd?: string;
   status?: "active" | "inactive";
+  managerId?: string | null;
 }
 
 /** Map a camelCase payload to the employees table row (snake_case). Only defined keys. */
@@ -53,6 +54,7 @@ function toRow(p: Payload): Record<string, unknown> {
   if (p.workStart !== undefined && HHMM.test(p.workStart)) row.work_start = p.workStart;
   if (p.workEnd !== undefined && HHMM.test(p.workEnd)) row.work_end = p.workEnd;
   if (p.status !== undefined) row.status = p.status;
+  if (p.managerId !== undefined) row.manager_id = p.managerId || null;
   return row;
 }
 

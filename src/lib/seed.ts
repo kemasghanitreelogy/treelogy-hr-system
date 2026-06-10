@@ -115,6 +115,16 @@ export const employees: Employee[] = [
   },
 ];
 
+// Default reporting lines (direct supervisor per employee). Heads of a division
+// have no manager (null). Office shows a 3-level chain: Finance → HR → Admin.
+const MANAGER: Record<string, string> = {
+  e01: "e03", e02: "e03", e10: "e03", e13: "e03", // factory → Kadek (Supervisor)
+  e04: "e05", e12: "e05", // farm → Komang (Field Lead)
+  e06: "e07", e14: "e07", // sales → I Gede Bagus (Sales Lead)
+  e08: "e09", e11: "e08", // office: HR → Finance, Admin → HR
+};
+for (const e of employees) e.managerId = MANAGER[e.id] ?? null;
+
 export const shifts: Shift[] = [
   { id: "s1", name: "Factory Pagi", team: "factory", startTime: "07:00", endTime: "15:00", breakMinutes: 60, overtimeAfter: "15:00", color: "#3d5a2e" },
   { id: "s2", name: "Factory Siang", team: "factory", startTime: "15:00", endTime: "23:00", breakMinutes: 60, overtimeAfter: "23:00", color: "#6b7548" },

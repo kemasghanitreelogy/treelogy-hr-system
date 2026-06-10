@@ -9,12 +9,32 @@ const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "in-lieu"];
 const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Optional proof attachment: image or PDF, up to ~5 MB.
+const PROOF_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "application/pdf": "pdf",
+};
+const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+
 interface CreatePayload {
   employeeId?: string;
   type?: LeaveType;
   startDate?: string;
   endDate?: string;
   reason?: string;
+  /** Optional proof, as a `data:<mime>;base64,...` URL. */
+  proofFile?: string;
+}
+
+/** Parse a `data:` URL into {mime, buffer}; returns null when absent/invalid. */
+function parseDataUrl(dataUrl: string | undefined): { mime: string; buffer: Buffer } | null {
+  if (!dataUrl) return null;
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!m) return null;
+  return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
 }
 
 interface UpdatePayload {
@@ -61,6 +81,26 @@ export async function POST(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
+  // Optional proof file — validate type/size, then upload to the private bucket.
+  let proofPath: string | null = null;
+  const proof = parseDataUrl(body.proofFile);
+  if (body.proofFile) {
+    if (!proof || !PROOF_EXT[proof.mime]) {
+      return NextResponse.json({ error: "invalid_proof_type" }, { status: 400 });
+    }
+    if (proof.buffer.length > PROOF_MAX_BYTES) {
+      return NextResponse.json({ error: "proof_too_large" }, { status: 400 });
+    }
+    const path = `${body.employeeId}/${crypto.randomUUID()}.${PROOF_EXT[proof.mime]}`;
+    const { error: upErr } = await supabase!.storage
+      .from("leave-proofs")
+      .upload(path, proof.buffer, { contentType: proof.mime, upsert: false });
+    if (upErr) {
+      return NextResponse.json({ error: "proof_upload_failed" }, { status: 403 });
+    }
+    proofPath = path;
+  }
+
   const row = {
     employee_id: body.employeeId,
     type: body.type,
@@ -69,6 +109,7 @@ export async function POST(req: Request) {
     days: dayCount(body.startDate, body.endDate),
     reason: body.reason?.trim() || null,
     status: "pending",
+    proof_path: proofPath,
   };
 
   const { data, error } = await supabase!.from("leave_requests").insert(row).select("*").single();
