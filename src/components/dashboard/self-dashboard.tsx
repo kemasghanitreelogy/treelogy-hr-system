@@ -18,12 +18,14 @@ export function SelfDashboard({
   recap,
   balance,
   canPayroll,
+  scheduleLabel,
 }: {
   firstName: string;
   settings: AttendanceSettings;
   recap: AttendanceRecap;
   balance?: LeaveBalance;
   canPayroll: boolean;
+  scheduleLabel?: string;
 }) {
   const annualLeft = balance ? balance.annualQuota - balance.annualUsed : 0;
   return (
@@ -35,7 +37,7 @@ export function SelfDashboard({
 
       {/* #1 action — clock in */}
       <div className="mx-auto max-w-md lg:mx-0">
-        <ClockWidget settings={settings} />
+        <ClockWidget settings={settings} shiftLabel={scheduleLabel} />
       </div>
 
       {/* Personal status */}

@@ -12,8 +12,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { AttendanceDetail } from "./attendance-detail";
 
+type EmpLite = Pick<Employee, "id" | "name" | "team" | "position" | "workStart" | "workEnd">;
+
 interface Row extends AttendanceRecord {
-  emp: Pick<Employee, "id" | "name" | "team" | "position">;
+  emp: EmpLite;
 }
 
 export function AttendanceView({
@@ -24,7 +26,7 @@ export function AttendanceView({
   canReviewAll = true,
 }: {
   records: AttendanceRecord[];
-  employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  employees: EmpLite[];
   dates: string[];
   defaultDate: string;
   /** HR/admin see & review everyone; an employee sees only their own. */
@@ -211,6 +213,8 @@ export function AttendanceView({
         employeeName={selected?.emp.name ?? ""}
         position={selected?.emp.position ?? ""}
         team={selected?.emp.team ?? null}
+        scheduleStart={selected?.emp.workStart ?? "08:00"}
+        scheduleEnd={selected?.emp.workEnd ?? "17:00"}
         onClose={() => setSelected(null)}
       />
     </div>

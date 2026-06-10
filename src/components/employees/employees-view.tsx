@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, Mail, Phone, Plus, Search, Wallet } from "lucide-react";
+import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, Wallet } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -15,13 +15,15 @@ import { Sheet } from "@/components/ui/sheet";
 
 type StatusFilter = "all" | "active" | "inactive";
 
-export function EmployeesView({ initial }: { initial: Employee[] }) {
+export function EmployeesView({ initial, canManage = false }: { initial: Employee[]; canManage?: boolean }) {
   const [list, setList] = useState<Employee[]>(initial);
   const [q, setQ] = useState("");
   const [team, setTeam] = useState<"all" | Team>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [selected, setSelected] = useState<Employee | null>(null);
+  const [editing, setEditing] = useState<Employee | null>(null);
   const [adding, setAdding] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     return list.filter((e) => {
@@ -39,18 +41,39 @@ export function EmployeesView({ initial }: { initial: Employee[] }) {
     inactive: list.filter((e) => e.status === "inactive").length,
   };
 
-  function toggleStatus(emp: Employee) {
-    setList((prev) =>
-      prev.map((e) =>
-        e.id === emp.id ? { ...e, status: e.status === "active" ? "inactive" : "active" } : e,
-      ),
-    );
-    setSelected((s) => (s && s.id === emp.id ? { ...s, status: s.status === "active" ? "inactive" : "active" } : s));
+  function upsertLocal(emp: Employee) {
+    setList((prev) => (prev.some((e) => e.id === emp.id) ? prev.map((e) => (e.id === emp.id ? emp : e)) : [emp, ...prev]));
   }
 
-  function addEmployee(emp: Employee) {
-    setList((prev) => [emp, ...prev]);
+  async function toggleStatus(emp: Employee) {
+    const next = emp.status === "active" ? "inactive" : "active";
+    setTogglingId(emp.id);
+    try {
+      const res = await fetch("/api/employees", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: emp.id, status: next }),
+      });
+      const data = await res.json();
+      if (res.ok && data.employee) {
+        upsertLocal(data.employee);
+        setSelected((s) => (s && s.id === emp.id ? data.employee : s));
+      }
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  function onSaved(emp: Employee) {
+    upsertLocal(emp);
     setAdding(false);
+    setEditing(null);
+    setSelected(emp);
+  }
+
+  function applyHours(id: string, workStart: string, workEnd: string) {
+    setList((prev) => prev.map((e) => (e.id === id ? { ...e, workStart, workEnd } : e)));
+    setSelected((s) => (s && s.id === id ? { ...s, workStart, workEnd } : s));
   }
 
   return (
@@ -177,28 +200,54 @@ export function EmployeesView({ initial }: { initial: Employee[] }) {
         title={selected?.name ?? ""}
         description={selected ? `${selected.nik} · ${selected.position}` : ""}
         footer={
-          selected && (
+          selected &&
+          canManage && (
             <div className="flex gap-2">
               <Button
                 variant={selected.status === "active" ? "outline" : "primary"}
                 className="flex-1"
+                disabled={togglingId === selected.id}
                 onClick={() => toggleStatus(selected)}
               >
-                {selected.status === "active" ? "Nonaktifkan" : "Aktifkan"}
+                {togglingId === selected.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : selected.status === "active" ? (
+                  "Nonaktifkan"
+                ) : (
+                  "Aktifkan"
+                )}
               </Button>
-              <Button variant="secondary" className="flex-1">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => {
+                  const cur = selected;
+                  setSelected(null);
+                  setEditing(cur);
+                }}
+              >
                 Edit data
               </Button>
             </div>
           )
         }
       >
-        {selected && <EmployeeDetail emp={selected} />}
+        {selected && <EmployeeDetail emp={selected} canManage={canManage} onHours={applyHours} />}
       </Sheet>
 
       {/* Add form */}
       <Sheet open={adding} onClose={() => setAdding(false)} title="Tambah Karyawan" description="Daftarkan karyawan baru ke database">
-        <EmployeeForm onSubmit={addEmployee} onCancel={() => setAdding(false)} count={list.length} />
+        <EmployeeForm onSaved={onSaved} onCancel={() => setAdding(false)} />
+      </Sheet>
+
+      {/* Edit form */}
+      <Sheet
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title="Edit Karyawan"
+        description={editing ? `${editing.nik} · ${editing.name}` : ""}
+      >
+        {editing && <EmployeeForm initial={editing} onSaved={onSaved} onCancel={() => setEditing(null)} />}
       </Sheet>
     </div>
   );
@@ -226,7 +275,15 @@ function FilterChip({
   );
 }
 
-function EmployeeDetail({ emp }: { emp: Employee }) {
+function EmployeeDetail({
+  emp,
+  canManage,
+  onHours,
+}: {
+  emp: Employee;
+  canManage: boolean;
+  onHours: (id: string, workStart: string, workEnd: string) => void;
+}) {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-4">
@@ -249,6 +306,8 @@ function EmployeeDetail({ emp }: { emp: Employee }) {
         {emp.endDate && <DetailRow icon={<Building2 className="h-4 w-4" />} label="Berakhir" value={formatDate(emp.endDate, "long")} />}
       </div>
 
+      <WorkHoursCard emp={emp} canManage={canManage} onHours={onHours} />
+
       <div className="rounded-2xl border border-line bg-panel p-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
           <Wallet className="h-4 w-4 text-forest-600" /> Kompensasi & Pajak
@@ -269,6 +328,80 @@ function EmployeeDetail({ emp }: { emp: Employee }) {
           {emp.bankName} · <span className="font-medium text-ink">{emp.bankAccount}</span>
         </p>
       </div>
+    </div>
+  );
+}
+
+function WorkHoursCard({
+  emp,
+  canManage,
+  onHours,
+}: {
+  emp: Employee;
+  canManage: boolean;
+  onHours: (id: string, workStart: string, workEnd: string) => void;
+}) {
+  const [start, setStart] = useState(emp.workStart ?? "08:00");
+  const [end, setEnd] = useState(emp.workEnd ?? "17:00");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const dirty = start !== (emp.workStart ?? "08:00") || end !== (emp.workEnd ?? "17:00");
+
+  async function save() {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/employees/hours", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: emp.id, workStart: start, workEnd: end }),
+      });
+      if (!res.ok) {
+        setMsg({ ok: false, text: "Gagal menyimpan. Pastikan Anda HR/admin." });
+        return;
+      }
+      onHours(emp.id, start, end);
+      setMsg({ ok: true, text: "Jam kerja tersimpan ✓" });
+    } catch {
+      setMsg({ ok: false, text: "Koneksi bermasalah. Coba lagi." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-line bg-panel p-4">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <Clock className="h-4 w-4 text-forest-600" /> Jam Kerja
+      </h3>
+      <p className="mt-1 text-xs text-muted">
+        Patokan telat saat clock-in (waktu WITA). {canManage ? "Atur jam masuk & keluar." : "Hanya HR yang dapat mengubah."}
+      </p>
+
+      {canManage ? (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <Field label="Jam masuk">
+              <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+            </Field>
+            <Field label="Jam keluar">
+              <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </Field>
+          </div>
+          {msg && (
+            <p className={cn("mt-2 text-xs", msg.ok ? "text-forest-600" : "text-clay")}>{msg.text}</p>
+          )}
+          <Button className="mt-3 w-full" onClick={save} disabled={saving || !dirty}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+            Simpan jam kerja
+          </Button>
+        </>
+      ) : (
+        <p className="mt-3 font-display text-lg font-semibold tabular-nums text-ink">
+          {emp.workStart ?? "08:00"} – {emp.workEnd ?? "17:00"}
+        </p>
+      )}
     </div>
   );
 }
@@ -304,54 +437,76 @@ function EmptyRow() {
 }
 
 function EmployeeForm({
-  onSubmit,
+  initial,
+  onSaved,
   onCancel,
-  count,
 }: {
-  onSubmit: (e: Employee) => void;
+  initial?: Employee;
+  onSaved: (e: Employee) => void;
   onCancel: () => void;
-  count: number;
 }) {
+  const isEdit = !!initial;
   const [form, setForm] = useState({
-    name: "",
-    position: "",
-    team: "factory" as Team,
-    email: "",
-    phone: "",
-    baseSalary: "3500000",
-    allowance: "500000",
-    ptkp: "TK/0",
-    bankName: "BCA",
-    bankAccount: "",
+    name: initial?.name ?? "",
+    position: initial?.position ?? "",
+    team: initial?.team ?? ("factory" as Team),
+    email: initial?.email ?? "",
+    phone: initial?.phone ?? "",
+    baseSalary: String(initial?.baseSalary ?? "3500000"),
+    allowance: String(initial?.allowance ?? "500000"),
+    ptkp: initial?.ptkp ?? "TK/0",
+    bankName: initial?.bankName ?? "BCA",
+    bankAccount: initial?.bankAccount ?? "",
+    workStart: initial?.workStart ?? "08:00",
+    workEnd: initial?.workEnd ?? "17:00",
   });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const id = "e" + String(100 + count);
-    onSubmit({
-      id,
-      nik: `TRL-${String(900 + count)}`,
-      name: form.name || "Karyawan Baru",
-      email: form.email,
-      phone: form.phone,
-      team: form.team,
-      position: form.position || "Staff",
-      status: "active",
-      joinDate: new Date().toISOString().slice(0, 10),
-      baseSalary: Number(form.baseSalary) || 0,
-      allowance: Number(form.allowance) || 0,
-      ptkp: form.ptkp as Employee["ptkp"],
-      npwp: null,
-      bpjsKes: true,
-      bpjsTk: true,
-      bankName: form.bankName,
-      bankAccount: form.bankAccount || "—",
-      location: form.team === "farm" ? "Farm · Bali" : form.team === "factory" ? "Factory · Bali" : "Office · Bali",
-    });
+    setSaving(true);
+    setErr(null);
+    try {
+      const payload = {
+        ...(isEdit ? { id: initial!.id } : {}),
+        name: form.name,
+        team: form.team,
+        position: form.position,
+        email: form.email,
+        phone: form.phone,
+        baseSalary: Number(form.baseSalary) || 0,
+        allowance: Number(form.allowance) || 0,
+        ptkp: form.ptkp,
+        bankName: form.bankName,
+        bankAccount: form.bankAccount,
+        workStart: form.workStart,
+        workEnd: form.workEnd,
+      };
+      const res = await fetch("/api/employees", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.employee) {
+        setErr(
+          isEdit
+            ? "Gagal menyimpan perubahan. Pastikan Anda HR/admin."
+            : "Gagal menambah karyawan. Pastikan Anda HR/admin.",
+        );
+        return;
+      }
+      onSaved(data.employee as Employee);
+    } catch {
+      setErr("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -387,8 +542,16 @@ function EmployeeForm({
           <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
         </Field>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Jam masuk" hint="Patokan telat (WITA)">
+          <Input type="time" value={form.workStart} onChange={(e) => set("workStart", e.target.value)} />
+        </Field>
+        <Field label="Jam keluar">
+          <Input type="time" value={form.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
+        </Field>
+      </div>
       <Field label="Status PTKP" hint="Menentukan kategori tarif PPh 21 (TER)">
-        <Select value={form.ptkp} onChange={(e) => set("ptkp", e.target.value)}>
+        <Select value={form.ptkp} onChange={(e) => set("ptkp", e.target.value as Employee["ptkp"])}>
           {PTKP_OPTIONS.map((p) => (
             <option key={p} value={p}>{p}</option>
           ))}
@@ -406,12 +569,15 @@ function EmployeeForm({
           <Input value={form.bankAccount} onChange={(e) => set("bankAccount", e.target.value)} />
         </Field>
       </div>
+      {err && <p className="rounded-xl bg-clay-soft px-3 py-2 text-sm text-[#8c3c1f]">{err}</p>}
+
       <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>
           Batal
         </Button>
-        <Button type="submit" className="flex-1">
-          Simpan
+        <Button type="submit" className="flex-1" disabled={saving}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {isEdit ? "Simpan perubahan" : "Simpan"}
         </Button>
       </div>
     </form>

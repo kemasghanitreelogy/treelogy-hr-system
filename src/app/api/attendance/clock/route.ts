@@ -87,12 +87,31 @@ export async function POST(req: Request) {
     const today = new Date().toISOString().slice(0, 10);
     const nowIso = new Date().toISOString();
     if (direction === "in") {
+      // Derive late status against the employee's scheduled start (WITA).
+      const { data: emp } = await supabase
+        .from("employees")
+        .select("work_start")
+        .eq("id", profile.employee_id)
+        .maybeSingle();
+      const workStart = (emp?.work_start as string) ?? "08:00";
+      // Wall-clock HH:MM in WITA (Asia/Makassar = UTC+8) at clock-in moment.
+      const witaHM = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Makassar",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date());
+      const [ch, cm] = witaHM.split(":").map(Number);
+      const [sh, sm] = workStart.split(":").map(Number);
+      const lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
+
       const { error } = await supabase.from("attendance").upsert(
         {
           employee_id: profile.employee_id,
           date: today,
           clock_in: nowIso,
-          status: "present",
+          status: lateMinutes > 0 ? "late" : "present",
+          late_minutes: lateMinutes,
           source: "mobile",
           clock_in_lat: body.lat ?? null,
           clock_in_lng: body.lng ?? null,

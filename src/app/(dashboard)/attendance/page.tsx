@@ -25,6 +25,8 @@ export default async function AttendancePage() {
     name: e.name,
     team: e.team,
     position: e.position,
+    workStart: e.workStart ?? "08:00",
+    workEnd: e.workEnd ?? "17:00",
   }));
   const dates = Array.from(new Set(records.map((r) => r.date))).sort();
   const canManage = can(user, "attendance.manage");

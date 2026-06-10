@@ -26,6 +26,7 @@ import {
   getAttendance,
   getAttendanceSettings,
   getDashboardData,
+  getEmployee,
   getLeaveBalances,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
@@ -41,13 +42,15 @@ export default async function DashboardPage() {
 
   // Front-line worker → clock-first self-service home.
   if (user && audienceFromPermissions(user.permissions) === "self") {
-    const [settings, attendance, balances] = await Promise.all([
+    const [settings, attendance, balances, me] = await Promise.all([
       getAttendanceSettings(),
       getAttendance(),
       getLeaveBalances(),
+      user.employeeId ? getEmployee(user.employeeId) : Promise.resolve(undefined),
     ]);
     const recap = computeRecap(attendance, user.employeeId ?? "", CURRENT_PERIOD);
     const balance = balances.find((b) => b.employeeId === user.employeeId);
+    const scheduleLabel = `Jam kerja · ${me?.workStart ?? "08:00"}–${me?.workEnd ?? "17:00"}`;
     return (
       <SelfDashboard
         firstName={firstName}
@@ -55,6 +58,7 @@ export default async function DashboardPage() {
         recap={recap}
         balance={balance}
         canPayroll={can(user, "payroll.view")}
+        scheduleLabel={scheduleLabel}
       />
     );
   }

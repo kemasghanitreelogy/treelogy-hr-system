@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Camera, LogIn, LogOut, MapPin, X } from "lucide-react";
+import { Camera, Clock3, LogIn, LogOut, MapPin, X } from "lucide-react";
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
@@ -102,6 +102,8 @@ export function AttendanceDetail({
   employeeName,
   position,
   team,
+  scheduleStart = "08:00",
+  scheduleEnd = "17:00",
   onClose,
 }: {
   open: boolean;
@@ -109,6 +111,8 @@ export function AttendanceDetail({
   employeeName: string;
   position: string;
   team: Team | null;
+  scheduleStart?: string;
+  scheduleEnd?: string;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -163,6 +167,21 @@ export function AttendanceDetail({
         <div className="mt-4 flex items-center justify-between rounded-xl bg-panel px-4 py-2.5">
           <span className="text-sm font-medium text-ink">{formatDate(record.date, "long")}</span>
           <AttendanceBadge status={record.status} />
+        </div>
+
+        {/* Schedule + late verdict */}
+        <div
+          className={cn(
+            "mt-3 flex items-center justify-between rounded-xl px-4 py-2.5 text-sm",
+            record.lateMinutes > 0 ? "bg-clay-soft text-[#8c3c1f]" : "bg-[#e9f0d8] text-forest-700",
+          )}
+        >
+          <span className="flex items-center gap-1.5">
+            <Clock3 className="h-4 w-4" /> Jadwal {scheduleStart}–{scheduleEnd}
+          </span>
+          <span className="font-semibold tabular-nums">
+            {record.lateMinutes > 0 ? `Telat ${record.lateMinutes} menit` : "Tepat waktu"}
+          </span>
         </div>
 
         {/* Punches */}

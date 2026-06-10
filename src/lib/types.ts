@@ -23,6 +23,8 @@ export interface Employee {
   bankName: string;
   bankAccount: string;
   location: "Factory · Bali" | "Farm · Bali" | "Office · Bali" | "Field";
+  workStart?: string; // "HH:MM" — scheduled clock-in (WITA), set by HR
+  workEnd?: string; // "HH:MM" — scheduled clock-out (WITA)
 }
 
 export type AttendanceStatus =

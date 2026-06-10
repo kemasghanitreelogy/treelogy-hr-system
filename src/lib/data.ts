@@ -58,7 +58,7 @@ async function fetchTable<T>(
 }
 
 // ---- Mappers (snake_case → domain types) ----
-const mapEmployee = (r: Row): Employee => ({
+export const mapEmployee = (r: Row): Employee => ({
   id: String(r.id),
   nik: String(r.nik),
   name: String(r.name),
@@ -78,6 +78,8 @@ const mapEmployee = (r: Row): Employee => ({
   bankName: String(r.bank_name ?? ""),
   bankAccount: String(r.bank_account ?? ""),
   location: r.location as Employee["location"],
+  workStart: r.work_start ? hhmm(r.work_start) : "08:00",
+  workEnd: r.work_end ? hhmm(r.work_end) : "17:00",
 });
 
 const numOrNull = (v: unknown) => (v == null ? null : Number(v));
