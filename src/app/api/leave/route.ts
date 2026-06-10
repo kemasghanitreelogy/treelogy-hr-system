@@ -1,0 +1,114 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { mapLeave } from "@/lib/data";
+import type { LeaveType, RequestStatus } from "@/lib/types";
+
+export const runtime = "nodejs";
+
+const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "in-lieu"];
+const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+interface CreatePayload {
+  employeeId?: string;
+  type?: LeaveType;
+  startDate?: string;
+  endDate?: string;
+  reason?: string;
+}
+
+interface UpdatePayload {
+  id?: string;
+  status?: RequestStatus;
+  approver?: string;
+}
+
+function dayCount(start: string, end: string): number {
+  const d = Math.round((Date.parse(end) - Date.parse(start)) / 86_400_000) + 1;
+  return Math.max(1, d);
+}
+
+async function auth() {
+  const supabase = await createClient();
+  if (!supabase) return { error: NextResponse.json({ error: "unavailable" }, { status: 503 }) };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: NextResponse.json({ error: "unauthorized" }, { status: 401 }) };
+  return { supabase };
+}
+
+// ---- Create a leave/permission request ----
+export async function POST(req: Request) {
+  let body: CreatePayload;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  if (!body.employeeId) return NextResponse.json({ error: "employee_required" }, { status: 400 });
+  if (!body.type || !LEAVE_TYPES.includes(body.type)) {
+    return NextResponse.json({ error: "invalid_type" }, { status: 400 });
+  }
+  if (!body.startDate || !body.endDate || !ISO_DATE.test(body.startDate) || !ISO_DATE.test(body.endDate)) {
+    return NextResponse.json({ error: "invalid_dates" }, { status: 400 });
+  }
+  if (body.endDate < body.startDate) {
+    return NextResponse.json({ error: "end_before_start" }, { status: 400 });
+  }
+
+  const { supabase, error: authErr } = await auth();
+  if (authErr) return authErr;
+
+  const row = {
+    employee_id: body.employeeId,
+    type: body.type,
+    start_date: body.startDate,
+    end_date: body.endDate,
+    days: dayCount(body.startDate, body.endDate),
+    reason: body.reason?.trim() || null,
+    status: "pending",
+  };
+
+  const { data, error } = await supabase!.from("leave_requests").insert(row).select("*").single();
+  // RLS rejects inserts for other employees (non-HR) → no row.
+  if (error || !data) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+  return NextResponse.json({ ok: true, request: mapLeave(data) });
+}
+
+// ---- Approve / reject a request (HR only via RLS) ----
+export async function PATCH(req: Request) {
+  let body: UpdatePayload;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+  if (!body.status || !STATUSES.includes(body.status)) {
+    return NextResponse.json({ error: "invalid_status" }, { status: 400 });
+  }
+
+  const { supabase, error: authErr } = await auth();
+  if (authErr) return authErr;
+
+  const update: Record<string, unknown> = { status: body.status };
+  if (body.status === "approved" || body.status === "rejected") {
+    update.approver = body.approver?.trim() || null;
+  }
+
+  const { data, error } = await supabase!
+    .from("leave_requests")
+    .update(update)
+    .eq("id", body.id)
+    .select("*")
+    .maybeSingle();
+
+  if (error || !data) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+  return NextResponse.json({ ok: true, request: mapLeave(data) });
+}

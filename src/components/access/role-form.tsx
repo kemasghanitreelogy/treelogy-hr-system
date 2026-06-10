@@ -6,6 +6,7 @@ import { ALL_PERMISSION_IDS, PERMISSION_GROUPS, type Role } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
+import { useToast } from "@/components/ui/toast";
 
 const COLORS = ["#3d5a2e", "#6b7548", "#8ba859", "#4a7ba6", "#e0a82e", "#c2603f"];
 
@@ -19,6 +20,7 @@ export function RoleForm({
   onCancel: () => void;
 }) {
   const adminLocked = role?.id === "role-admin";
+  const toast = useToast();
   const [name, setName] = useState(role?.name ?? "");
   const [description, setDescription] = useState(role?.description ?? "");
   const [color, setColor] = useState(role?.color ?? COLORS[0]);
@@ -46,9 +48,18 @@ export function RoleForm({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    // Validation — gives a real "tidak berhasil" path via toast.
+    if (!name.trim()) {
+      toast.error("Nama peran wajib diisi.");
+      return;
+    }
+    if (!adminLocked && perms.size === 0) {
+      toast.error("Pilih minimal satu hak akses.");
+      return;
+    }
     onSubmit({
       id: role?.id ?? "role-" + Date.now().toString(36),
-      name: name || "Peran Baru",
+      name: name.trim(),
       description,
       color,
       system: role?.system,

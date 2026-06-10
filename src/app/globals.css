@@ -37,7 +37,8 @@
   /* Neutrals (warm-tinted) */
   --color-ink: #1f241b;
   --color-muted: #5c6354;
-  --color-faint: #8b9082;
+  /* faint: darkened from #8b9082 → readable (~4:1 on cream) yet still lighter than muted */
+  --color-faint: #6e7463;
   --color-line: #e2e0d2;
   --color-panel: #ffffff;
 

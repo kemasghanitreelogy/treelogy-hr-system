@@ -1,13 +1,15 @@
 import { LeaveView } from "@/components/leave/leave-view";
 import { getEmployees, getLeaveBalances, getLeaveRequests } from "@/lib/data";
+import { getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Cuti & Izin — Treelogy HR" };
 
 export default async function LeavePage() {
-  const [requests, balances, employeesAll] = await Promise.all([
+  const [requests, balances, employeesAll, user] = await Promise.all([
     getLeaveRequests(),
     getLeaveBalances(),
     getEmployees(),
+    getSessionUser(),
   ]);
   const employees = employeesAll
     .filter((e) => e.status === "active")
@@ -17,7 +19,12 @@ export default async function LeavePage() {
       <p className="text-sm text-muted">
         Kelola cuti tahunan, sakit, dan tabungan libur (terutama untuk tim sales &amp; pabrik).
       </p>
-      <LeaveView requests={requests} balances={balances} employees={employees} />
+      <LeaveView
+        requests={requests}
+        balances={balances}
+        employees={employees}
+        currentUserName={user?.name ?? "HR"}
+      />
     </div>
   );
 }

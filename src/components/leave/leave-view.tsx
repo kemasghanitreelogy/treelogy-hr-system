@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, PiggyBank, Plus, X } from "lucide-react";
+import { Check, Loader2, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate } from "@/lib/utils";
@@ -27,21 +27,47 @@ export function LeaveView({
   requests,
   balances,
   employees,
+  currentUserName = "HR",
 }: {
   requests: LeaveRequest[];
   balances: LeaveBalance[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  currentUserName?: string;
 }) {
   const [tab, setTab] = useState<Tab>("requests");
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
+  const [decidingId, setDecidingId] = useState<string | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
 
-  function decide(id: string, status: RequestStatus) {
-    setList((prev) => prev.map((r) => (r.id === id ? { ...r, status, approver: "Dewi Lestari" } : r)));
-    toast.success(status === "approved" ? "Pengajuan disetujui ✓" : "Pengajuan ditolak ✓");
+  async function decide(id: string, status: RequestStatus) {
+    const prev = list.find((r) => r.id === id);
+    if (!prev) return;
+    setDecidingId(id);
+    // Optimistic — revert on failure.
+    setList((cur) => cur.map((r) => (r.id === id ? { ...r, status, approver: currentUserName } : r)));
+    try {
+      const res = await fetch("/api/leave", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status, approver: currentUserName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.request) {
+        setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
+        toast.error("Gagal memproses pengajuan. Pastikan Anda HR/admin.");
+        return;
+      }
+      setList((cur) => cur.map((r) => (r.id === id ? data.request : r)));
+      toast.success(status === "approved" ? "Pengajuan disetujui ✓" : "Pengajuan ditolak ✓");
+    } catch {
+      setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setDecidingId(null);
+    }
   }
 
   function addRequest(r: LeaveRequest) {
@@ -98,10 +124,10 @@ export function LeaveView({
                 <div className="flex items-center gap-2 sm:w-auto">
                   {r.status === "pending" ? (
                     <>
-                      <Button size="sm" onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
+                      <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
                         <Check className="h-4 w-4" /> Setujui
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => decide(r.id, "rejected")} className="flex-1 sm:flex-none">
+                      <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => decide(r.id, "rejected")} className="flex-1 sm:flex-none">
                         <X className="h-4 w-4" /> Tolak
                       </Button>
                     </>
@@ -118,7 +144,7 @@ export function LeaveView({
       )}
 
       <Sheet open={adding} onClose={() => setAdding(false)} title="Ajukan Cuti / Izin" description="Buat permintaan baru">
-        <LeaveForm employees={employees} onSubmit={addRequest} onCancel={() => setAdding(false)} count={list.length} />
+        <LeaveForm employees={employees} onSubmit={addRequest} onCancel={() => setAdding(false)} />
       </Sheet>
     </div>
   );
@@ -221,13 +247,13 @@ function LeaveForm({
   employees,
   onSubmit,
   onCancel,
-  count,
 }: {
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   onSubmit: (r: LeaveRequest) => void;
   onCancel: () => void;
-  count: number;
 }) {
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     employeeId: employees[0]?.id ?? "",
     type: "annual" as LeaveType,
@@ -236,25 +262,49 @@ function LeaveForm({
     reason: "",
   });
 
-  function dayCount(a: string, b: string) {
-    if (!a || !b) return 1;
-    const d = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000) + 1;
-    return Math.max(1, d);
-  }
-
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    onSubmit({
-      id: "l" + (count + 100),
-      employeeId: form.employeeId,
-      type: form.type,
-      startDate: form.startDate || new Date().toISOString().slice(0, 10),
-      endDate: form.endDate || form.startDate || new Date().toISOString().slice(0, 10),
-      days: dayCount(form.startDate, form.endDate),
-      reason: form.reason || "—",
-      status: "pending",
-      requestedAt: new Date().toISOString(),
-    });
+    // Validation — surfaces a real "tidak berhasil" path via toast.
+    if (!form.employeeId) {
+      toast.error("Pilih karyawan dulu.");
+      return;
+    }
+    if (!form.startDate || !form.endDate) {
+      toast.error("Tanggal mulai & selesai wajib diisi.");
+      return;
+    }
+    if (form.endDate < form.startDate) {
+      toast.error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/leave", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: form.employeeId,
+          type: form.type,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          reason: form.reason,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.request) {
+        toast.error(
+          data.error === "end_before_start"
+            ? "Tanggal selesai tidak boleh sebelum tanggal mulai."
+            : "Gagal mengajukan. Pastikan Anda HR/admin.",
+        );
+        return;
+      }
+      onSubmit(data.request as LeaveRequest);
+    } catch {
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -285,8 +335,11 @@ function LeaveForm({
         <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="cth. Acara keluarga…" />
       </Field>
       <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>Batal</Button>
-        <Button type="submit" className="flex-1">Ajukan</Button>
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>Batal</Button>
+        <Button type="submit" className="flex-1" disabled={saving}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          Ajukan
+        </Button>
       </div>
     </form>
   );

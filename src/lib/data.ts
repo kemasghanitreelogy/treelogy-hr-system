@@ -116,7 +116,7 @@ const mapShift = (r: Row): Shift => ({
   color: String(r.color ?? "#3d5a2e"),
 });
 
-const mapLeave = (r: Row): LeaveRequest => ({
+export const mapLeave = (r: Row): LeaveRequest => ({
   id: String(r.id),
   employeeId: String(r.employee_id),
   type: r.type as LeaveRequest["type"],

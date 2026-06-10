@@ -599,7 +599,7 @@ function EmployeeForm({
     workEnd: initial?.workEnd ?? "17:00",
   });
   const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const toast = useToast();
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -608,7 +608,6 @@ function EmployeeForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setErr(null);
     try {
       const payload = {
         ...(isEdit ? { id: initial!.id } : {}),
@@ -632,7 +631,7 @@ function EmployeeForm({
       });
       const data = await res.json();
       if (!res.ok || !data.employee) {
-        setErr(
+        toast.error(
           isEdit
             ? "Gagal menyimpan perubahan. Pastikan Anda HR/admin."
             : "Gagal menambah karyawan. Pastikan Anda HR/admin.",
@@ -641,7 +640,7 @@ function EmployeeForm({
       }
       onSaved(data.employee as Employee);
     } catch {
-      setErr("Koneksi bermasalah. Coba lagi.");
+      toast.error("Koneksi bermasalah. Coba lagi.");
     } finally {
       setSaving(false);
     }
@@ -707,7 +706,6 @@ function EmployeeForm({
           <Input value={form.bankAccount} onChange={(e) => set("bankAccount", e.target.value)} />
         </Field>
       </div>
-      {err && <p className="rounded-xl bg-clay-soft px-3 py-2 text-sm text-[#8c3c1f]">{err}</p>}
 
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>
