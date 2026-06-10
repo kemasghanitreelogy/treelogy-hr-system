@@ -13,7 +13,10 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type Active,
   type DragEndEvent,
+  type DragOverEvent,
+  type Over,
 } from "@dnd-kit/core";
 import { Crown, GripVertical, Loader2, Pencil, Plus, RotateCcw, Save, Users2 } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
@@ -40,6 +43,9 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   const [adding, setAdding] = useState<Team | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Which node the pointer is over, and whether dropping there makes the dragged
+  // person a subordinate ("child") or a peer at the same level ("sibling").
+  const [nodeOver, setNodeOver] = useState<{ id: string; mode: "child" | "sibling" } | null>(null);
   const counter = useRef(0);
   const toast = useToast();
 
@@ -127,8 +133,16 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
 
   // ---- Drag & drop (dnd-kit) ----
 
+  function onDragOver({ active, over }: DragOverEvent) {
+    if (!over) return setNodeOver(null);
+    const overId = String(over.id);
+    if (overId.startsWith(TEAM_PREFIX) || overId === String(active.id)) return setNodeOver(null);
+    setNodeOver({ id: overId, mode: dropMode(active, over) });
+  }
+
   function onDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null);
+    setNodeOver(null);
     if (!over) return;
     const id = String(active.id);
     const overId = String(over.id);
@@ -139,11 +153,15 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
     if (overId === id) return;
     const target = byId.get(overId);
     if (!target) return;
-    if (descendantsOf(id).has(overId)) {
+    // Centre of the row → subordinate of the target; top/bottom edge → peer
+    // (share the target's manager / become a co-head).
+    const mode = dropMode(active, over);
+    const newManagerId = mode === "child" ? target.id : target.managerId ?? null;
+    if (newManagerId && (newManagerId === id || descendantsOf(id).has(newManagerId))) {
       toast.error("Tidak bisa memindahkan ke bawahannya sendiri.");
       return;
     }
-    moveNode(id, target.team, target.id);
+    moveNode(id, target.team, newManagerId);
   }
 
   // ---- Diff vs base ----
@@ -233,8 +251,10 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
 
       {canManage && (
         <p className="flex items-center gap-1.5 text-xs text-faint">
-          <GripVertical className="h-3.5 w-3.5" /> Di HP, tahan sebentar lalu seret. Lepas di atas nama lain untuk
-          menjadikannya bawahan, atau di kotak “kepala divisi” yang muncul saat menyeret.
+          <GripVertical className="h-3.5 w-3.5" /> Di HP, tahan sebentar lalu seret. Lepas di{" "}
+          <b className="font-semibold">tengah</b> nama untuk menjadikannya bawahan, di{" "}
+          <b className="font-semibold">tepi atas/bawah</b> untuk menjadikannya setara, atau di kotak “kepala
+          divisi” untuk menjadikannya kepala.
         </p>
       )}
 
@@ -243,8 +263,12 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
         collisionDetection={closestCenter}
         measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
         onDragStart={(e) => setActiveId(String(e.active.id))}
+        onDragOver={onDragOver}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setActiveId(null)}
+        onDragCancel={() => {
+          setActiveId(null);
+          setNodeOver(null);
+        }}
       >
         <div className="grid gap-4 lg:grid-cols-2">
           {TEAMS.map((team) => {
@@ -270,7 +294,7 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
                       key={e.id}
                       emp={e}
                       childrenOf={childrenOf}
-                      activeId={activeId}
+                      nodeOver={nodeOver}
                       canManage={canManage}
                       onEdit={setEditing}
                     />
@@ -353,20 +377,20 @@ function Stat({ label, value }: { label: string; value: number }) {
 function Node({
   emp,
   childrenOf,
-  activeId,
+  nodeOver,
   canManage,
   onEdit,
 }: {
   emp: Draft;
   childrenOf: (id: string) => Draft[];
-  activeId: string | null;
+  nodeOver: { id: string; mode: "child" | "sibling" } | null;
   canManage: boolean;
   onEdit: (e: Draft) => void;
 }) {
   const kids = childrenOf(emp.id);
   const isHead = !emp.managerId;
   const { attributes, listeners, setNodeRef: dragRef, isDragging } = useDraggable({ id: emp.id });
-  const { setNodeRef: dropRef, isOver } = useDroppable({ id: emp.id });
+  const { setNodeRef: dropRef } = useDroppable({ id: emp.id });
   const setRef = useCallback(
     (el: HTMLElement | null) => {
       dragRef(el);
@@ -374,9 +398,13 @@ function Node({
     },
     [dragRef, dropRef],
   );
+  const overChild = canManage && !isDragging && nodeOver?.id === emp.id && nodeOver.mode === "child";
+  const overSibling = canManage && !isDragging && nodeOver?.id === emp.id && nodeOver.mode === "sibling";
 
   return (
     <div>
+      {/* Peer-drop indicator: a level line above the row. */}
+      {overSibling && <div className="mx-2 mb-1 h-0.5 rounded-full bg-forest-400" />}
       <div
         ref={canManage ? setRef : undefined}
         {...(canManage ? attributes : {})}
@@ -387,7 +415,7 @@ function Node({
           "group flex items-center gap-2 rounded-xl px-2 py-2 transition-colors",
           !canManage && "hover:bg-sand/60",
           canManage && (isDragging ? "opacity-40" : "cursor-grab hover:bg-sand/60 active:cursor-grabbing"),
-          canManage && isOver && !isDragging && "bg-forest-50 ring-2 ring-forest-400",
+          overChild && "bg-forest-50 ring-2 ring-forest-400",
         )}
       >
         {canManage && (
@@ -423,7 +451,7 @@ function Node({
       {kids.length > 0 && (
         <div className="ml-4 space-y-0.5 border-l border-line pl-2">
           {kids.map((k) => (
-            <Node key={k.id} emp={k} childrenOf={childrenOf} activeId={activeId} canManage={canManage} onEdit={onEdit} />
+            <Node key={k.id} emp={k} childrenOf={childrenOf} nodeOver={nodeOver} canManage={canManage} onEdit={onEdit} />
           ))}
         </div>
       )}
@@ -609,6 +637,18 @@ function AddForm({
 }
 
 // ---- pure helpers ----
+
+/**
+ * Where the dragged row's centre sits over the target decides the relationship:
+ * the middle band → subordinate ("child"); the top/bottom edge → peer ("sibling").
+ */
+function dropMode(active: Active, over: Over): "child" | "sibling" {
+  const ar = active.rect.current.translated;
+  const or = over.rect;
+  if (!ar || !or.height) return "child";
+  const rel = (ar.top + ar.height / 2 - or.top) / or.height;
+  return rel < 0.34 || rel > 0.66 ? "sibling" : "child";
+}
 
 /** Descendants of `id` within a given list (same-division reporting links). */
 function descendantsWithin(list: Draft[], id: string): Set<string> {
