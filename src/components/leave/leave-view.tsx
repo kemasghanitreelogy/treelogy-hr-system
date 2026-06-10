@@ -28,11 +28,15 @@ export function LeaveView({
   balances,
   employees,
   currentUserName = "HR",
+  currentEmployeeId = null,
+  canRequestForOthers = true,
 }: {
   requests: LeaveRequest[];
   balances: LeaveBalance[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   currentUserName?: string;
+  currentEmployeeId?: string | null;
+  canRequestForOthers?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("requests");
   const [list, setList] = useState(requests);
@@ -144,7 +148,13 @@ export function LeaveView({
       )}
 
       <Sheet open={adding} onClose={() => setAdding(false)} title="Ajukan Cuti / Izin" description="Buat permintaan baru">
-        <LeaveForm employees={employees} onSubmit={addRequest} onCancel={() => setAdding(false)} />
+        <LeaveForm
+          employees={employees}
+          currentEmployeeId={currentEmployeeId}
+          canRequestForOthers={canRequestForOthers}
+          onSubmit={addRequest}
+          onCancel={() => setAdding(false)}
+        />
       </Sheet>
     </div>
   );
@@ -245,17 +255,24 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 function LeaveForm({
   employees,
+  currentEmployeeId = null,
+  canRequestForOthers = true,
   onSubmit,
   onCancel,
 }: {
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  currentEmployeeId?: string | null;
+  canRequestForOthers?: boolean;
   onSubmit: (r: LeaveRequest) => void;
   onCancel: () => void;
 }) {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  // Non-managers can only file for themselves — lock the employee to their own record.
+  const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
+  const lockToSelf = !canRequestForOthers && !!selfEmployee;
   const [form, setForm] = useState({
-    employeeId: employees[0]?.id ?? "",
+    employeeId: lockToSelf ? selfEmployee!.id : employees[0]?.id ?? "",
     type: "annual" as LeaveType,
     startDate: "",
     endDate: "",
@@ -309,13 +326,25 @@ function LeaveForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Karyawan">
-        <Select value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
-          {employees.map((e) => (
-            <option key={e.id} value={e.id}>{e.name} — {TEAM_META[e.team as Team].label}</option>
-          ))}
-        </Select>
-      </Field>
+      {lockToSelf ? (
+        <Field label="Karyawan">
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
+            <Avatar name={selfEmployee!.name} size="sm" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-ink">{selfEmployee!.name}</p>
+              <p className="truncate text-xs text-faint">{TEAM_META[selfEmployee!.team as Team].label}</p>
+            </div>
+          </div>
+        </Field>
+      ) : (
+        <Field label="Karyawan">
+          <Select value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
+            {employees.map((e) => (
+              <option key={e.id} value={e.id}>{e.name} — {TEAM_META[e.team as Team].label}</option>
+            ))}
+          </Select>
+        </Field>
+      )}
       <Field label="Jenis">
         <Select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as LeaveType }))}>
           {(["annual", "sick", "unpaid", "in-lieu"] as LeaveType[]).map((t) => (

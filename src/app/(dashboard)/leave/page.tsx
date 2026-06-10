@@ -1,6 +1,6 @@
 import { LeaveView } from "@/components/leave/leave-view";
 import { getEmployees, getLeaveBalances, getLeaveRequests } from "@/lib/data";
-import { getSessionUser } from "@/lib/auth";
+import { can, getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Cuti & Izin — Treelogy HR" };
 
@@ -24,6 +24,8 @@ export default async function LeavePage() {
         balances={balances}
         employees={employees}
         currentUserName={user?.name ?? "HR"}
+        currentEmployeeId={user?.employeeId ?? null}
+        canRequestForOthers={can(user, "leave.approve")}
       />
     </div>
   );
