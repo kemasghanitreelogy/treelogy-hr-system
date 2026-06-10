@@ -222,12 +222,31 @@ export async function getAttendanceSettings(): Promise<AttendanceSettings> {
   }
 }
 
-// Roles & users stay seed-backed (admin-config UI; real users created via Auth).
+// Roles stay seed-backed (admin-config UI; mirrored in the `roles` table).
 export function getRoles() {
   return roles;
 }
-export function getSystemUsers() {
-  return systemUsers;
+
+// System users are seed-derived, but the *role assignment* is read live from
+// `profiles.role_id` when Supabase is configured so reassignments persist.
+export async function getSystemUsers() {
+  if (!isSupabaseConfigured) return systemUsers;
+  try {
+    const supabase = await createClient();
+    if (!supabase) return systemUsers;
+    const { data, error } = await supabase.from("profiles").select("employee_id, role_id");
+    if (error || !data) return systemUsers;
+    const roleByEmp = new Map<string, string>();
+    for (const r of data as Row[]) {
+      if (r.employee_id && r.role_id) roleByEmp.set(String(r.employee_id), String(r.role_id));
+    }
+    if (roleByEmp.size === 0) return systemUsers;
+    return systemUsers.map((u) =>
+      roleByEmp.has(u.employeeId) ? { ...u, roleId: roleByEmp.get(u.employeeId)! } : u,
+    );
+  } catch {
+    return systemUsers;
+  }
 }
 
 // ---- Pure compute helpers ----

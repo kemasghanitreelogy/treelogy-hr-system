@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, Wallet } from "lucide-react";
+import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Wallet } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -14,8 +14,21 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 
 type StatusFilter = "all" | "active" | "inactive";
+type RoleLite = { id: string; name: string; color: string };
 
-export function EmployeesView({ initial, canManage = false }: { initial: Employee[]; canManage?: boolean }) {
+export function EmployeesView({
+  initial,
+  canManage = false,
+  canAssignRoles = false,
+  roles = [],
+  roleByEmployee = {},
+}: {
+  initial: Employee[];
+  canManage?: boolean;
+  canAssignRoles?: boolean;
+  roles?: RoleLite[];
+  roleByEmployee?: Record<string, string>;
+}) {
   const [list, setList] = useState<Employee[]>(initial);
   const [q, setQ] = useState("");
   const [team, setTeam] = useState<"all" | Team>("all");
@@ -24,6 +37,7 @@ export function EmployeesView({ initial, canManage = false }: { initial: Employe
   const [editing, setEditing] = useState<Employee | null>(null);
   const [adding, setAdding] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [roleMap, setRoleMap] = useState<Record<string, string>>(roleByEmployee);
 
   const filtered = useMemo(() => {
     return list.filter((e) => {
@@ -232,7 +246,19 @@ export function EmployeesView({ initial, canManage = false }: { initial: Employe
           )
         }
       >
-        {selected && <EmployeeDetail emp={selected} canManage={canManage} onHours={applyHours} />}
+        {selected && (
+          <EmployeeDetail
+            emp={selected}
+            canManage={canManage}
+            onHours={applyHours}
+            canAssignRoles={canAssignRoles}
+            roles={roles}
+            currentRoleId={roleMap[selected.id]}
+            onRoleAssigned={(empId, roleId) =>
+              setRoleMap((prev) => ({ ...prev, [empId]: roleId }))
+            }
+          />
+        )}
       </Sheet>
 
       {/* Add form */}
@@ -279,10 +305,18 @@ function EmployeeDetail({
   emp,
   canManage,
   onHours,
+  canAssignRoles,
+  roles,
+  currentRoleId,
+  onRoleAssigned,
 }: {
   emp: Employee;
   canManage: boolean;
   onHours: (id: string, workStart: string, workEnd: string) => void;
+  canAssignRoles: boolean;
+  roles: RoleLite[];
+  currentRoleId?: string;
+  onRoleAssigned: (employeeId: string, roleId: string) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -306,6 +340,10 @@ function EmployeeDetail({
         {emp.endDate && <DetailRow icon={<Building2 className="h-4 w-4" />} label="Berakhir" value={formatDate(emp.endDate, "long")} />}
       </div>
 
+      {canAssignRoles && roles.length > 0 && (
+        <RoleCard emp={emp} roles={roles} currentRoleId={currentRoleId} onAssigned={onRoleAssigned} />
+      )}
+
       <WorkHoursCard emp={emp} canManage={canManage} onHours={onHours} />
 
       <div className="rounded-2xl border border-line bg-panel p-4">
@@ -328,6 +366,80 @@ function EmployeeDetail({
           {emp.bankName} · <span className="font-medium text-ink">{emp.bankAccount}</span>
         </p>
       </div>
+    </div>
+  );
+}
+
+function RoleCard({
+  emp,
+  roles,
+  currentRoleId,
+  onAssigned,
+}: {
+  emp: Employee;
+  roles: RoleLite[];
+  currentRoleId?: string;
+  onAssigned: (employeeId: string, roleId: string) => void;
+}) {
+  const [roleId, setRoleId] = useState(currentRoleId ?? "");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function assign(next: string) {
+    if (!next || next === roleId) return;
+    const prev = roleId;
+    setRoleId(next); // optimistic
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: emp.id, roleId: next }),
+      });
+      if (!res.ok) {
+        setRoleId(prev);
+        const data = await res.json().catch(() => ({}));
+        setMsg({
+          ok: false,
+          text:
+            data.error === "no_account"
+              ? "Karyawan ini belum punya akun login."
+              : "Gagal menyimpan peran. Pastikan Anda HR/admin.",
+        });
+        return;
+      }
+      onAssigned(emp.id, next);
+      setMsg({ ok: true, text: "Peran tersimpan ✓" });
+    } catch {
+      setRoleId(prev);
+      setMsg({ ok: false, text: "Koneksi bermasalah. Coba lagi." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const activeRole = roles.find((r) => r.id === roleId);
+
+  return (
+    <div className="rounded-2xl border border-line bg-panel p-4">
+      <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <ShieldCheck className="h-4 w-4 text-forest-600" /> Peran Sistem
+      </h3>
+      <p className="mt-1 text-xs text-muted">Menentukan hak akses karyawan di aplikasi ini.</p>
+      <div className="mt-3 flex items-center gap-2">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: activeRole?.color ?? "#cbd5c0" }} />
+        <Select value={roleId} onChange={(e) => assign(e.target.value)} disabled={saving} className="flex-1">
+          {!currentRoleId && <option value="">— Belum ada akun —</option>}
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>{r.name}</option>
+          ))}
+        </Select>
+        {saving && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
+      </div>
+      {msg && (
+        <p className={cn("mt-2 text-xs", msg.ok ? "text-forest-600" : "text-clay")}>{msg.text}</p>
+      )}
     </div>
   );
 }

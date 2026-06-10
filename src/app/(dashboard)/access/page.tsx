@@ -4,7 +4,7 @@ import { getEmployees, getRoles, getSystemUsers } from "@/lib/data";
 export const metadata = { title: "Peran & Akses — Treelogy HR" };
 
 export default async function AccessPage() {
-  const employeesAll = await getEmployees();
+  const [employeesAll, users] = await Promise.all([getEmployees(), getSystemUsers()]);
   const employees = employeesAll.map((e) => ({
     id: e.id,
     name: e.name,
@@ -17,7 +17,7 @@ export default async function AccessPage() {
         Kelola peran &amp; hak akses (RBAC). Buat, edit, atau hapus peran, atur hak akses per modul,
         dan tetapkan peran ke setiap pengguna.
       </p>
-      <AccessView roles={getRoles()} users={getSystemUsers()} employees={employees} />
+      <AccessView roles={getRoles()} users={users} employees={employees} />
     </div>
   );
 }

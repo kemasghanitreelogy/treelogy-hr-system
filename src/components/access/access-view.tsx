@@ -42,6 +42,7 @@ export function AccessView({
   const [editing, setEditing] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
   const [toDelete, setToDelete] = useState<Role | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
 
   function saveRole(r: Role) {
     setRoles((prev) => (prev.some((x) => x.id === r.id) ? prev.map((x) => (x.id === r.id ? r : x)) : [...prev, r]));
@@ -52,8 +53,32 @@ export function AccessView({
     setRoles((prev) => prev.filter((x) => x.id !== r.id));
     setToDelete(null);
   }
-  function assignRole(userId: string, roleId: string) {
+  async function assignRole(userId: string, roleId: string) {
+    const target = users.find((u) => u.id === userId);
+    if (!target || target.roleId === roleId) return;
+    const prevRoleId = target.roleId;
+    // Optimistic — revert if the server rejects.
     setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, roleId } : u)));
+    setAssignError(null);
+    try {
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: target.employeeId, roleId }),
+      });
+      if (!res.ok) {
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, roleId: prevRoleId } : u)));
+        const data = await res.json().catch(() => ({}));
+        setAssignError(
+          data.error === "no_account"
+            ? "Karyawan ini belum punya akun login, jadi peran belum bisa ditetapkan."
+            : "Gagal menyimpan peran. Pastikan Anda punya hak akses pengguna.",
+        );
+      }
+    } catch {
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, roleId: prevRoleId } : u)));
+      setAssignError("Koneksi bermasalah. Coba lagi.");
+    }
   }
 
   return (
@@ -128,7 +153,7 @@ export function AccessView({
           })}
         </div>
       ) : (
-        <UsersTab users={users} roles={roles} empMap={empMap} onAssign={assignRole} />
+        <UsersTab users={users} roles={roles} empMap={empMap} onAssign={assignRole} error={assignError} />
       )}
 
       {/* Create / edit role drawer */}
@@ -178,11 +203,13 @@ function UsersTab({
   roles,
   empMap,
   onAssign,
+  error,
 }: {
   users: SystemUser[];
   roles: Role[];
   empMap: Map<string, EmpLite>;
   onAssign: (userId: string, roleId: string) => void;
+  error?: string | null;
 }) {
   const [q, setQ] = useState("");
   const roleMap = new Map(roles.map((r) => [r.id, r]));
@@ -204,6 +231,10 @@ function UsersTab({
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari pengguna…" className="pl-9" aria-label="Cari pengguna" />
       </div>
+
+      {error && (
+        <p className="rounded-xl bg-clay-soft px-3 py-2 text-sm text-[#8c3c1f]">{error}</p>
+      )}
 
       <Card className="overflow-hidden">
         {/* Desktop */}
