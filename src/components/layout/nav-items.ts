@@ -25,7 +25,7 @@ const ITEMS: Record<string, NavItem> = {
   "/leave": { href: "/leave", label: "Cuti & Izin", icon: CalendarDays, perm: "leave.view" },
   "/payroll": { href: "/payroll", label: "Payroll", icon: Wallet, perm: "payroll.view" },
   "/employees": { href: "/employees", label: "Karyawan", icon: Users, perm: "employees.view" },
-  "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", icon: Network, perm: "employees.manage" },
+  "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", icon: Network, perm: "dashboard.view" },
   "/shifts": { href: "/shifts", label: "Shift & Jadwal", icon: Layers, perm: "shifts.view" },
   "/kpi": { href: "/kpi", label: "KPI & Kinerja", icon: Target, perm: "kpi.view" },
   "/access": { href: "/access", label: "Peran & Akses", icon: ShieldCheck, perm: "access.roles" },
