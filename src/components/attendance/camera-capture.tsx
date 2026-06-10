@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, Check, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -109,11 +110,14 @@ export function CameraCapture({
     onCancel();
   }
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   const reviewing = captured != null;
 
-  return (
+  // Portal to <body> so the overlay escapes any transformed ancestor
+  // (e.g. the dashboard's `fade-up` wrapper, which would otherwise become
+  // the containing block for this fixed element and clip it).
+  return createPortal(
     <div className="fixed inset-x-0 top-0 z-[80] flex h-dvh-screen flex-col overflow-hidden bg-bark">
       {/* Header: title + close */}
       <div
@@ -217,7 +221,8 @@ export function CameraCapture({
           )}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
