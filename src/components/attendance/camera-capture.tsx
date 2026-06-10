@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, RotateCw, X } from "lucide-react";
+import { Camera, Check, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
  * Selfie capture with a face-shaped oval guide.
+ * Flow: live preview → Capture → review the still → Retake or Use.
  * NOTE: this only takes a photo — there is no face detection/recognition.
  */
 export function CameraCapture({
@@ -23,54 +24,47 @@ export function CameraCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [captured, setCaptured] = useState<string | null>(null);
 
   const stop = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
+  const startCamera = useCallback(async () => {
     setError(null);
     setReady(false);
-
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setReady(true);
-        }
-      } catch {
-        setError("Kamera tidak dapat diakses. Izinkan akses kamera di browser.");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 720 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setReady(true);
       }
-    })();
+    } catch {
+      setError("Kamera tidak dapat diakses. Izinkan akses kamera di browser.");
+    }
+  }, []);
 
-    return () => {
-      cancelled = true;
-      stop();
-    };
-  }, [open, stop]);
+  // Open the camera when the sheet opens; tear down on close.
+  useEffect(() => {
+    if (!open) return;
+    setCaptured(null);
+    startCamera();
+    return () => stop();
+  }, [open, startCamera, stop]);
 
   // Lock background scroll so the camera stays the only thing in frame.
   useEffect(() => {
     if (!open) return;
-    const { overflow, position, width } = document.body.style;
+    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = overflow;
-      document.body.style.position = position;
-      document.body.style.width = width;
+      document.body.style.overflow = prev;
     };
   }, [open]);
 
@@ -94,8 +88,17 @@ export function CameraCapture({
     ctx.scale(-1, 1);
     ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-    stop();
-    onCapture(dataUrl);
+    stop(); // freeze the still — stop the live feed
+    setCaptured(dataUrl);
+  }
+
+  function retake() {
+    setCaptured(null);
+    startCamera();
+  }
+
+  function confirm() {
+    if (captured) onCapture(captured);
   }
 
   function cancel() {
@@ -105,8 +108,11 @@ export function CameraCapture({
 
   if (!open) return null;
 
+  const reviewing = captured != null;
+
   return (
     <div className="fixed inset-x-0 top-0 z-[80] flex h-dvh-screen flex-col overflow-hidden bg-bark">
+      {/* Header: title + close */}
       <div
         className="flex shrink-0 items-center justify-between px-4 py-3 text-cream"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
@@ -121,6 +127,7 @@ export function CameraCapture({
         </button>
       </div>
 
+      {/* Frame */}
       <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         {error ? (
           <div className="px-8 text-center text-cream">
@@ -130,6 +137,9 @@ export function CameraCapture({
               Tutup
             </Button>
           </div>
+        ) : reviewing ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={captured!} alt="Hasil foto" className="h-full w-full object-cover" />
         ) : (
           <>
             <video
@@ -140,7 +150,11 @@ export function CameraCapture({
               style={{ transform: "scaleX(-1)" }}
             />
             {/* Oval face guide overlay */}
-            <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid slice" viewBox="0 0 100 100">
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              preserveAspectRatio="xMidYMid slice"
+              viewBox="0 0 100 100"
+            >
               <defs>
                 <mask id="faceMask">
                   <rect width="100" height="100" fill="white" />
@@ -159,37 +173,67 @@ export function CameraCapture({
                 strokeDasharray="3 2"
               />
             </svg>
-            <p className="absolute bottom-28 left-0 right-0 text-center text-sm text-cream/90">
+            <p className="absolute bottom-6 left-0 right-0 text-center text-sm text-cream/90">
               Posisikan wajah di dalam bingkai
             </p>
           </>
         )}
       </div>
 
+      {/* Controls */}
       {!error && (
         <div
-          className="flex shrink-0 items-center justify-center gap-6 px-6 py-6"
+          className="flex shrink-0 items-center justify-center gap-10 px-6 py-6"
           style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
         >
-          <button
-            onClick={cancel}
-            className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full bg-forest-800 text-cream/80 transition hover:bg-forest-700"
-            aria-label="Batal"
-          >
-            <RotateCw className="h-5 w-5" />
-          </button>
-          <button
-            onClick={capture}
-            disabled={!ready}
-            className="flex h-18 w-18 cursor-pointer items-center justify-center rounded-full bg-lime ring-4 ring-cream/20 transition active:scale-95 disabled:opacity-40"
-            style={{ height: 72, width: 72 }}
-            aria-label="Ambil foto"
-          >
-            <Camera className="h-7 w-7 text-bark" />
-          </button>
-          <span className="h-12 w-12" />
+          {reviewing ? (
+            <>
+              <ControlButton label="Ulangi" onClick={retake}>
+                <RotateCcw className="h-6 w-6" />
+              </ControlButton>
+              <button
+                onClick={confirm}
+                className="flex cursor-pointer items-center justify-center rounded-full bg-lime ring-4 ring-cream/20 transition active:scale-95"
+                style={{ height: 72, width: 72 }}
+                aria-label="Gunakan foto"
+              >
+                <Check className="h-8 w-8 text-bark" />
+              </button>
+              <span className="h-14 w-14" aria-hidden />
+            </>
+          ) : (
+            <button
+              onClick={capture}
+              disabled={!ready}
+              className="flex cursor-pointer items-center justify-center rounded-full bg-cream ring-4 ring-cream/30 transition active:scale-95 disabled:opacity-40"
+              style={{ height: 76, width: 76 }}
+              aria-label="Ambil foto"
+            >
+              <span className="h-16 w-16 rounded-full border-[3px] border-bark" />
+            </button>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function ControlButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex h-14 w-14 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-full bg-forest-800 text-cream/85 transition hover:bg-forest-700 active:scale-95"
+      aria-label={label}
+    >
+      {children}
+    </button>
   );
 }
