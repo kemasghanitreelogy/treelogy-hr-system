@@ -32,7 +32,7 @@ export default async function AttendancePage() {
   const canManage = can(user, "attendance.manage");
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
+    <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
       <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
         <ClockWidget settings={settings} />
       </div>
