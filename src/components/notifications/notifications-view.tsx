@@ -29,10 +29,7 @@ export function NotificationsView({ items }: { items: AppNotification[] }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 fade-up">
-      <div>
-        <h1 className="font-display text-xl font-bold text-ink sm:text-2xl">Notifikasi</h1>
-        <p className="text-sm text-muted">Riwayat persetujuan cuti, lembur, pembayaran, dan tukar libur.</p>
-      </div>
+      <p className="text-sm text-muted">Riwayat persetujuan cuti, lembur, pembayaran, dan tukar libur.</p>
 
       {items.length === 0 ? (
         <div className="card flex flex-col items-center gap-2 px-5 py-14 text-center">

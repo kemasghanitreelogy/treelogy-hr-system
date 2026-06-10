@@ -126,6 +126,9 @@ export function AppShell({
   const current = items.find(
     (i) => pathname === i.href || pathname.startsWith(i.href + "/"),
   );
+  // Titles for routes that aren't in the sidebar menu.
+  const EXTRA_TITLES: Record<string, string> = { "/notifications": "Notifikasi", "/profile": "Profil" };
+  const title = current?.label ?? EXTRA_TITLES[pathname] ?? "Treelogy HR";
 
   function requestLogout() {
     setDrawerOpen(false);
@@ -181,7 +184,7 @@ export function AppShell({
 
           <div className="flex flex-1 items-center gap-3">
             <h1 className="font-display text-lg font-semibold text-ink lg:text-xl">
-              {current?.label ?? "Treelogy HR"}
+              {title}
             </h1>
           </div>
 
