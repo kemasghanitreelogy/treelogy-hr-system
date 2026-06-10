@@ -21,6 +21,7 @@ import type {
   DayOffInLieu,
   Employee,
   Kpi,
+  AppNotification,
   LeaveBalance,
   LeaveRequest,
   OvertimeRequest,
@@ -207,6 +208,51 @@ export async function getLeaveRequests(): Promise<LeaveRequest[]> {
 export async function getOvertimeRequests(): Promise<OvertimeRequest[]> {
   const rows = await fetchTable("overtime_requests", mapOvertime, seedOvertime);
   return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+}
+
+const mapNotification = (r: Row): AppNotification => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  type: String(r.type),
+  tone: (r.tone as AppNotification["tone"]) ?? "pending",
+  title: String(r.title),
+  body: String(r.body ?? ""),
+  href: String(r.href ?? ""),
+  read: Boolean(r.read),
+  createdAt: String(r.created_at),
+});
+
+/** Current user's notifications (RLS-scoped to their own employee), newest first. */
+export async function getNotifications(): Promise<AppNotification[]> {
+  if (!isSupabaseConfigured) return [];
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error || !data) return [];
+    return data.map(mapNotification);
+  } catch {
+    return [];
+  }
+}
+
+export async function getUnreadNotifCount(): Promise<number> {
+  if (!isSupabaseConfigured) return 0;
+  try {
+    const supabase = await createClient();
+    if (!supabase) return 0;
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("read", false);
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function getPayrollRuns(): Promise<PayrollRun[]> {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Loader2, LogOut, Menu, Search, Settings, X } from "lucide-react";
+import { Bell, Loader2, LogOut, Menu, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -87,12 +87,40 @@ function SidebarInner({
   );
 }
 
-export function AppShell({ children, user }: { children: React.ReactNode; user: ShellUser }) {
+export function AppShell({
+  children,
+  user,
+  unreadCount = 0,
+}: {
+  children: React.ReactNode;
+  user: ShellUser;
+  unreadCount?: number;
+}) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+
+  const hasUnread = unreadCount > 0;
+
+  // Account dropdown (avatar menu).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => setMenuOpen(false), [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
   const items = visibleNav(user.permissions);
   const bottomItems = bottomNav(user.permissions);
   const current = items.find(
@@ -157,29 +185,56 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
             </h1>
           </div>
 
-          <div className="relative hidden items-center md:flex">
-            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-faint" />
-            <input
-              type="search"
-              placeholder="Cari karyawan…"
-              className="h-10 w-56 rounded-xl border border-line bg-panel pl-9 pr-3 text-sm text-ink outline-none transition focus:border-forest-300 focus:ring-2 focus:ring-forest-100"
-            />
-          </div>
-
-          <button
+          <Link
+            href="/notifications"
             className="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted transition-colors hover:bg-sand"
             aria-label="Notifikasi"
           >
             <Bell className="h-5 w-5" />
-            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-clay ring-2 ring-cream" />
-          </button>
-          <button
-            className="hidden h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted transition-colors hover:bg-sand sm:flex"
-            aria-label="Pengaturan"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
-          <Avatar name={user.name} size="sm" className="ring-0" />
+            {hasUnread && (
+              <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-clay ring-2 ring-cream" />
+            )}
+          </Link>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="flex cursor-pointer items-center rounded-full outline-none ring-offset-2 ring-offset-cream transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-forest-300"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="Menu akun"
+            >
+              <Avatar name={user.name} size="sm" className="ring-0" />
+            </button>
+
+            {menuOpen && (
+              <div className="animate-menu absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-2xl border border-line bg-panel p-1.5 shadow-pop">
+                <div className="flex items-center gap-3 px-2.5 py-2">
+                  <Avatar name={user.name} size="md" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
+                    <p className="truncate text-xs text-muted">{user.roleName}</p>
+                  </div>
+                </div>
+                <div className="my-1 h-px bg-line" />
+                <Link
+                  href="/profile"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-sand"
+                >
+                  <UserRound className="h-4 w-4 text-muted" /> Lihat Profil
+                </Link>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    requestLogout();
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-clay transition-colors hover:bg-clay-soft"
+                >
+                  <LogOut className="h-4 w-4" /> Keluar
+                </button>
+              </div>
+            )}
+          </div>
         </header>
 
         {/* Page content */}

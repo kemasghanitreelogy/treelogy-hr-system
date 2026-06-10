@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapLeave } from "@/lib/data";
+import { notifyApprovers, pushNotifications } from "@/lib/notify";
+import { formatDate } from "@/lib/utils";
 import type { LeaveType, RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
+
+const LEAVE_LABEL: Record<LeaveType, string> = {
+  annual: "Cuti tahunan",
+  sick: "Sakit",
+  unpaid: "Cuti tanpa gaji",
+  "in-lieu": "Tukar libur",
+};
 
 const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "in-lieu"];
 const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
@@ -117,6 +126,22 @@ export async function POST(req: Request) {
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
+
+  // Notify the approvers (HR/admin + division manager).
+  const { data: emp } = await supabase!
+    .from("employees")
+    .select("name, team")
+    .eq("id", body.employeeId)
+    .maybeSingle();
+  if (emp?.team) {
+    await notifyApprovers(body.employeeId, String(emp.team), {
+      type: "leave",
+      title: `${emp.name ?? "Karyawan"} mengajukan ${LEAVE_LABEL[body.type].toLowerCase()}`,
+      body: `${formatDate(body.startDate)}–${formatDate(body.endDate)} · perlu persetujuan Anda`,
+      href: "/leave",
+    });
+  }
+
   return NextResponse.json({ ok: true, request: mapLeave(data) });
 }
 
@@ -151,5 +176,18 @@ export async function PATCH(req: Request) {
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
+
+  // Notify the requester of the decision.
+  await pushNotifications([
+    {
+      employeeId: String(data.employee_id),
+      type: "leave",
+      tone: body.status,
+      title: `${LEAVE_LABEL[data.type as LeaveType]} ${body.status === "approved" ? "disetujui" : "ditolak"}`,
+      body: `${formatDate(String(data.start_date))}–${formatDate(String(data.end_date))}${data.approver ? ` · oleh ${data.approver}` : ""}`,
+      href: "/leave",
+    },
+  ]);
+
   return NextResponse.json({ ok: true, request: mapLeave(data) });
 }

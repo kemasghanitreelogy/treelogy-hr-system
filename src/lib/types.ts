@@ -114,6 +114,20 @@ export interface OvertimeRequest {
   requestedAt: string;
 }
 
+export type NotifTone = "approved" | "rejected" | "paid" | "pending";
+
+export interface AppNotification {
+  id: string;
+  employeeId: string;
+  type: string;
+  tone: NotifTone;
+  title: string;
+  body: string;
+  href: string;
+  read: boolean;
+  createdAt: string;
+}
+
 export interface LeaveBalance {
   employeeId: string;
   annualQuota: number;

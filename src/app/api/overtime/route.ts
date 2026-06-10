@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapOvertime } from "@/lib/data";
+import { notifyApprovers, pushNotifications } from "@/lib/notify";
+import { formatDate, rupiah } from "@/lib/utils";
 import type { RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -84,7 +86,7 @@ export async function POST(req: Request) {
   // Snapshot the hourly rate from the employee's current base salary.
   const { data: emp } = await supabase!
     .from("employees")
-    .select("base_salary")
+    .select("base_salary, name, team")
     .eq("id", body.employeeId)
     .maybeSingle();
   const ratePerHour = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
@@ -126,6 +128,17 @@ export async function POST(req: Request) {
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
+
+  // Notify the approvers (HR/admin + division manager).
+  if (emp?.team) {
+    await notifyApprovers(body.employeeId, String(emp.team), {
+      type: "overtime",
+      title: `${emp.name ?? "Karyawan"} mengajukan lembur`,
+      body: `${formatDate(body.date)} · ${hours} jam · perlu persetujuan Anda`,
+      href: "/overtime",
+    });
+  }
+
   return NextResponse.json({ ok: true, request: mapOvertime(data) });
 }
 
@@ -166,5 +179,25 @@ export async function PATCH(req: Request) {
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
+
+  // Notify the requester: payment takes precedence over a status change.
+  const meta = `${formatDate(String(data.date))} · ${data.hours} jam`;
+  if (body.paid === true) {
+    await pushNotifications([
+      { employeeId: String(data.employee_id), type: "overtime", tone: "paid", title: "Lembur telah dibayar", body: `${meta} · ${rupiah(Number(data.amount))}`, href: "/overtime" },
+    ]);
+  } else if (body.status === "approved" || body.status === "rejected") {
+    await pushNotifications([
+      {
+        employeeId: String(data.employee_id),
+        type: "overtime",
+        tone: body.status,
+        title: `Lembur ${body.status === "approved" ? "disetujui" : "ditolak"}`,
+        body: `${meta}${data.approver ? ` · oleh ${data.approver}` : ""}`,
+        href: "/overtime",
+      },
+    ]);
+  }
+
   return NextResponse.json({ ok: true, request: mapOvertime(data) });
 }
