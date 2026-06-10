@@ -281,10 +281,11 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       </div>
 
       {canManage && (
-        <p className="flex items-center gap-1.5 text-xs text-faint">
-          <GripVertical className="h-3.5 w-3.5" /> Tahan lalu seret. Geser <b className="font-semibold">ke kanan</b>{" "}
-          untuk jadi bawahan, <b className="font-semibold">ke kiri</b> untuk naik level. Lepas di kartu divisi lain
-          untuk pindah divisi.
+        <p className="text-xs leading-relaxed text-faint">
+          <GripVertical className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
+          Tahan lalu seret. Geser <b className="font-semibold text-muted">ke kanan</b> untuk jadi bawahan,{" "}
+          <b className="font-semibold text-muted">ke kiri</b> untuk naik level. Lepas di kartu divisi lain untuk
+          pindah divisi.
         </p>
       )}
 
@@ -352,25 +353,32 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       </DndContext>
 
       {canManage && changes.count > 0 && (
-        <div className="fixed inset-x-0 bottom-20 z-40 flex justify-center px-4 sm:bottom-6">
-          <div className="flex w-full max-w-xl items-center gap-3 rounded-2xl border border-line bg-panel px-4 py-3 shadow-pop">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold-soft text-[#8a6512]">
+        <div className="fixed inset-x-0 bottom-20 z-40 flex justify-center px-3 sm:bottom-6">
+          <div className="flex w-full max-w-xl items-center gap-2 rounded-2xl border border-line bg-panel px-3 py-2.5 shadow-pop sm:gap-3 sm:px-4 sm:py-3">
+            <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold-soft text-[#8a6512] sm:flex">
               <Save className="h-4 w-4" />
             </span>
-            <p className="flex-1 text-sm">
-              <span className="font-semibold text-ink">{changes.count} perubahan</span>{" "}
-              <span className="text-muted">
-                belum disimpan
+            <p className="min-w-0 flex-1 text-sm leading-tight">
+              <span className="font-semibold text-ink">{changes.count} perubahan</span>
+              <span className="hidden text-muted sm:inline">
+                {" belum disimpan"}
                 {changes.created.length > 0 && ` · ${changes.created.length} baru`}
                 {changes.moved.length > 0 && ` · ${changes.moved.length} pindah`}
               </span>
             </p>
-            <Button variant="outline" size="sm" onClick={discard} disabled={saving}>
-              <RotateCcw className="h-4 w-4" /> Batalkan
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={discard}
+              disabled={saving}
+              aria-label="Batalkan perubahan"
+              className="shrink-0 whitespace-nowrap"
+            >
+              <RotateCcw className="h-4 w-4" /> <span className="hidden sm:inline">Batalkan</span>
             </Button>
-            <Button size="sm" onClick={saveAll} disabled={saving}>
+            <Button size="sm" onClick={saveAll} disabled={saving} className="shrink-0 whitespace-nowrap">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Simpan Semua
+              Simpan<span className="hidden sm:inline"> Semua</span>
             </Button>
           </div>
         </div>
