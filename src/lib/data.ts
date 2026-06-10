@@ -80,6 +80,8 @@ const mapEmployee = (r: Row): Employee => ({
   location: r.location as Employee["location"],
 });
 
+const numOrNull = (v: unknown) => (v == null ? null : Number(v));
+
 const mapAttendance = (r: Row): AttendanceRecord => ({
   id: String(r.id),
   employeeId: String(r.employee_id),
@@ -91,6 +93,14 @@ const mapAttendance = (r: Row): AttendanceRecord => ({
   lateMinutes: n(r.late_minutes),
   overtimeMinutes: n(r.overtime_minutes),
   source: r.source as AttendanceRecord["source"],
+  clockInLat: numOrNull(r.clock_in_lat),
+  clockInLng: numOrNull(r.clock_in_lng),
+  clockInDistanceM: numOrNull(r.clock_in_distance_m),
+  clockInPhoto: (r.clock_in_photo as string) ?? null,
+  clockOutLat: numOrNull(r.clock_out_lat),
+  clockOutLng: numOrNull(r.clock_out_lng),
+  clockOutDistanceM: numOrNull(r.clock_out_distance_m),
+  clockOutPhoto: (r.clock_out_photo as string) ?? null,
 });
 
 const mapShift = (r: Row): Shift => ({

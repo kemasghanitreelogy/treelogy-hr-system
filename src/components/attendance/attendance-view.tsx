@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, Clock, Download } from "lucide-react";
+import { CalendarDays, ChevronRight, Clock, Download } from "lucide-react";
 import type { AttendanceRecord, Employee, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatTime, minutesToHM } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { AttendanceBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
+import { AttendanceDetail } from "./attendance-detail";
 
 interface Row extends AttendanceRecord {
   emp: Pick<Employee, "id" | "name" | "team" | "position">;
@@ -20,14 +21,18 @@ export function AttendanceView({
   employees,
   dates,
   defaultDate,
+  canReviewAll = true,
 }: {
   records: AttendanceRecord[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   dates: string[];
   defaultDate: string;
+  /** HR/admin see & review everyone; an employee sees only their own. */
+  canReviewAll?: boolean;
 }) {
   const [date, setDate] = useState(defaultDate);
   const [team, setTeam] = useState<"all" | Team>("all");
+  const [selected, setSelected] = useState<Row | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
@@ -54,6 +59,14 @@ export function AttendanceView({
 
   return (
     <div className="space-y-4 fade-up">
+      {/* Heading (employee self-view) */}
+      {!canReviewAll && (
+        <div>
+          <h2 className="font-display text-lg font-semibold text-ink">Riwayat absensi saya</h2>
+          <p className="text-sm text-muted">Ketuk satu baris untuk melihat foto, jarak, dan detail jam.</p>
+        </div>
+      )}
+
       {/* Date + controls */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative sm:max-w-[220px]">
@@ -68,29 +81,35 @@ export function AttendanceView({
             aria-label="Pilih tanggal"
           />
         </div>
-        <Button variant="outline" className="shrink-0">
-          <Download className="h-4 w-4" /> Ekspor rekap
-        </Button>
+        {canReviewAll && (
+          <Button variant="outline" className="shrink-0">
+            <Download className="h-4 w-4" /> Ekspor rekap
+          </Button>
+        )}
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <SummaryChip label="Hadir" value={summary.present} className="text-forest-600" />
-        <SummaryChip label="Terlambat" value={summary.late} className="text-[#8a6512]" />
-        <SummaryChip label="Cuti/Sakit" value={summary.leave} className="text-sky" />
-        <SummaryChip label="Alpa" value={summary.absent} className="text-clay" />
-        <SummaryChip label="Total lembur" value={minutesToHM(summary.ot)} className="text-olive" />
-      </div>
+      {canReviewAll && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <SummaryChip label="Hadir" value={summary.present} className="text-forest-600" />
+          <SummaryChip label="Terlambat" value={summary.late} className="text-[#8a6512]" />
+          <SummaryChip label="Cuti/Sakit" value={summary.leave} className="text-sky" />
+          <SummaryChip label="Alpa" value={summary.absent} className="text-clay" />
+          <SummaryChip label="Total lembur" value={minutesToHM(summary.ot)} className="text-olive" />
+        </div>
+      )}
 
       {/* Team filter */}
-      <div className="flex flex-wrap gap-2">
-        <Chip active={team === "all"} onClick={() => setTeam("all")}>Semua tim</Chip>
-        {TEAMS.map((t) => (
-          <Chip key={t} active={team === t} onClick={() => setTeam(t)}>
-            {TEAM_META[t].label}
-          </Chip>
-        ))}
-      </div>
+      {canReviewAll && (
+        <div className="flex flex-wrap gap-2">
+          <Chip active={team === "all"} onClick={() => setTeam("all")}>Semua tim</Chip>
+          {TEAMS.map((t) => (
+            <Chip key={t} active={team === t} onClick={() => setTeam(t)}>
+              {TEAM_META[t].label}
+            </Chip>
+          ))}
+        </div>
+      )}
 
       {/* Desktop table */}
       <Card className="hidden overflow-hidden md:block">
@@ -104,12 +123,18 @@ export function AttendanceView({
                 <th className="px-5 py-3">Pulang</th>
                 <th className="px-5 py-3">Telat</th>
                 <th className="px-5 py-3">Lembur</th>
+                <th className="px-5 py-3">Jarak</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {rows.map((r) => (
-                <tr key={r.id} className="transition-colors hover:bg-cream/60">
+                <tr
+                  key={r.id}
+                  onClick={() => setSelected(r)}
+                  className="cursor-pointer transition-colors hover:bg-cream/60"
+                >
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={r.emp.name} size="sm" />
@@ -132,8 +157,18 @@ export function AttendanceView({
                   <td className="px-5 py-3 tabular-nums">
                     {r.overtimeMinutes > 0 ? <span className="text-olive">{minutesToHM(r.overtimeMinutes)}</span> : <span className="text-faint">—</span>}
                   </td>
+                  <td className="px-5 py-3 tabular-nums">
+                    {r.clockInDistanceM != null ? (
+                      <span className="text-muted">{r.clockInDistanceM} m</span>
+                    ) : (
+                      <span className="text-faint">—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3">
                     <AttendanceBadge status={r.status} />
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    <ChevronRight className="ml-auto h-4 w-4 text-faint" />
                   </td>
                 </tr>
               ))}
@@ -146,7 +181,11 @@ export function AttendanceView({
       {/* Mobile cards */}
       <div className="space-y-3 md:hidden">
         {rows.map((r) => (
-          <div key={r.id} className="card p-4">
+          <button
+            key={r.id}
+            onClick={() => setSelected(r)}
+            className="card w-full p-4 text-left transition-colors active:bg-cream/60"
+          >
             <div className="flex items-center gap-3">
               <Avatar name={r.emp.name} size="sm" />
               <div className="min-w-0 flex-1">
@@ -159,12 +198,21 @@ export function AttendanceView({
               <Mini label="Masuk" value={formatTime(r.clockIn)} />
               <Mini label="Pulang" value={formatTime(r.clockOut)} />
               <Mini label="Telat" value={r.lateMinutes ? `${r.lateMinutes}m` : "—"} />
-              <Mini label="Lembur" value={r.overtimeMinutes ? minutesToHM(r.overtimeMinutes) : "—"} />
+              <Mini label="Jarak" value={r.clockInDistanceM != null ? `${r.clockInDistanceM}m` : "—"} />
             </div>
-          </div>
+          </button>
         ))}
         {rows.length === 0 && <Empty />}
       </div>
+
+      <AttendanceDetail
+        open={selected != null}
+        record={selected}
+        employeeName={selected?.emp.name ?? ""}
+        position={selected?.emp.position ?? ""}
+        team={selected?.emp.team ?? null}
+        onClose={() => setSelected(null)}
+      />
     </div>
   );
 }

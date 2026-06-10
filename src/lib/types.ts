@@ -45,6 +45,15 @@ export interface AttendanceRecord {
   lateMinutes: number;
   overtimeMinutes: number;
   source: "biometric" | "mobile" | "manual" | "web";
+  // Geofence + selfie evidence (mobile self clock-in/out)
+  clockInLat?: number | null;
+  clockInLng?: number | null;
+  clockInDistanceM?: number | null;
+  clockInPhoto?: string | null; // storage path in `attendance-selfies`
+  clockOutLat?: number | null;
+  clockOutLng?: number | null;
+  clockOutDistanceM?: number | null;
+  clockOutPhoto?: string | null;
 }
 
 export interface Shift {

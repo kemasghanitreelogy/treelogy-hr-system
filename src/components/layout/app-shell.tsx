@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, LogOut, Menu, Search, Settings, X } from "lucide-react";
+import { Bell, Loader2, LogOut, Menu, Search, Settings, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { bottomNav, visibleNav, type NavItem } from "./nav-items";
 import { Logo } from "./logo";
@@ -88,6 +89,8 @@ function SidebarInner({
 
 export function AppShell({ children, user }: { children: React.ReactNode; user: ShellUser }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const items = visibleNav(user.permissions);
@@ -96,7 +99,13 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
     (i) => pathname === i.href || pathname.startsWith(i.href + "/"),
   );
 
+  function requestLogout() {
+    setDrawerOpen(false);
+    setConfirmLogout(true);
+  }
+
   async function logout() {
+    setLoggingOut(true);
     const supabase = createClient();
     if (supabase) await supabase.auth.signOut();
     router.push("/login");
@@ -107,7 +116,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
     <div className="min-h-screen lg:grid lg:grid-cols-[16rem_1fr]">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen lg:block">
-        <SidebarInner items={items} user={user} onLogout={logout} />
+        <SidebarInner items={items} user={user} onLogout={requestLogout} />
       </aside>
 
       {/* Mobile drawer */}
@@ -125,7 +134,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarInner items={items} user={user} onLogout={logout} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarInner items={items} user={user} onLogout={requestLogout} onNavigate={() => setDrawerOpen(false)} />
           </div>
         </div>
       )}
@@ -207,6 +216,19 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
           </button>
         </div>
       </nav>
+
+      <ConfirmDialog
+        open={confirmLogout}
+        tone="danger"
+        icon={loggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
+        title="Keluar dari akun?"
+        message="Anda akan keluar dan kembali ke halaman masuk."
+        confirmLabel={loggingOut ? "Keluar…" : "Ya, keluar"}
+        cancelLabel="Batal"
+        busy={loggingOut}
+        onConfirm={logout}
+        onCancel={() => setConfirmLogout(false)}
+      />
     </div>
   );
 }

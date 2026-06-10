@@ -9,6 +9,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Logo } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
+import { SuccessCheck } from "@/components/ui/success-check";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,7 +17,20 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function onSuccess() {
+    const next = new URLSearchParams(window.location.search).get("next") || "/dashboard";
+    // Prefetch so the dashboard is ready the moment the checkmark finishes.
+    router.prefetch(next);
+    setSuccess(true);
+    // Let the checkmark draw + register, then glide into the dashboard.
+    window.setTimeout(() => {
+      router.push(next);
+      router.refresh();
+    }, 1100);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,20 +39,18 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
       if (!supabase) {
-        router.push("/dashboard");
+        onSuccess();
         return;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setError("Email atau kata sandi salah.");
+        setBusy(false);
         return;
       }
-      const next = new URLSearchParams(window.location.search).get("next") || "/dashboard";
-      router.push(next);
-      router.refresh();
+      onSuccess();
     } catch {
       setError("Terjadi kesalahan. Coba lagi.");
-    } finally {
       setBusy(false);
     }
   }
@@ -117,6 +129,20 @@ export default function LoginPage() {
           © 2026 Treelogy · Premium Organic Moringa
         </p>
       </div>
+
+      {success && (
+        <div className="grain fixed inset-0 z-[90] flex flex-col items-center justify-center bg-cream animate-overlay">
+          <div className="animate-pop-in animate-glow flex h-24 w-24 items-center justify-center rounded-full bg-forest-600 text-cream">
+            <SuccessCheck className="h-12 w-12 text-cream" />
+          </div>
+          <p className="fade-up mt-6 font-display text-lg font-semibold text-ink" style={{ animationDelay: "0.5s" }}>
+            Berhasil masuk
+          </p>
+          <p className="fade-up mt-1 text-sm text-muted" style={{ animationDelay: "0.62s" }}>
+            Mengalihkan ke dashboard…
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -41,6 +41,7 @@ export default async function AttendancePage() {
           employees={employees}
           dates={dates}
           defaultDate={dates.includes(TODAY) ? TODAY : dates[dates.length - 1] ?? TODAY}
+          canReviewAll={canManage}
         />
       </div>
     </div>
