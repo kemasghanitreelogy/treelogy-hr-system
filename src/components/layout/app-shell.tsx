@@ -108,7 +108,8 @@ export function AppShell({ children, user }: { children: React.ReactNode; user: 
     setLoggingOut(true);
     const supabase = createClient();
     if (supabase) await supabase.auth.signOut();
-    router.push("/login");
+    // `replace` so Back doesn't return to an authenticated (now stale) page.
+    router.replace("/login");
     router.refresh();
   }
 

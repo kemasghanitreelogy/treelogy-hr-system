@@ -106,10 +106,7 @@ export function CameraCapture({
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex flex-col overflow-hidden bg-bark"
-      style={{ height: "100dvh", maxHeight: "100dvh" }}
-    >
+    <div className="fixed inset-x-0 top-0 z-[80] flex h-dvh-screen flex-col overflow-hidden bg-bark">
       <div
         className="flex shrink-0 items-center justify-between px-4 py-3 text-cream"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}

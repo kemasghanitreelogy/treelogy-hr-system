@@ -135,6 +135,15 @@
 .animate-pop-in { animation: pop-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-glow { animation: soft-glow 0.9s ease-out 0.2s both; }
 
+/* Full visible-viewport height — tracks the dynamic mobile viewport,
+   with a 100vh fallback for older browsers. */
+.h-dvh-screen {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.001ms !important;

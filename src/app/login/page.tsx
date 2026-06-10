@@ -26,8 +26,10 @@ export default function LoginPage() {
     router.prefetch(next);
     setSuccess(true);
     // Let the checkmark draw + register, then glide into the dashboard.
+    // `replace` (not push) so pressing Back from the dashboard never
+    // returns to the login screen.
     window.setTimeout(() => {
-      router.push(next);
+      router.replace(next);
       router.refresh();
     }, 1100);
   }
