@@ -13,11 +13,13 @@ export function Logo({ className, mark = false }: { className?: string; mark?: b
         className="h-9 w-9 shrink-0 rounded-xl object-cover"
       />
       {!mark && (
+        // Inherit the parent's text color so it reads on both the dark sidebar
+        // (cream) and light pages (ink); the subtitle is just a dimmed version.
         <div className="leading-none">
-          <span className="block font-display text-[15px] font-bold tracking-tight text-ink">
+          <span className="block font-display text-[15px] font-bold tracking-tight">
             TREELOGY
           </span>
-          <span className="block text-[10px] font-medium uppercase tracking-[0.18em] text-faint">
+          <span className="block text-[10px] font-medium uppercase tracking-[0.18em] opacity-60">
             HR System
           </span>
         </div>
