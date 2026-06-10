@@ -34,28 +34,54 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Settings + server-side geofence re-validation (never trust the client).
-  const { data: s } = await supabase.from("attendance_settings").select("*").eq("id", 1).maybeSingle();
-  const settings = s ?? {
-    office_lat: -8.409518, office_lng: 115.188919, max_radius_m: 50,
-    require_photo: true, require_location: true,
-  };
+  // Who is clocking in — needed for the team-scoped geofence and late calc.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("employee_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  let emp: { work_start?: string | null; team?: string | null } | null = null;
+  if (profile?.employee_id) {
+    const { data } = await supabase
+      .from("employees")
+      .select("work_start, team")
+      .eq("id", profile.employee_id)
+      .maybeSingle();
+    emp = data;
+  }
 
+  // Global toggles.
+  const { data: s } = await supabase
+    .from("attendance_settings")
+    .select("require_photo, require_location")
+    .eq("id", 1)
+    .maybeSingle();
+  const requireLocation = s ? Boolean(s.require_location) : true;
+  const requirePhoto = s ? Boolean(s.require_photo) : true;
+
+  // Geofence re-validation against the employee's OWN division (never trust client).
   let distance: number | null = null;
-  if (settings.require_location) {
+  if (requireLocation) {
     if (typeof body.lat !== "number" || typeof body.lng !== "number") {
       return NextResponse.json({ error: "location_required" }, { status: 400 });
     }
-    distance = distanceMeters(body.lat, body.lng, settings.office_lat, settings.office_lng);
-    if (distance > settings.max_radius_m) {
+    const team = (emp?.team as string) ?? "office";
+    const { data: gf } = await supabase
+      .from("team_geofences")
+      .select("lat, lng, radius_m")
+      .eq("team", team)
+      .maybeSingle();
+    const fence = gf ?? { lat: -8.409518, lng: 115.188919, radius_m: 50 };
+    distance = distanceMeters(body.lat, body.lng, fence.lat, fence.lng);
+    if (distance > fence.radius_m) {
       return NextResponse.json(
-        { error: "out_of_range", distance, maxRadius: settings.max_radius_m },
+        { error: "out_of_range", distance, maxRadius: fence.radius_m },
         { status: 403 },
       );
     }
   }
 
-  if (settings.require_photo && !body.photo) {
+  if (requirePhoto && !body.photo) {
     return NextResponse.json({ error: "photo_required" }, { status: 400 });
   }
 
@@ -75,24 +101,12 @@ export async function POST(req: Request) {
     }
   }
 
-  // Record against the linked employee (if any).
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("employee_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
   let recorded = false;
   if (profile?.employee_id) {
     const today = new Date().toISOString().slice(0, 10);
     const nowIso = new Date().toISOString();
     if (direction === "in") {
       // Derive late status against the employee's scheduled start (WITA).
-      const { data: emp } = await supabase
-        .from("employees")
-        .select("work_start")
-        .eq("id", profile.employee_id)
-        .maybeSingle();
       const workStart = (emp?.work_start as string) ?? "08:00";
       // Wall-clock HH:MM in WITA (Asia/Makassar = UTC+8) at clock-in moment.
       const witaHM = new Intl.DateTimeFormat("en-GB", {

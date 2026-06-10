@@ -51,10 +51,13 @@ export default async function DashboardPage() {
     const recap = computeRecap(attendance, user.employeeId ?? "", CURRENT_PERIOD);
     const balance = balances.find((b) => b.employeeId === user.employeeId);
     const scheduleLabel = `Jam kerja · ${me?.workStart ?? "08:00"}–${me?.workEnd ?? "17:00"}`;
+    const geofence = settings.geofences[me?.team ?? "office"];
     return (
       <SelfDashboard
         firstName={firstName}
-        settings={settings}
+        geofence={geofence}
+        requireLocation={settings.requireLocation}
+        requirePhoto={settings.requirePhoto}
         recap={recap}
         balance={balance}
         canPayroll={can(user, "payroll.view")}

@@ -5,6 +5,7 @@ import type {
   Kpi,
   LeaveBalance,
   LeaveRequest,
+  OvertimeRequest,
   PayrollRun,
   Shift,
   ShiftAssignment,
@@ -52,14 +53,14 @@ export const employees: Employee[] = [
   },
   {
     id: "e06", nik: "TRL-0301", name: "Ni Luh Sari", email: "niluh.sari@treelogy.com",
-    phone: "0812-3400-0301", team: "sales", position: "Sales Executive", status: "active",
+    phone: "0812-3400-0301", team: "office", position: "Sales Executive", status: "active",
     joinDate: "2023-02-01", baseSalary: 4_500_000, allowance: 1_500_000, ptkp: "TK/0",
     npwp: "09.423.456.7-901.000", bpjsKes: true, bpjsTk: true, bankName: "BCA",
     bankAccount: "7720113406", location: "Office · Bali",
   },
   {
     id: "e07", nik: "TRL-0302", name: "I Gede Bagus", email: "gede.bagus@treelogy.com",
-    phone: "0812-3400-0302", team: "sales", position: "Sales Lead", status: "active",
+    phone: "0812-3400-0302", team: "office", position: "Sales Lead", status: "active",
     joinDate: "2020-11-03", baseSalary: 7_500_000, allowance: 2_500_000, ptkp: "K/2",
     npwp: "09.523.456.7-901.000", bpjsKes: true, bpjsTk: true, bankName: "Mandiri",
     bankAccount: "1450099107", location: "Office · Bali",
@@ -108,7 +109,7 @@ export const employees: Employee[] = [
   },
   {
     id: "e14", nik: "TRL-0303", name: "Sang Ayu Putri", email: "sangayu.putri@treelogy.com",
-    phone: "0812-3400-0303", team: "sales", position: "Sales Executive", status: "inactive",
+    phone: "0812-3400-0303", team: "office", position: "Sales Executive", status: "inactive",
     joinDate: "2021-03-15", endDate: "2026-02-28", baseSalary: 4_500_000, allowance: 1_500_000,
     ptkp: "TK/0", npwp: null, bpjsKes: false, bpjsTk: false, bankName: "BCA",
     bankAccount: "7720113414", location: "Office · Bali",
@@ -148,6 +149,14 @@ export const leaveRequests: LeaveRequest[] = [
   { id: "l4", employeeId: "e05", type: "in-lieu", startDate: "2026-06-16", endDate: "2026-06-16", days: 1, reason: "Day-off in lieu for working Sunday harvest", status: "approved", approver: "Komang Adi", requestedAt: "2026-06-02T16:45:00+08:00" },
   { id: "l5", employeeId: "e13", type: "annual", startDate: "2026-06-10", endDate: "2026-06-11", days: 2, reason: "Personal matters", status: "rejected", approver: "Kadek Wirawan", requestedAt: "2026-06-04T11:20:00+08:00" },
   { id: "l6", employeeId: "e04", type: "sick", startDate: "2026-06-09", endDate: "2026-06-09", days: 1, reason: "Stomach flu", status: "pending", requestedAt: "2026-06-09T06:40:00+08:00" },
+];
+
+// Overtime (lembur). rate = baseSalary / 20 / 8; amount = rate × hours.
+export const overtimeRequests: OvertimeRequest[] = [
+  { id: "o1", employeeId: "e01", date: "2026-06-10", startTime: "17:00", endTime: "20:00", hours: 3, reason: "Kejar target produksi batch ekspor", ratePerHour: 22_500, amount: 67_500, status: "pending", paid: false, requestedAt: "2026-06-10T20:05:00+08:00" },
+  { id: "o2", employeeId: "e04", date: "2026-06-08", startTime: "16:00", endTime: "19:00", hours: 3, reason: "Panen tambahan sebelum hujan", ratePerHour: 20_000, amount: 60_000, status: "approved", approver: "Komang Adi", paid: true, paidAt: "2026-06-09T10:00:00+08:00", requestedAt: "2026-06-08T19:10:00+08:00" },
+  { id: "o3", employeeId: "e10", date: "2026-06-11", startTime: "17:00", endTime: "21:00", hours: 4, reason: "QC pesanan mendadak", ratePerHour: 26_250, amount: 105_000, status: "approved", approver: "Kadek Wirawan", paid: false, requestedAt: "2026-06-11T21:05:00+08:00" },
+  { id: "o4", employeeId: "e06", date: "2026-06-09", startTime: "18:00", endTime: "20:00", hours: 2, reason: "Closing penjualan akhir bulan", ratePerHour: 28_125, amount: 56_250, status: "pending", paid: false, requestedAt: "2026-06-09T20:02:00+08:00" },
 ];
 
 export const dayOffInLieu: DayOffInLieu[] = [
@@ -210,7 +219,7 @@ export function generateAttendance(): AttendanceRecord[] {
       const r = hash(emp.id + iso);
 
       // Weekend off for office/sales; farm/factory work Saturdays
-      const isWeekend = dow === 0 || (dow === 6 && (emp.team === "office" || emp.team === "sales"));
+      const isWeekend = dow === 0 || (dow === 6 && emp.team === "office");
       if (isWeekend) {
         records.push({ id: `${emp.id}-${iso}`, employeeId: emp.id, date: iso, status: "off", lateMinutes: 0, overtimeMinutes: 0, source: "biometric" });
         continue;

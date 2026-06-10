@@ -5,11 +5,10 @@ import type { Employee, Team } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-const TEAM_PREFIX: Record<Team, string> = { factory: "01", farm: "02", sales: "03", office: "04" };
+const TEAM_PREFIX: Record<Team, string> = { factory: "01", farm: "02", office: "04" };
 const LOCATION: Record<Team, Employee["location"]> = {
   factory: "Factory · Bali",
   farm: "Farm · Bali",
-  sales: "Office · Bali",
   office: "Office · Bali",
 };
 

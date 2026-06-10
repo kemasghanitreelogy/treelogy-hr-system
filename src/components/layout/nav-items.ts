@@ -6,6 +6,7 @@ import {
   Network,
   ShieldCheck,
   Target,
+  Timer,
   Users,
   Wallet,
   type LucideIcon,
@@ -23,6 +24,7 @@ const ITEMS: Record<string, NavItem> = {
   "/dashboard": { href: "/dashboard", label: "Beranda", icon: LayoutDashboard, perm: "dashboard.view" },
   "/attendance": { href: "/attendance", label: "Absensi", icon: CalendarClock, perm: "attendance.view" },
   "/leave": { href: "/leave", label: "Cuti & Izin", icon: CalendarDays, perm: "leave.view" },
+  "/overtime": { href: "/overtime", label: "Lembur", icon: Timer, perm: "attendance.view" },
   "/payroll": { href: "/payroll", label: "Payroll", icon: Wallet, perm: "payroll.view" },
   "/employees": { href: "/employees", label: "Karyawan", icon: Users, perm: "employees.view" },
   "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", icon: Network, perm: "dashboard.view" },
@@ -52,8 +54,8 @@ export function audienceFromPermissions(permissions: string[]): Audience {
 // Order by real-world usage frequency for each audience (Hick's Law + Serial Position:
 // most-used first = primacy; rarely-used config last).
 const ORDER: Record<Audience, string[]> = {
-  ops: ["/dashboard", "/attendance", "/leave", "/payroll", "/employees", "/org-structure", "/shifts", "/kpi", "/access"],
-  self: ["/dashboard", "/attendance", "/leave", "/payroll", "/kpi", "/shifts", "/employees", "/org-structure", "/access"],
+  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/kpi", "/access"],
+  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/kpi", "/shifts", "/employees", "/org-structure", "/access"],
 };
 
 // Most-frequent destinations for the mobile thumb-zone bar (4 = sweet spot).

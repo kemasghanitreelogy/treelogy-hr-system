@@ -11,7 +11,7 @@ import {
   LogOut,
   MapPin,
 } from "lucide-react";
-import type { AttendanceSettings } from "@/lib/types";
+import type { TeamGeofence } from "@/lib/types";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -20,25 +20,52 @@ import { CameraCapture } from "./camera-capture";
 type Phase = "out" | "in";
 type Flow = "idle" | "locating" | "camera" | "submitting";
 
-function getPosition(): Promise<GeolocationPosition> {
+/**
+ * Get the most accurate GPS fix we can within a short window. The first fix a
+ * device returns is often coarse (Wi-Fi/cell based) before the GPS chip locks
+ * on, so we watch for a few seconds, keep the reading with the smallest accuracy
+ * radius, and stop early once it's good enough (≤ targetAccuracy metres).
+ */
+function getBestPosition(targetAccuracy = 30, maxWait = 10000): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
       reject(new Error("no_geo"));
       return;
     }
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true,
-      timeout: 12000,
-      maximumAge: 0,
-    });
+    let best: GeolocationPosition | null = null;
+    const finish = () => {
+      clearTimeout(timer);
+      navigator.geolocation.clearWatch(id);
+      if (best) resolve(best);
+      else reject(new Error("no_fix"));
+    };
+    const timer = setTimeout(finish, maxWait);
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+        if (pos.coords.accuracy <= targetAccuracy) finish(); // good enough — stop converging
+      },
+      (err) => {
+        if (!best) {
+          clearTimeout(timer);
+          navigator.geolocation.clearWatch(id);
+          reject(err);
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: maxWait },
+    );
   });
 }
 
 export function ClockWidget({
-  settings,
+  geofence,
+  requireLocation,
+  requirePhoto,
   shiftLabel = "Office Reguler · 08:00–17:00",
 }: {
-  settings: AttendanceSettings;
+  geofence: TeamGeofence;
+  requireLocation: boolean;
+  requirePhoto: boolean;
   shiftLabel?: string;
 }) {
   const [now, setNow] = useState<Date | null>(null);
@@ -46,7 +73,7 @@ export function ClockWidget({
   const [clockInAt, setClockInAt] = useState<Date | null>(null);
   const [flow, setFlow] = useState<Flow>("idle");
   const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
-  const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number } | null>(null);
+  const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
   const pendingDir = phase === "out" ? "in" : "out";
 
   useEffect(() => {
@@ -64,22 +91,28 @@ export function ClockWidget({
 
   async function start() {
     setNotice(null);
-    let coords: { lat: number; lng: number; distance: number } | null = null;
+    let coords: { lat: number; lng: number; distance: number; accuracy: number } | null = null;
 
-    if (settings.requireLocation) {
+    if (requireLocation) {
       setFlow("locating");
       try {
-        const pos = await getPosition();
+        const pos = await getBestPosition();
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const distance = distanceMeters(lat, lng, settings.officeLat, settings.officeLng);
-        coords = { lat, lng, distance };
+        const accuracy = pos.coords.accuracy;
+        const distance = distanceMeters(lat, lng, geofence.lat, geofence.lng);
+        coords = { lat, lng, distance, accuracy };
         setGeo(coords);
-        if (distance > settings.maxRadiusM) {
+        if (distance > geofence.radiusM) {
+          // If the gap is within the GPS uncertainty, it's likely a weak signal
+          // rather than truly being away — ask to retry instead of hard-rejecting.
+          const couldBeInside = distance - accuracy <= geofence.radiusM;
           setFlow("idle");
           setNotice({
             tone: "error",
-            text: `Anda ${formatDistance(distance)} dari kantor — maksimal ${settings.maxRadiusM} m. Mendekatlah ke lokasi kantor.`,
+            text: couldBeInside
+              ? `Sinyal GPS kurang akurat (±${Math.round(accuracy)} m). Pindah ke area terbuka lalu coba lagi.`
+              : `Anda ${formatDistance(distance)} dari ${geofence.label} — maksimal ${geofence.radiusM} m. Mendekatlah ke lokasi.`,
           });
           return;
         }
@@ -90,7 +123,7 @@ export function ClockWidget({
       }
     }
 
-    if (settings.requirePhoto) {
+    if (requirePhoto) {
       setFlow("camera");
     } else {
       await submit(coords, null);
@@ -103,7 +136,7 @@ export function ClockWidget({
   }
 
   async function submit(
-    coords: { lat: number; lng: number; distance: number } | null,
+    coords: { lat: number; lng: number; distance: number; accuracy: number } | null,
     photo: string | null,
   ) {
     setFlow("submitting");
@@ -165,7 +198,7 @@ export function ClockWidget({
                 <Fingerprint className="h-4 w-4 text-lime" /> {shiftLabel}
               </span>
               <span className="flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 text-lime" /> {settings.officeLabel}
+                <MapPin className="h-4 w-4 text-lime" /> {geofence.label}
               </span>
             </div>
           </div>
@@ -197,13 +230,15 @@ export function ClockWidget({
 
           {/* Requirements row */}
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            {settings.requireLocation && (
+            {requireLocation && (
               <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1", geo ? "bg-[#e9f0d8] text-forest-700" : "bg-sand text-muted")}>
                 <MapPin className="h-3 w-3" />
-                {geo ? `${formatDistance(geo.distance)} dari kantor` : `Wajib lokasi (≤ ${settings.maxRadiusM} m)`}
+                {geo
+                  ? `${formatDistance(geo.distance)} dari ${geofence.label} · ±${Math.round(geo.accuracy)} m`
+                  : `Wajib lokasi (≤ ${geofence.radiusM} m)`}
               </span>
             )}
-            {settings.requirePhoto && (
+            {requirePhoto && (
               <span className="inline-flex items-center gap-1 rounded-full bg-sand px-2.5 py-1 text-muted">
                 <Fingerprint className="h-3 w-3" /> Wajib foto wajah
               </span>

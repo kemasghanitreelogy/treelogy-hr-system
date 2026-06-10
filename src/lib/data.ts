@@ -7,6 +7,7 @@ import {
   kpis as seedKpis,
   leaveBalances as seedBalances,
   leaveRequests as seedLeave,
+  overtimeRequests as seedOvertime,
   payrollRuns as seedRuns,
   shifts as seedShifts,
 } from "./seed";
@@ -22,9 +23,12 @@ import type {
   Kpi,
   LeaveBalance,
   LeaveRequest,
+  OvertimeRequest,
   PayrollRun,
   Payslip,
   Shift,
+  Team,
+  TeamGeofence,
 } from "./types";
 
 export { TODAY, CURRENT_PERIOD };
@@ -131,6 +135,24 @@ export const mapLeave = (r: Row): LeaveRequest => ({
   proofPath: (r.proof_path as string) ?? null,
 });
 
+export const mapOvertime = (r: Row): OvertimeRequest => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  date: String(r.date),
+  startTime: hhmm(r.start_time),
+  endTime: hhmm(r.end_time),
+  hours: n(r.hours),
+  reason: String(r.reason ?? ""),
+  ratePerHour: n(r.rate_per_hour),
+  amount: n(r.amount),
+  status: r.status as OvertimeRequest["status"],
+  approver: (r.approver as string) ?? null,
+  paid: Boolean(r.paid),
+  paidAt: (r.paid_at as string) ?? null,
+  proofPath: (r.proof_path as string) ?? null,
+  requestedAt: String(r.requested_at),
+});
+
 const mapBalance = (r: Row): LeaveBalance => ({
   employeeId: String(r.employee_id),
   annualQuota: n(r.annual_quota),
@@ -182,6 +204,11 @@ export async function getLeaveRequests(): Promise<LeaveRequest[]> {
   return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 }
 
+export async function getOvertimeRequests(): Promise<OvertimeRequest[]> {
+  const rows = await fetchTable("overtime_requests", mapOvertime, seedOvertime);
+  return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+}
+
 export async function getPayrollRuns(): Promise<PayrollRun[]> {
   const rows = await fetchTable("payroll_runs", mapRun, seedRuns);
   return rows.slice().sort((a, b) => b.period.localeCompare(a.period));
@@ -191,13 +218,21 @@ export async function getEmployee(id: string): Promise<Employee | undefined> {
   return (await getEmployees()).find((e) => e.id === id);
 }
 
+const defaultGeofence = (label: string): TeamGeofence => ({
+  label,
+  lat: -8.409518,
+  lng: 115.188919,
+  radiusM: 50,
+});
+
 export const DEFAULT_ATTENDANCE_SETTINGS: AttendanceSettings = {
-  officeLabel: "Treelogy Office · Bali",
-  officeLat: -8.409518,
-  officeLng: 115.188919,
-  maxRadiusM: 50,
   requirePhoto: true,
   requireLocation: true,
+  geofences: {
+    factory: defaultGeofence("Pabrik · Bali"),
+    farm: defaultGeofence("Kebun · Bali"),
+    office: defaultGeofence("Kantor · Bali"),
+  },
 };
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {
@@ -205,19 +240,30 @@ export async function getAttendanceSettings(): Promise<AttendanceSettings> {
   try {
     const supabase = await createClient();
     if (!supabase) return DEFAULT_ATTENDANCE_SETTINGS;
-    const { data, error } = await supabase
-      .from("attendance_settings")
-      .select("*")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error || !data) return DEFAULT_ATTENDANCE_SETTINGS;
+    const [{ data: s }, { data: g }] = await Promise.all([
+      supabase.from("attendance_settings").select("*").eq("id", 1).maybeSingle(),
+      supabase.from("team_geofences").select("*"),
+    ]);
+    const geofences: Record<Team, TeamGeofence> = {
+      factory: defaultGeofence("Pabrik · Bali"),
+      farm: defaultGeofence("Kebun · Bali"),
+      office: defaultGeofence("Kantor · Bali"),
+    };
+    for (const row of g ?? []) {
+      const team = String(row.team) as Team;
+      if (team in geofences) {
+        geofences[team] = {
+          label: String(row.label),
+          lat: n(row.lat),
+          lng: n(row.lng),
+          radiusM: n(row.radius_m),
+        };
+      }
+    }
     return {
-      officeLabel: String(data.office_label),
-      officeLat: n(data.office_lat),
-      officeLng: n(data.office_lng),
-      maxRadiusM: n(data.max_radius_m),
-      requirePhoto: Boolean(data.require_photo),
-      requireLocation: Boolean(data.require_location),
+      requirePhoto: s ? Boolean(s.require_photo) : true,
+      requireLocation: s ? Boolean(s.require_location) : true,
+      geofences,
     };
   } catch {
     return DEFAULT_ATTENDANCE_SETTINGS;
@@ -372,7 +418,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     0,
   );
 
-  const teams = ["factory", "farm", "sales", "office"] as const;
+  const teams = ["factory", "farm", "office"] as const;
   const byTeam = teams.map((t) => ({ team: t, count: active.filter((e) => e.team === t).length }));
 
   const stats: DashboardStats = {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Camera, Clock3, LogIn, LogOut, MapPin, X } from "lucide-react";
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
@@ -115,6 +116,11 @@ export function AttendanceDetail({
   scheduleEnd?: string;
   onClose: () => void;
 }) {
+  // Portal to <body> so a transformed ancestor (e.g. the page's `fade-up`) can't
+  // turn `position: fixed` into a containing block and push the dialog off-screen.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -129,10 +135,10 @@ export function AttendanceDetail({
     };
   }, [open, onClose]);
 
-  if (!open || !record) return null;
+  if (!open || !record || !mounted) return null;
   const worked = workedMinutes(record.clockIn, record.clockOut);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[85] flex items-end justify-center sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-bark/50 backdrop-blur-sm animate-overlay" onClick={onClose} />
       <div
@@ -214,7 +220,8 @@ export function AttendanceDetail({
           Sumber: {record.source} · diverifikasi lokasi &amp; foto wajah
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

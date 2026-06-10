@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { minutesToHM } from "@/lib/utils";
 import type { AttendanceRecap } from "@/lib/data";
-import type { AttendanceSettings, LeaveBalance } from "@/lib/types";
+import type { LeaveBalance, TeamGeofence } from "@/lib/types";
 
 /**
  * Front-line worker home. Clock-in is the #1 daily action → top, in the thumb
@@ -14,14 +14,18 @@ import type { AttendanceSettings, LeaveBalance } from "@/lib/types";
  */
 export function SelfDashboard({
   firstName,
-  settings,
+  geofence,
+  requireLocation,
+  requirePhoto,
   recap,
   balance,
   canPayroll,
   scheduleLabel,
 }: {
   firstName: string;
-  settings: AttendanceSettings;
+  geofence: TeamGeofence;
+  requireLocation: boolean;
+  requirePhoto: boolean;
   recap: AttendanceRecap;
   balance?: LeaveBalance;
   canPayroll: boolean;
@@ -37,7 +41,12 @@ export function SelfDashboard({
 
       {/* #1 action — clock in */}
       <div className="mx-auto max-w-md lg:mx-0">
-        <ClockWidget settings={settings} shiftLabel={scheduleLabel} />
+        <ClockWidget
+          geofence={geofence}
+          requireLocation={requireLocation}
+          requirePhoto={requirePhoto}
+          shiftLabel={scheduleLabel}
+        />
       </div>
 
       {/* Personal status */}

@@ -31,10 +31,18 @@ export default async function AttendancePage() {
   const dates = Array.from(new Set(records.map((r) => r.date))).sort();
   const canManage = can(user, "attendance.manage");
 
+  // Pick the geofence of the division the current user is registered in.
+  const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
+  const myGeofence = settings.geofences[me?.team ?? "office"];
+
   return (
     <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
       <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-        <ClockWidget settings={settings} />
+        <ClockWidget
+          geofence={myGeofence}
+          requireLocation={settings.requireLocation}
+          requirePhoto={settings.requirePhoto}
+        />
       </div>
       <div className="space-y-4">
         {canManage && <AttendanceSettingsCard initial={settings} />}

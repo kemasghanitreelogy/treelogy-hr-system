@@ -56,7 +56,6 @@ export function TeamDonut({ data }: { data: { team: string; count: number }[] })
   const labels: Record<string, string> = {
     factory: "Pabrik",
     farm: "Kebun",
-    sales: "Sales",
     office: "Kantor",
   };
   const fmt = data.map((d) => ({ name: labels[d.team] ?? d.team, value: d.count }));

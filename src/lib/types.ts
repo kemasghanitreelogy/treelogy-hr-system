@@ -1,4 +1,4 @@
-export type Team = "factory" | "farm" | "sales" | "office";
+export type Team = "factory" | "farm" | "office";
 export type EmployeeStatus = "active" | "inactive";
 export type Role = "admin" | "hr" | "manager" | "employee";
 export type PTKP = "TK/0" | "TK/1" | "TK/2" | "TK/3" | "K/0" | "K/1" | "K/2" | "K/3";
@@ -96,6 +96,24 @@ export interface LeaveRequest {
   proofPath?: string | null;
 }
 
+export interface OvertimeRequest {
+  id: string;
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  startTime: string; // "HH:MM"
+  endTime: string; // "HH:MM"
+  hours: number; // duration in hours (decimal)
+  reason: string;
+  ratePerHour: number; // baseSalary / 20 / 8, snapshotted at request time
+  amount: number; // ratePerHour * hours
+  status: RequestStatus; // approval flow
+  approver?: string | null;
+  paid: boolean; // payment is settled SEPARATELY from payroll
+  paidAt?: string | null;
+  proofPath?: string | null;
+  requestedAt: string;
+}
+
 export interface LeaveBalance {
   employeeId: string;
   annualQuota: number;
@@ -156,13 +174,19 @@ export interface Payslip {
   netPay: number;
 }
 
+/** A clock-in geofence for one division (team). */
+export interface TeamGeofence {
+  label: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
 export interface AttendanceSettings {
-  officeLabel: string;
-  officeLat: number;
-  officeLng: number;
-  maxRadiusM: number;
   requirePhoto: boolean;
   requireLocation: boolean;
+  /** Per-division geofences — clock-in/out is validated against the employee's team. */
+  geofences: Record<Team, TeamGeofence>;
 }
 
 export interface Kpi {
