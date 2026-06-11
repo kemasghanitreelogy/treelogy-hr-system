@@ -28,6 +28,9 @@ function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => 
           <Link
             key={item.href}
             href={item.href}
+            // Prefetch PENUH halaman dinamis saat link terlihat — render server
+            // terjadi di latar belakang, sehingga klik dilayani dari cache (instan).
+            prefetch={true}
             onClick={onNavigate}
             className={cn(
               "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200",
@@ -190,6 +193,7 @@ export function AppShell({
 
           <Link
             href="/notifications"
+            prefetch={true}
             className="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted transition-colors hover:bg-sand"
             aria-label="Notifikasi"
           >
@@ -256,6 +260,7 @@ export function AppShell({
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch={true}
                   className={cn(
                     "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
                     active ? "text-forest-600" : "text-faint",

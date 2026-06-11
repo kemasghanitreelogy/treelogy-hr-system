@@ -11,10 +11,9 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSessionUser();
+  // Dua query independen — jalankan paralel, jangan berurutan.
+  const [user, unreadCount] = await Promise.all([getSessionUser(), getUnreadNotifCount()]);
   if (!user) redirect("/login");
-
-  const unreadCount = await getUnreadNotifCount();
 
   return (
     <AppShell

@@ -3,9 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   experimental: {
-    // Router cache untuk halaman dinamis: navigasi back/forward dalam 30 detik
-    // dilayani dari cache klien tanpa server roundtrip — terasa instan.
-    staleTimes: { dynamic: 30, static: 180 },
+    // Router cache halaman dinamis: hasil prefetch/kunjungan dipakai ulang
+    // selama 3 menit — pindah-pindah menu tanpa server roundtrip (instan).
+    staleTimes: { dynamic: 180, static: 300 },
   },
   async headers() {
     const security = [

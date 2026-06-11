@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "./supabase/server";
 import { isSupabaseConfigured } from "./supabase/config";
 import { ALL_PERMISSION_IDS } from "./rbac";
@@ -23,11 +24,7 @@ const SEED_USER: SessionUser = {
   employeeId: "e08",
 };
 
-/**
- * Resolve the current user (session → profile → role permissions → employee).
- * Returns SEED_USER in seed mode, or null when configured but not signed in.
- */
-export async function getSessionUser(): Promise<SessionUser | null> {
+async function resolveSessionUser(): Promise<SessionUser | null> {
   if (!isSupabaseConfigured) return SEED_USER;
 
   const supabase = await createClient();
@@ -44,30 +41,26 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     .eq("id", user.id)
     .maybeSingle();
 
+  // roles & employees hanya bergantung pada profile — ambil paralel (1 roundtrip, bukan 2).
+  const [roleRes, empRes] = await Promise.all([
+    profile?.role_id
+      ? supabase.from("roles").select("name, permissions").eq("id", profile.role_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    profile?.employee_id
+      ? supabase.from("employees").select("name").eq("id", profile.employee_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
   let roleName = "Karyawan";
   let permissions: string[] = ["dashboard.view"];
-  if (profile?.role_id) {
-    const { data: role } = await supabase
-      .from("roles")
-      .select("name, permissions")
-      .eq("id", profile.role_id)
-      .maybeSingle();
-    if (role) {
-      roleName = role.name;
-      permissions = role.permissions ?? permissions;
-    }
+  if (roleRes.data) {
+    roleName = roleRes.data.name;
+    permissions = roleRes.data.permissions ?? permissions;
   }
 
   const local = (user.email ?? "pengguna").split("@")[0].replace(/[._-]+/g, " ");
   let name = local.replace(/\b\w/g, (c) => c.toUpperCase());
-  if (profile?.employee_id) {
-    const { data: emp } = await supabase
-      .from("employees")
-      .select("name")
-      .eq("id", profile.employee_id)
-      .maybeSingle();
-    if (emp?.name) name = emp.name;
-  }
+  if (empRes.data?.name) name = empRes.data.name;
 
   return {
     id: user.id,
@@ -79,6 +72,14 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     employeeId: profile?.employee_id ?? null,
   };
 }
+
+/**
+ * Resolve the current user (session → profile → role permissions → employee).
+ * Returns SEED_USER in seed mode, or null when configured but not signed in.
+ * Dibungkus React cache(): layout + page dalam satu render berbagi satu hasil
+ * (tidak ada query auth ganda per request).
+ */
+export const getSessionUser = cache(resolveSessionUser);
 
 export function can(user: SessionUser | null, permission: string): boolean {
   return !!user && user.permissions.includes(permission);
