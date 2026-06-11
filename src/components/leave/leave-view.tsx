@@ -53,6 +53,9 @@ export function LeaveView({
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
+  // A plain employee only ever sees their own rows, so the name/avatar per row
+  // is redundant. Show it only for approvers (HR/admin or a division manager).
+  const showEmployee = canApproveAll || approverTeam != null;
 
   // Who may act on a given request: HR/admin on anyone; a division manager only on
   // their own team's members, and never on their own request.
@@ -128,15 +131,17 @@ export function LeaveView({
             const emp = empMap.get(r.employeeId);
             return (
               <div key={r.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-3 sm:w-52">
-                  <Avatar name={emp?.name ?? "?"} size="sm" />
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-ink">{emp?.name}</p>
-                    <p className="truncate text-xs text-faint">
-                      {emp && <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span>}
-                    </p>
+                {showEmployee && (
+                  <div className="flex items-center gap-3 sm:w-52">
+                    <Avatar name={emp?.name ?? "?"} size="sm" />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">{emp?.name}</p>
+                      <p className="truncate text-xs text-faint">
+                        {emp && <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span>}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : "sky"}>

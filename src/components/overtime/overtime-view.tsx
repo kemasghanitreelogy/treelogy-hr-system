@@ -42,6 +42,8 @@ export function OvertimeView({
   const [busyId, setBusyId] = useState<string | null>(null);
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
+  // A plain employee only sees their own rows → the name/avatar is redundant.
+  const showEmployee = canApproveAll || approverTeam != null;
 
   const canDecide = useMemo(
     () => (r: OvertimeRequest) => {
@@ -124,15 +126,17 @@ export function OvertimeView({
           const emp = empMap.get(r.employeeId);
           return (
             <div key={r.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-3 sm:w-44">
-                <Avatar name={emp?.name ?? "?"} size="sm" />
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink">{emp?.name ?? "?"}</p>
-                  <p className="truncate text-xs text-faint">
-                    {emp && <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span>}
-                  </p>
+              {showEmployee && (
+                <div className="flex items-center gap-3 sm:w-44">
+                  <Avatar name={emp?.name ?? "?"} size="sm" />
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-ink">{emp?.name ?? "?"}</p>
+                    <p className="truncate text-xs text-faint">
+                      {emp && <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span>}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

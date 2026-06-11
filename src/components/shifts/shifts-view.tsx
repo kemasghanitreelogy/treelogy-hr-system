@@ -47,6 +47,8 @@ export function ShiftsView({
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
+  // A plain employee only sees their own entries → the name/avatar is redundant.
+  const showEmployee = canApproveAll || approverTeam != null;
 
   const canDecide = useMemo(
     () => (e: TabunganEntry) => {
@@ -177,13 +179,15 @@ export function ShiftsView({
                 key={e.id}
                 className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center"
               >
-                <div className="flex items-center gap-3 sm:w-52">
-                  <Avatar name={emp?.name ?? "?"} size="sm" />
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-ink">{emp?.name}</p>
-                    <p className="truncate text-xs text-faint">{emp?.position}</p>
+                {showEmployee && (
+                  <div className="flex items-center gap-3 sm:w-52">
+                    <Avatar name={emp?.name ?? "?"} size="sm" />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink">{emp?.name}</p>
+                      <p className="truncate text-xs text-faint">{emp?.position}</p>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
