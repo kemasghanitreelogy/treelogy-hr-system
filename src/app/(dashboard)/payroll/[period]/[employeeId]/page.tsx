@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { PayslipDetail } from "@/components/payroll/payslip-detail";
 import { Card, CardContent } from "@/components/ui/card";
-import { buildPayslip, getAttendance, getEmployees } from "@/lib/data";
+import { buildPayslip, getAttendanceForEmployee, getEmployees } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { monthLabel } from "@/lib/utils";
 
@@ -24,11 +24,13 @@ export default async function PayslipPage({
   // Karyawan biasa hanya boleh membuka slip miliknya sendiri.
   if (!isOps && user?.employeeId !== employeeId) notFound();
 
-  const [employees, attendance] = await Promise.all([getEmployees(), getAttendance()]);
+  const [employees, periodRows] = await Promise.all([
+    getEmployees(),
+    getAttendanceForEmployee(employeeId, period),
+  ]);
   const emp = employees.find((e) => e.id === employeeId);
   if (!emp) notFound();
 
-  const periodRows = attendance.filter((a) => a.date.startsWith(period));
   const slip = buildPayslip(emp, period, "pr-" + period, periodRows);
 
   return (

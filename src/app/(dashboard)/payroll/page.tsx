@@ -3,7 +3,7 @@ import { PayslipList } from "@/components/payroll/payslip-list";
 import {
   CURRENT_PERIOD,
   buildPayslip,
-  getAttendance,
+  getAttendanceSince,
   getEmployees,
   getPayrollRuns,
 } from "@/lib/data";
@@ -26,10 +26,15 @@ function buildHistory(emps: Employee[], attendance: AttendanceRecord[]): Payslip
 
 export default async function PayrollPage() {
   const period = CURRENT_PERIOD;
+  const oldest = periodsBack(HISTORY_MONTHS, period)[HISTORY_MONTHS - 1];
   const user = await getSessionUser();
   const isOps = can(user, "payroll.process") || can(user, "employees.manage");
 
-  const [employeesAll, attendance] = await Promise.all([getEmployees(), getAttendance()]);
+  // Absensi hanya untuk jendela riwayat (bukan seluruh tabel) — lebih cepat.
+  const [employeesAll, attendance] = await Promise.all([
+    getEmployees(),
+    getAttendanceSince(`${oldest}-01`),
+  ]);
 
   // Self-service: a plain employee sees ONLY their own payslips, built from
   // their RLS-scoped attendance. No runs, no other people's pay.

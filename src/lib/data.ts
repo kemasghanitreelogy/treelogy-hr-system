@@ -225,6 +225,44 @@ export const mapAssignment = (r: Row): ShiftAssignment => ({
 export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmployees);
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
 export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
+
+/** Absensi sejak `fromDate` (YYYY-MM-DD) saja — payload jauh lebih kecil dari getAttendance(). */
+export async function getAttendanceSince(fromDate: string): Promise<AttendanceRecord[]> {
+  if (!isSupabaseConfigured) return seedAttendance.filter((a) => a.date >= fromDate);
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase.from("attendance").select("*").gte("date", fromDate);
+    if (error || !data) return [];
+    return (data as Row[]).map(mapAttendance);
+  } catch {
+    return [];
+  }
+}
+
+/** Absensi SATU karyawan pada SATU periode (YYYY-MM) — untuk halaman detail slip. */
+export async function getAttendanceForEmployee(
+  employeeId: string,
+  period: string,
+): Promise<AttendanceRecord[]> {
+  if (!isSupabaseConfigured) {
+    return seedAttendance.filter((a) => a.employeeId === employeeId && a.date.startsWith(period));
+  }
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("employee_id", employeeId)
+      .gte("date", `${period}-01`)
+      .lte("date", `${period}-31`);
+    if (error || !data) return [];
+    return (data as Row[]).map(mapAttendance);
+  } catch {
+    return [];
+  }
+}
 export const getAttendance = () => fetchTable("attendance", mapAttendance, seedAttendance);
 export const getLeaveRequestsRaw = () => fetchTable("leave_requests", mapLeave, seedLeave);
 export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, seedBalances);
