@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BadgeCheck, Check, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
 import type { Employee, OvertimeRequest, RequestStatus, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
@@ -42,6 +43,7 @@ export function OvertimeView({
   const [busyId, setBusyId] = useState<string | null>(null);
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
+  const router = useRouter();
   // A plain employee only sees their own rows → the name/avatar is redundant.
   const showEmployee = canApproveAll || approverTeam != null;
 
@@ -73,6 +75,7 @@ export function OvertimeView({
         return false;
       }
       setList((cur) => cur.map((r) => (r.id === id ? (data.request as OvertimeRequest) : r)));
+      router.refresh(); // sinkronkan dashboard & halaman lain di latar belakang
       return true;
     } catch {
       setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
@@ -210,6 +213,7 @@ export function OvertimeView({
             setList((prev) => [r, ...prev]);
             setAdding(false);
             toast.success("Pengajuan lembur terkirim ✓");
+            router.refresh();
           }}
           onCancel={() => setAdding(false)}
         />

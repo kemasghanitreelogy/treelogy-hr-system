@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Banknote, Check, Download, Landmark, Loader2, Receipt, Wallet } from "lucide-react";
 import type { Employee, Payslip, PayrollRun, PayrollStatus } from "@/lib/types";
 import { monthLabel, rupiah } from "@/lib/utils";
@@ -28,6 +29,7 @@ export function PayrollView({
   const [runList, setRunList] = useState(runs);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const router = useRouter();
 
   // The run for the active period, persisted in the DB (no local pretend-state).
   const run = runList.find((r) => r.period === period) ?? null;
@@ -48,6 +50,7 @@ export function PayrollView({
       }
       setRunList((prev) => [data.run as PayrollRun, ...prev.filter((r) => r.period !== period)]);
       toast.success("Draft payroll dibuat ✓");
+      router.refresh();
     } catch {
       toast.error("Koneksi bermasalah. Coba lagi.");
     } finally {
@@ -71,6 +74,7 @@ export function PayrollView({
       }
       setRunList((prev) => prev.map((r) => (r.id === run.id ? (data.run as PayrollRun) : r)));
       toast.success(status === "paid" ? "Payroll ditandai dibayar ✓" : "Payroll disetujui ✓");
+      router.refresh();
     } catch {
       toast.error("Koneksi bermasalah. Coba lagi.");
     } finally {

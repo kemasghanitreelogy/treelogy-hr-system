@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, CalendarDays, Check, Clock, Coffee, Loader2, Pencil, PiggyBank, Plus, Trash2, Wallet, X } from "lucide-react";
 import type { Employee, RequestStatus, Shift, ShiftAssignment, TabunganEntry, TabunganKind, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
@@ -63,6 +64,7 @@ export function ShiftsView({
   const [deletingShift, setDeletingShift] = useState<Shift | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const toast = useToast();
+  const router = useRouter();
   // A plain employee only sees their own entries → the name/avatar is redundant.
   const showEmployee = canApproveAll || approverTeam != null;
 
@@ -99,6 +101,7 @@ export function ShiftsView({
       }
       setList((cur) => cur.map((e) => (e.id === id ? (data.request as TabunganEntry) : e)));
       toast.success(status === "approved" ? "Disetujui ✓" : "Ditolak ✓");
+      router.refresh(); // saldo tabungan & halaman lain ikut segar
     } catch {
       setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
       toast.error("Koneksi bermasalah. Coba lagi.");
@@ -124,6 +127,7 @@ export function ShiftsView({
       setShiftList((cur) => cur.filter((s) => s.id !== deletingShift.id));
       setShiftForm(null);
       toast.success("Shift dihapus ✓");
+      router.refresh();
     } catch {
       toast.error("Koneksi bermasalah. Coba lagi.");
     } finally {
@@ -298,6 +302,7 @@ export function ShiftsView({
             setList((prev) => [entry, ...prev]);
             setAdding(false);
             toast.success("Pengajuan terkirim ✓");
+            router.refresh();
           }}
           onCancel={() => setAdding(false)}
         />
@@ -316,6 +321,7 @@ export function ShiftsView({
             setShiftList((cur) => (isNew ? [...cur, s] : cur.map((x) => (x.id === s.id ? s : x))));
             setShiftForm(null);
             toast.success(isNew ? "Shift ditambahkan ✓" : "Shift diperbarui ✓");
+            router.refresh();
           }}
           onDelete={shiftForm !== "new" && shiftForm ? () => setDeletingShift(shiftForm) : undefined}
           onCancel={() => setShiftForm(null)}
@@ -350,6 +356,7 @@ function ScheduleCard({
   canManage: boolean;
 }) {
   const toast = useToast();
+  const router = useRouter();
   const [date, setDate] = useState(todayWita());
   // (employeeId|date) → shiftId, seeded from the server, updated optimistically.
   const [map, setMap] = useState<Map<string, string>>(
@@ -387,6 +394,7 @@ function ScheduleCard({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error();
       toast.success("Jadwal disimpan ✓");
+      router.refresh();
     } catch {
       setMap((cur) => {
         const next = new Map(cur);

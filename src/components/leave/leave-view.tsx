@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
@@ -53,6 +54,7 @@ export function LeaveView({
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
+  const router = useRouter();
   // A plain employee only ever sees their own rows, so the name/avatar per row
   // is redundant. Show it only for approvers (HR/admin or a division manager).
   const showEmployee = canApproveAll || approverTeam != null;
@@ -89,6 +91,7 @@ export function LeaveView({
       }
       setList((cur) => cur.map((r) => (r.id === id ? data.request : r)));
       toast.success(status === "approved" ? "Pengajuan disetujui ✓" : "Pengajuan ditolak ✓");
+      router.refresh(); // sinkronkan saldo & halaman lain di latar belakang
     } catch {
       setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
       toast.error("Koneksi bermasalah. Coba lagi.");
@@ -101,6 +104,7 @@ export function LeaveView({
     setList((prev) => [r, ...prev]);
     setAdding(false);
     toast.success("Pengajuan cuti/izin terkirim ✓");
+    router.refresh();
   }
 
   // Only count requests the current user can actually act on.

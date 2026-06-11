@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -69,6 +70,7 @@ export function ClockWidget({
   shiftLabel?: string;
 }) {
   const [now, setNow] = useState<Date | null>(null);
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("out");
   const [clockInAt, setClockInAt] = useState<Date | null>(null);
   const [flow, setFlow] = useState<Flow>("idle");
@@ -168,6 +170,9 @@ export function ClockWidget({
         setPhase("out");
         setNotice({ tone: "ok", text: "Clock-out berhasil terekam ✓" });
       }
+      // Sinkronkan ulang data server di latar belakang (riwayat absensi, dashboard)
+      // tanpa memblokir UI — cache router diinvalidasi lalu di-prefetch ulang.
+      router.refresh();
     } catch {
       setNotice({ tone: "error", text: "Koneksi bermasalah. Coba lagi." });
     } finally {
