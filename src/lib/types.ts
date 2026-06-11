@@ -78,7 +78,7 @@ export interface ShiftAssignment {
   date: string;
 }
 
-export type LeaveType = "annual" | "sick" | "unpaid" | "in-lieu";
+export type LeaveType = "annual" | "sick" | "unpaid" | "tukar-libur";
 export type RequestStatus = "pending" | "approved" | "rejected";
 
 export interface LeaveRequest {
@@ -137,7 +137,7 @@ export interface LeaveBalance {
   tabunganLibur: number;
 }
 
-/** Day-off in lieu / swap day for the factory. */
+/** Day-off in lieu / swap day for the factory. @deprecated — superseded by TabunganEntry. */
 export interface DayOffInLieu {
   id: string;
   employeeId: string;
@@ -145,6 +145,31 @@ export interface DayOffInLieu {
   offDate: string; // taking the day off instead
   reason: string;
   status: RequestStatus;
+}
+
+/** Direction of a tabungan libur ledger entry. */
+export type TabunganKind = "deposit" | "withdrawal";
+
+/**
+ * One movement in an employee's tabungan libur (saved day-off bank).
+ * `deposit` adds days (earned by working a rest day / outside hours),
+ * `withdrawal` spends them (taking a saved day off). The cached balance on
+ * LeaveBalance.tabunganLibur is the sum of all approved entries.
+ */
+export interface TabunganEntry {
+  id: string;
+  employeeId: string;
+  kind: TabunganKind;
+  days: number; // magnitude in days (always > 0)
+  eventDate: string; // worked_date (deposit) or off_date (withdrawal)
+  reason: string;
+  source: "manual" | "attendance"; // 'attendance' = auto-created from a rest-day clock-in
+  sourceId?: string | null; // attendance record id when source='attendance'
+  status: RequestStatus;
+  approver?: string | null;
+  proofPath?: string | null;
+  requestedAt: string;
+  decidedAt?: string | null;
 }
 
 export type PayrollStatus = "draft" | "processing" | "approved" | "paid";

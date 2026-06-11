@@ -1,35 +1,95 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeftRight, Check, Clock, Coffee, Plus, X } from "lucide-react";
-import type { DayOffInLieu, Employee, RequestStatus, Shift } from "@/lib/types";
+import { useMemo, useState } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, Clock, Coffee, Loader2, PiggyBank, Plus, Wallet, X } from "lucide-react";
+import type { Employee, RequestStatus, Shift, TabunganEntry, TabunganKind, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, RequestBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
+
+type Emp = Pick<Employee, "id" | "name" | "team" | "position">;
+
+const KIND_LABEL: Record<TabunganKind, string> = {
+  deposit: "Setor",
+  withdrawal: "Cairkan",
+};
 
 export function ShiftsView({
   shifts,
-  swaps,
+  entries,
   employees,
+  currentUserName = "HR",
+  currentEmployeeId = null,
+  canRequestForOthers = true,
+  canApproveAll = false,
+  approverTeam = null,
+  selfBalance = 0,
 }: {
   shifts: Shift[];
-  swaps: DayOffInLieu[];
-  employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  entries: TabunganEntry[];
+  employees: Emp[];
+  currentUserName?: string;
+  currentEmployeeId?: string | null;
+  canRequestForOthers?: boolean;
+  canApproveAll?: boolean;
+  approverTeam?: Team | null;
+  /** Saved-day balance of the logged-in user, for the withdrawal cap. */
+  selfBalance?: number;
 }) {
-  const empMap = new Map(employees.map((e) => [e.id, e]));
-  const [swapList, setSwapList] = useState(swaps);
+  const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const [list, setList] = useState(entries);
+  const [adding, setAdding] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
 
-  function decide(id: string, status: RequestStatus) {
-    setSwapList((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
-    toast.success(status === "approved" ? "Tukar libur disetujui ✓" : "Tukar libur ditolak ✓");
+  const canDecide = useMemo(
+    () => (e: TabunganEntry) => {
+      if (canApproveAll) return true;
+      if (!approverTeam) return false;
+      if (e.employeeId === currentEmployeeId) return false;
+      return empMap.get(e.employeeId)?.team === approverTeam;
+    },
+    [canApproveAll, approverTeam, currentEmployeeId, empMap],
+  );
+
+  async function decide(id: string, status: RequestStatus) {
+    const prev = list.find((e) => e.id === id);
+    if (!prev) return;
+    setBusyId(id);
+    setList((cur) => cur.map((e) => (e.id === id ? { ...e, status, approver: currentUserName } : e)));
+    try {
+      const res = await fetch("/api/tabungan", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status, approver: currentUserName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.request) {
+        setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
+        toast.error(
+          data.error === "insufficient_balance"
+            ? "Saldo tabungan karyawan tidak cukup untuk dicairkan."
+            : "Gagal memproses. Pastikan Anda berhak menyetujui.",
+        );
+        return;
+      }
+      setList((cur) => cur.map((e) => (e.id === id ? (data.request as TabunganEntry) : e)));
+      toast.success(status === "approved" ? "Disetujui ✓" : "Ditolak ✓");
+    } catch {
+      setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  const pendingSwaps = swapList.filter((s) => s.status === "pending").length;
+  const pending = list.filter((e) => e.status === "pending" && canDecide(e)).length;
 
   return (
     <div className="space-y-5 fade-up">
@@ -65,7 +125,7 @@ export function ShiftsView({
                     <Coffee className="h-4 w-4 text-faint" /> Istirahat {s.breakMinutes} menit
                   </p>
                   <p className="flex items-center gap-2">
-                    <ArrowLeftRight className="h-4 w-4 text-faint" /> Lembur setelah {s.overtimeAfter}
+                    <ArrowUpFromLine className="h-4 w-4 text-faint" /> Lembur setelah {s.overtimeAfter}
                   </p>
                 </div>
               </div>
@@ -74,30 +134,50 @@ export function ShiftsView({
         </div>
       </div>
 
-      {/* Day-off in lieu / swap */}
+      {/* Tabungan libur — ledger of deposits (kerja hari libur) & withdrawals (ambil libur) */}
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Tukar Libur / Day-off in Lieu</CardTitle>
+            <CardTitle>Tabungan Libur</CardTitle>
             <p className="mt-0.5 text-sm text-muted">
-              Pengganti hari libur untuk tim pabrik yang bekerja di hari istirahat/libur.
+              Kerja di hari libur menambah tabungan (dikonfirmasi HR); cairkan untuk ambil libur pengganti.
             </p>
           </div>
-          {pendingSwaps > 0 && (
-            <Badge tone="gold" className="shrink-0 whitespace-nowrap">
-              {pendingSwaps} menunggu
-            </Badge>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {pending > 0 && (
+              <Badge tone="gold" className="whitespace-nowrap">{pending} menunggu</Badge>
+            )}
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <Wallet className="h-4 w-4" /> Cairkan tabungan
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {swapList.map((s) => {
-            const emp = empMap.get(s.employeeId);
+          {currentEmployeeId && (
+            <div className="flex items-center gap-3 rounded-2xl bg-bark px-4 py-3 text-cream">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest-700">
+                <PiggyBank className="h-5 w-5 text-lime" />
+              </span>
+              <p className="text-sm text-forest-100/70">Tabungan libur Anda</p>
+              <p className="ml-auto font-display text-xl font-bold">{selfBalance} hari</p>
+            </div>
+          )}
+
+          {list.length === 0 && (
+            <div className="rounded-2xl border border-line bg-cream/40 px-5 py-10 text-center text-sm text-faint">
+              Belum ada catatan tabungan libur.
+            </div>
+          )}
+
+          {list.map((e) => {
+            const emp = empMap.get(e.employeeId);
+            const isDeposit = e.kind === "deposit";
             return (
               <div
-                key={s.id}
+                key={e.id}
                 className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center"
               >
-                <div className="flex items-center gap-3 sm:w-56">
+                <div className="flex items-center gap-3 sm:w-52">
                   <Avatar name={emp?.name ?? "?"} size="sm" />
                   <div className="min-w-0">
                     <p className="truncate font-medium text-ink">{emp?.name}</p>
@@ -105,30 +185,35 @@ export function ShiftsView({
                   </div>
                 </div>
 
-                <div className="flex flex-1 items-center gap-2 text-sm">
-                  <div className="flex-1 rounded-lg bg-clay-soft px-2 py-1.5 text-center">
-                    <p className="text-[10px] uppercase tracking-wide text-[#8c3c1f]">Bekerja</p>
-                    <p className="whitespace-nowrap font-medium text-[#8c3c1f]">{formatDate(s.workedDate)}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={isDeposit ? "matcha" : "clay"}>
+                      {isDeposit ? <ArrowDownToLine className="h-3.5 w-3.5" /> : <ArrowUpFromLine className="h-3.5 w-3.5" />}
+                      {KIND_LABEL[e.kind]}
+                    </Badge>
+                    <span className={cn("text-sm font-semibold", isDeposit ? "text-forest-700" : "text-[#8c3c1f]")}>
+                      {isDeposit ? "+" : "−"}{e.days} hari
+                    </span>
+                    <span className="text-sm text-muted">{formatDate(e.eventDate)}</span>
+                    {e.source === "attendance" && (
+                      <span className="rounded-full bg-sand px-2 py-0.5 text-[10px] font-medium text-muted">otomatis dari absensi</span>
+                    )}
                   </div>
-                  <ArrowLeftRight className="h-4 w-4 shrink-0 text-faint" />
-                  <div className="flex-1 rounded-lg bg-[#e9f0d8] px-2 py-1.5 text-center">
-                    <p className="text-[10px] uppercase tracking-wide text-forest-600">Libur ganti</p>
-                    <p className="whitespace-nowrap font-medium text-forest-600">{formatDate(s.offDate)}</p>
-                  </div>
+                  {e.reason && <p className="mt-1 line-clamp-1 text-sm text-faint">{e.reason}</p>}
                 </div>
 
                 <div className="flex items-center gap-2 sm:w-auto">
-                  {s.status === "pending" ? (
+                  {e.status === "pending" && canDecide(e) ? (
                     <>
-                      <Button size="sm" onClick={() => decide(s.id, "approved")} className="flex-1 sm:flex-none">
+                      <Button size="sm" disabled={busyId === e.id} onClick={() => decide(e.id, "approved")} className="flex-1 sm:flex-none">
                         <Check className="h-4 w-4" /> Setujui
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => decide(s.id, "rejected")} className="flex-1 sm:flex-none">
+                      <Button size="sm" variant="outline" disabled={busyId === e.id} onClick={() => decide(e.id, "rejected")} className="flex-1 sm:flex-none">
                         <X className="h-4 w-4" /> Tolak
                       </Button>
                     </>
                   ) : (
-                    <RequestBadge status={s.status} />
+                    <RequestBadge status={e.status} />
                   )}
                 </div>
               </div>
@@ -136,6 +221,151 @@ export function ShiftsView({
           })}
         </CardContent>
       </Card>
+
+      <Sheet open={adding} onClose={() => setAdding(false)} title="Cairkan / Setor Tabungan Libur" description="Buat catatan tabungan libur baru">
+        <TabunganForm
+          employees={employees}
+          currentEmployeeId={currentEmployeeId}
+          canRequestForOthers={canRequestForOthers}
+          selfBalance={selfBalance}
+          onSubmit={(entry) => {
+            setList((prev) => [entry, ...prev]);
+            setAdding(false);
+            toast.success("Pengajuan terkirim ✓");
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      </Sheet>
     </div>
+  );
+}
+
+function TabunganForm({
+  employees,
+  currentEmployeeId = null,
+  canRequestForOthers = true,
+  selfBalance = 0,
+  onSubmit,
+  onCancel,
+}: {
+  employees: Emp[];
+  currentEmployeeId?: string | null;
+  canRequestForOthers?: boolean;
+  selfBalance?: number;
+  onSubmit: (e: TabunganEntry) => void;
+  onCancel: () => void;
+}) {
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
+  const lockToSelf = !canRequestForOthers && !!selfEmployee;
+  const [form, setForm] = useState({
+    employeeId: lockToSelf ? selfEmployee!.id : employees[0]?.id ?? "",
+    // Employees can only withdraw; HR may also file a manual deposit.
+    kind: "withdrawal" as TabunganKind,
+    eventDate: "",
+    days: 1,
+    reason: "",
+  });
+
+  // Cap a self-withdrawal at the visible balance (server re-checks regardless).
+  const selfWithdraw = form.employeeId === currentEmployeeId && form.kind === "withdrawal";
+  const overBalance = selfWithdraw && form.days > selfBalance;
+
+  async function submit(ev: React.FormEvent) {
+    ev.preventDefault();
+    if (!form.employeeId) return toast.error("Pilih karyawan dulu.");
+    if (!form.eventDate) return toast.error("Tanggal wajib diisi.");
+    if (form.days < 1) return toast.error("Jumlah hari minimal 1.");
+    if (overBalance) return toast.error("Jumlah melebihi saldo tabungan Anda.");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/tabungan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: form.employeeId,
+          kind: form.kind,
+          eventDate: form.eventDate,
+          days: form.days,
+          reason: form.reason,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.request) {
+        toast.error(
+          data.error === "insufficient_balance"
+            ? "Saldo tabungan tidak cukup."
+            : "Gagal mengajukan. Coba lagi.",
+        );
+        return;
+      }
+      onSubmit(data.request as TabunganEntry);
+    } catch {
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      {lockToSelf ? (
+        <Field label="Karyawan">
+          <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
+            <Avatar name={selfEmployee!.name} size="sm" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-ink">{selfEmployee!.name}</p>
+              <p className="truncate text-xs text-faint">{TEAM_META[selfEmployee!.team].label}</p>
+            </div>
+          </div>
+        </Field>
+      ) : (
+        <Field label="Karyawan">
+          <Select value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
+            {employees.map((e) => (
+              <option key={e.id} value={e.id}>{e.name} — {TEAM_META[e.team].label}</option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      {canRequestForOthers && (
+        <Field label="Jenis">
+          <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as TabunganKind }))}>
+            <option value="withdrawal">Cairkan (ambil libur)</option>
+            <option value="deposit">Setor (kerja hari libur)</option>
+          </Select>
+        </Field>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={form.kind === "deposit" ? "Tanggal kerja" : "Tanggal libur"}>
+          <Input type="date" value={form.eventDate} onChange={(e) => setForm((f) => ({ ...f, eventDate: e.target.value }))} required />
+        </Field>
+        <Field label="Jumlah hari">
+          <Input type="number" min={1} value={form.days} onChange={(e) => setForm((f) => ({ ...f, days: Math.max(1, Number(e.target.value) || 1) }))} required />
+        </Field>
+      </div>
+
+      {selfWithdraw && (
+        <div className={cn("flex items-center justify-between rounded-xl px-3 py-2.5 text-sm", overBalance ? "bg-clay-soft text-[#8c3c1f]" : "bg-sand text-muted")}>
+          <span>Saldo tabungan Anda</span>
+          <span className="font-semibold">{selfBalance} hari</span>
+        </div>
+      )}
+
+      <Field label="Alasan">
+        <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="cth. Ambil libur ganti kerja hari Minggu…" />
+      </Field>
+
+      <div className="flex gap-2 pt-2">
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>Batal</Button>
+        <Button type="submit" className="flex-1" disabled={saving || overBalance}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          Ajukan
+        </Button>
+      </div>
+    </form>
   );
 }

@@ -1,13 +1,16 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
-import { getDayOffInLieu, getEmployees, getShifts } from "@/lib/data";
+import { getEmployees, getLeaveBalances, getShifts, getTabunganEntries } from "@/lib/data";
+import { can, getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Shift & Jadwal — Treelogy HR" };
 
 export default async function ShiftsPage() {
-  const [shifts, swaps, employeesAll] = await Promise.all([
+  const [shifts, entries, balances, employeesAll, user] = await Promise.all([
     getShifts(),
-    getDayOffInLieu(),
+    getTabunganEntries(),
+    getLeaveBalances(),
     getEmployees(),
+    getSessionUser(),
   ]);
   const employees = employeesAll.map((e) => ({
     id: e.id,
@@ -15,12 +18,32 @@ export default async function ShiftsPage() {
     team: e.team,
     position: e.position,
   }));
+
+  // Approval scope mirrors leave: HR/admin act org-wide; a manager with
+  // shifts.swap_approve is scoped to their own division.
+  const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
+  const canApproveAll = can(user, "employees.manage");
+  const approverTeam = !canApproveAll && can(user, "shifts.swap_approve") ? me?.team ?? null : null;
+  const selfBalance = user?.employeeId
+    ? balances.find((b) => b.employeeId === user.employeeId)?.tabunganLibur ?? 0
+    : 0;
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Atur shift untuk tim pabrik &amp; kebun, dan kelola tukar libur (day-off in lieu).
+        Atur shift untuk tim pabrik &amp; kebun, dan kelola tabungan libur (kerja hari libur &amp; pencairannya).
       </p>
-      <ShiftsView shifts={shifts} swaps={swaps} employees={employees} />
+      <ShiftsView
+        shifts={shifts}
+        entries={entries}
+        employees={employees}
+        currentUserName={user?.name ?? "HR"}
+        currentEmployeeId={user?.employeeId ?? null}
+        canRequestForOthers={canApproveAll}
+        canApproveAll={canApproveAll}
+        approverTeam={approverTeam}
+        selfBalance={selfBalance}
+      />
     </div>
   );
 }

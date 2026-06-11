@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapLeave } from "@/lib/data";
+import { adjustLeaveUsage } from "@/lib/balance";
 import { notifyApprovers, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 import type { LeaveType, RequestStatus } from "@/lib/types";
@@ -11,10 +12,10 @@ const LEAVE_LABEL: Record<LeaveType, string> = {
   annual: "Cuti tahunan",
   sick: "Sakit",
   unpaid: "Cuti tanpa gaji",
-  "in-lieu": "Tukar libur",
+  "tukar-libur": "Tukar libur",
 };
 
-const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "in-lieu"];
+const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "tukar-libur"];
 const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -161,6 +162,13 @@ export async function PATCH(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
+  // Read the prior status so the balance moves only on a genuine transition.
+  const { data: prev } = await supabase!
+    .from("leave_requests")
+    .select("status, type, days, employee_id")
+    .eq("id", body.id)
+    .maybeSingle();
+
   const update: Record<string, unknown> = { status: body.status };
   if (body.status === "approved" || body.status === "rejected") {
     update.approver = body.approver?.trim() || null;
@@ -175,6 +183,19 @@ export async function PATCH(req: Request) {
 
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+
+  // Keep the leave balance (annual_used / sick_used) in sync with approvals.
+  if (prev) {
+    const wasApproved = prev.status === "approved";
+    const nowApproved = body.status === "approved";
+    const type = prev.type as LeaveType;
+    const days = Number(prev.days ?? 0);
+    if (!wasApproved && nowApproved) {
+      await adjustLeaveUsage(String(prev.employee_id), type, days);
+    } else if (wasApproved && !nowApproved) {
+      await adjustLeaveUsage(String(prev.employee_id), type, -days);
+    }
   }
 
   // Notify the requester of the decision.

@@ -9,6 +9,7 @@ import type {
   PayrollRun,
   Shift,
   ShiftAssignment,
+  TabunganEntry,
 } from "./types";
 
 /** Reference "today" for the demo dataset. */
@@ -146,7 +147,7 @@ export const leaveRequests: LeaveRequest[] = [
   { id: "l1", employeeId: "e06", type: "annual", startDate: "2026-06-12", endDate: "2026-06-13", days: 2, reason: "Family event in Singaraja", status: "pending", requestedAt: "2026-06-05T09:12:00+08:00" },
   { id: "l2", employeeId: "e02", type: "sick", startDate: "2026-06-08", endDate: "2026-06-08", days: 1, reason: "Fever — clinic note attached", status: "approved", approver: "Dewi Lestari", requestedAt: "2026-06-08T07:01:00+08:00" },
   { id: "l3", employeeId: "e10", type: "annual", startDate: "2026-06-20", endDate: "2026-06-24", days: 5, reason: "Galungan holiday with family", status: "pending", requestedAt: "2026-06-06T14:30:00+08:00" },
-  { id: "l4", employeeId: "e05", type: "in-lieu", startDate: "2026-06-16", endDate: "2026-06-16", days: 1, reason: "Day-off in lieu for working Sunday harvest", status: "approved", approver: "Komang Adi", requestedAt: "2026-06-02T16:45:00+08:00" },
+  { id: "l4", employeeId: "e05", type: "tukar-libur", startDate: "2026-06-16", endDate: "2026-06-16", days: 1, reason: "Tukar libur karena kerja panen hari Minggu", status: "approved", approver: "Komang Adi", requestedAt: "2026-06-02T16:45:00+08:00" },
   { id: "l5", employeeId: "e13", type: "annual", startDate: "2026-06-10", endDate: "2026-06-11", days: 2, reason: "Personal matters", status: "rejected", approver: "Kadek Wirawan", requestedAt: "2026-06-04T11:20:00+08:00" },
   { id: "l6", employeeId: "e04", type: "sick", startDate: "2026-06-09", endDate: "2026-06-09", days: 1, reason: "Stomach flu", status: "pending", requestedAt: "2026-06-09T06:40:00+08:00" },
 ];
@@ -164,6 +165,17 @@ export const dayOffInLieu: DayOffInLieu[] = [
   { id: "d2", employeeId: "e01", workedDate: "2026-05-31", offDate: "2026-06-14", reason: "Public holiday production run", status: "approved" },
   { id: "d3", employeeId: "e03", workedDate: "2026-06-08", offDate: "2026-06-19", reason: "Maintenance shift on rest day", status: "pending" },
   { id: "d4", employeeId: "e13", workedDate: "2026-06-07", offDate: "2026-06-18", reason: "Packaging backlog (Sunday)", status: "pending" },
+];
+
+// Tabungan libur ledger — deposits (kerja hari libur) and withdrawals (ambil libur).
+// The cached balances above are the sum of each employee's approved entries.
+export const tabunganEntries: TabunganEntry[] = [
+  { id: "t1", employeeId: "e05", kind: "deposit", days: 1, eventDate: "2026-06-01", reason: "Panen hari Minggu", source: "attendance", sourceId: null, status: "approved", approver: "Komang Adi", requestedAt: "2026-06-01T17:30:00+08:00", decidedAt: "2026-06-02T08:10:00+08:00" },
+  { id: "t2", employeeId: "e01", kind: "deposit", days: 1, eventDate: "2026-05-31", reason: "Produksi hari libur nasional", source: "attendance", sourceId: null, status: "approved", approver: "Kadek Wirawan", requestedAt: "2026-05-31T18:00:00+08:00", decidedAt: "2026-06-01T09:00:00+08:00" },
+  { id: "t3", employeeId: "e03", kind: "deposit", days: 1, eventDate: "2026-06-08", reason: "Shift perawatan mesin di hari istirahat", source: "attendance", sourceId: null, status: "pending", requestedAt: "2026-06-08T16:20:00+08:00" },
+  { id: "t4", employeeId: "e05", kind: "withdrawal", days: 1, eventDate: "2026-06-16", reason: "Ambil libur ganti panen Minggu", source: "manual", sourceId: null, status: "approved", approver: "Komang Adi", requestedAt: "2026-06-02T16:45:00+08:00", decidedAt: "2026-06-03T08:30:00+08:00" },
+  { id: "t5", employeeId: "e13", kind: "deposit", days: 1, eventDate: "2026-06-07", reason: "Backlog packaging (Minggu)", source: "attendance", sourceId: null, status: "pending", requestedAt: "2026-06-07T19:05:00+08:00" },
+  { id: "t6", employeeId: "e01", kind: "withdrawal", days: 1, eventDate: "2026-06-20", reason: "Cairkan tabungan untuk urusan keluarga", source: "manual", sourceId: null, status: "pending", requestedAt: "2026-06-09T10:15:00+08:00" },
 ];
 
 export const payrollRuns: PayrollRun[] = [

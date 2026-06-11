@@ -10,6 +10,7 @@ import {
   overtimeRequests as seedOvertime,
   payrollRuns as seedRuns,
   shifts as seedShifts,
+  tabunganEntries as seedTabungan,
 } from "./seed";
 import { roles, systemUsers } from "./rbac";
 import { bpjsEmployeeTotal, calcBpjs, calcOvertimePay, calcPph21 } from "./payroll";
@@ -28,6 +29,7 @@ import type {
   PayrollRun,
   Payslip,
   Shift,
+  TabunganEntry,
   Team,
   TeamGeofence,
 } from "./types";
@@ -171,6 +173,22 @@ const mapDayOff = (r: Row): DayOffInLieu => ({
   status: r.status as DayOffInLieu["status"],
 });
 
+export const mapTabungan = (r: Row): TabunganEntry => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  kind: r.kind as TabunganEntry["kind"],
+  days: n(r.days),
+  eventDate: String(r.event_date),
+  reason: String(r.reason ?? ""),
+  source: (r.source as TabunganEntry["source"]) ?? "manual",
+  sourceId: (r.source_id as string) ?? null,
+  status: r.status as TabunganEntry["status"],
+  approver: (r.approver as string) ?? null,
+  proofPath: (r.proof_path as string) ?? null,
+  requestedAt: String(r.requested_at),
+  decidedAt: (r.decided_at as string) ?? null,
+});
+
 const mapRun = (r: Row): PayrollRun => ({
   id: String(r.id),
   period: String(r.period),
@@ -199,6 +217,12 @@ export const getLeaveRequestsRaw = () => fetchTable("leave_requests", mapLeave, 
 export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, seedBalances);
 export const getDayOffInLieu = () => fetchTable("day_off_in_lieu", mapDayOff, seedDayOff);
 export const getKpis = () => fetchTable("kpis", mapKpi, seedKpis);
+
+/** Tabungan libur ledger entries, newest request first. */
+export async function getTabunganEntries(): Promise<TabunganEntry[]> {
+  const rows = await fetchTable("tabungan_libur_entries", mapTabungan, seedTabungan);
+  return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+}
 
 export async function getLeaveRequests(): Promise<LeaveRequest[]> {
   const rows = await getLeaveRequestsRaw();

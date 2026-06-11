@@ -33,7 +33,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
 
 const LEAVE_LABEL: Record<string, string> = {
-  annual: "Cuti tahunan", sick: "Sakit", unpaid: "Tanpa gaji", "in-lieu": "Tukar libur",
+  annual: "Cuti tahunan", sick: "Sakit", unpaid: "Tanpa gaji", "tukar-libur": "Tukar libur",
 };
 
 export default async function DashboardPage() {

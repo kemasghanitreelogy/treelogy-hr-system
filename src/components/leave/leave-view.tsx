@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
-import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, Team } from "@/lib/types";
+import { ArrowDownToLine, ArrowUpFromLine, Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
+import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -18,7 +18,7 @@ const LEAVE_LABEL: Record<LeaveType, string> = {
   annual: "Cuti tahunan",
   sick: "Sakit",
   unpaid: "Tanpa gaji",
-  "in-lieu": "Tukar libur",
+  "tukar-libur": "Tukar libur",
 };
 
 type Tab = "requests" | "balances";
@@ -26,6 +26,7 @@ type Tab = "requests" | "balances";
 export function LeaveView({
   requests,
   balances,
+  tabungan = [],
   employees,
   currentUserName = "HR",
   currentEmployeeId = null,
@@ -35,6 +36,7 @@ export function LeaveView({
 }: {
   requests: LeaveRequest[];
   balances: LeaveBalance[];
+  tabungan?: TabunganEntry[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
@@ -134,7 +136,7 @@ export function LeaveView({
                 </div>
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={r.type === "sick" ? "olive" : r.type === "in-lieu" ? "matcha" : "sky"}>
+                    <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : "sky"}>
                       {LEAVE_LABEL[r.type]}
                     </Badge>
                     <span className="text-sm font-medium text-ink">{r.days} hari</span>
@@ -173,7 +175,7 @@ export function LeaveView({
           })}
         </div>
       ) : (
-        <BalancesView balances={balances} employees={employees} />
+        <BalancesView balances={balances} tabungan={tabungan} employees={employees} />
       )}
 
       <Sheet open={adding} onClose={() => setAdding(false)} title="Ajukan Cuti / Izin" description="Buat permintaan baru">
@@ -191,13 +193,25 @@ export function LeaveView({
 
 function BalancesView({
   balances,
+  tabungan,
   employees,
 }: {
   balances: LeaveBalance[];
+  tabungan: TabunganEntry[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
 }) {
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const totalSaved = balances.reduce((s, b) => s + b.tabunganLibur, 0);
+  // Group ledger entries by employee, newest first, for the per-row history.
+  const ledgerByEmp = new Map<string, TabunganEntry[]>();
+  for (const e of tabungan) {
+    const arr = ledgerByEmp.get(e.employeeId) ?? [];
+    arr.push(e);
+    ledgerByEmp.set(e.employeeId, arr);
+  }
+  for (const arr of ledgerByEmp.values()) {
+    arr.sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+  }
 
   return (
     <div className="space-y-4">
@@ -259,11 +273,60 @@ function BalancesView({
                     <Progress value={b.tabunganLibur} max={12} className="mt-1.5" barClassName="bg-gold" />
                   </div>
                 </div>
+                <TabunganLedger entries={ledgerByEmp.get(b.employeeId) ?? []} />
               </div>
             );
           })}
         </div>
       </Card>
+    </div>
+  );
+}
+
+const LEDGER_STATUS: Record<RequestStatus, string> = {
+  pending: "menunggu",
+  approved: "disetujui",
+  rejected: "ditolak",
+};
+
+/** Per-employee tabungan libur history (deposits in / withdrawals out). */
+function TabunganLedger({ entries }: { entries: TabunganEntry[] }) {
+  const [open, setOpen] = useState(false);
+  if (entries.length === 0) return null;
+  const shown = open ? entries : entries.slice(0, 3);
+  return (
+    <div className="mt-3 rounded-xl bg-sand/60 px-3 py-2.5">
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">Riwayat tabungan libur</p>
+      <ul className="space-y-1">
+        {shown.map((e) => {
+          const isDeposit = e.kind === "deposit";
+          return (
+            <li key={e.id} className="flex items-center gap-2 text-xs">
+              <span className={cn("flex h-5 w-5 items-center justify-center rounded-full", isDeposit ? "bg-[#e9f0d8] text-forest-600" : "bg-clay-soft text-[#8c3c1f]")}>
+                {isDeposit ? <ArrowDownToLine className="h-3 w-3" /> : <ArrowUpFromLine className="h-3 w-3" />}
+              </span>
+              <span className={cn("font-semibold tabular-nums", isDeposit ? "text-forest-700" : "text-[#8c3c1f]")}>
+                {isDeposit ? "+" : "−"}{e.days}
+              </span>
+              <span className="text-muted">{formatDate(e.eventDate)}</span>
+              <span className="min-w-0 flex-1 truncate text-faint">{e.reason || (isDeposit ? "Setor" : "Cairkan")}</span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                  e.status === "approved" ? "bg-[#e9f0d8] text-forest-600" : e.status === "rejected" ? "bg-clay-soft text-[#8c3c1f]" : "bg-gold/15 text-[#8a6d1f]",
+                )}
+              >
+                {LEDGER_STATUS[e.status]}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {entries.length > 3 && (
+        <button onClick={() => setOpen((v) => !v)} className="mt-1.5 cursor-pointer text-[11px] font-medium text-sky hover:underline">
+          {open ? "Tutup" : `Lihat semua (${entries.length})`}
+        </button>
+      )}
     </div>
   );
 }
@@ -399,7 +462,7 @@ function LeaveForm({
       )}
       <Field label="Jenis">
         <Select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as LeaveType }))}>
-          {(["annual", "sick", "unpaid", "in-lieu"] as LeaveType[]).map((t) => (
+          {(["annual", "sick", "unpaid", "tukar-libur"] as LeaveType[]).map((t) => (
             <option key={t} value={t}>{LEAVE_LABEL[t]}</option>
           ))}
         </Select>

@@ -1,13 +1,14 @@
 import { LeaveView } from "@/components/leave/leave-view";
-import { getEmployees, getLeaveBalances, getLeaveRequests } from "@/lib/data";
+import { getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Cuti & Izin — Treelogy HR" };
 
 export default async function LeavePage() {
-  const [requests, balances, employeesAll, user] = await Promise.all([
+  const [requests, balances, tabungan, employeesAll, user] = await Promise.all([
     getLeaveRequests(),
     getLeaveBalances(),
+    getTabunganEntries(),
     getEmployees(),
     getSessionUser(),
   ]);
@@ -28,6 +29,7 @@ export default async function LeavePage() {
       <LeaveView
         requests={requests}
         balances={balances}
+        tabungan={tabungan}
         employees={employees}
         currentUserName={user?.name ?? "HR"}
         currentEmployeeId={user?.employeeId ?? null}
