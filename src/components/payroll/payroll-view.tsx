@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Banknote, Download, FileText, Landmark, Receipt, Wallet } from "lucide-react";
-import type { Employee, Payslip, PayrollRun } from "@/lib/types";
+import { Banknote, Check, Download, FileText, Landmark, Loader2, Receipt, Wallet } from "lucide-react";
+import type { Employee, Payslip, PayrollRun, PayrollStatus } from "@/lib/types";
 import { monthLabel, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PayrollBadge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { Sheet } from "@/components/ui/sheet";
+import { useToast } from "@/components/ui/toast";
 import { PayslipDetail } from "./payslip-detail";
 
 export function PayrollView({
@@ -25,7 +26,57 @@ export function PayrollView({
 }) {
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const [openSlip, setOpenSlip] = useState<Payslip | null>(null);
-  const [processed, setProcessed] = useState(false);
+  const [runList, setRunList] = useState(runs);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  // The run for the active period, persisted in the DB (no local pretend-state).
+  const run = runList.find((r) => r.period === period) ?? null;
+
+  async function createRun() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/payroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.run) {
+        toast.error("Gagal memproses payroll. Pastikan Anda berhak.");
+        return;
+      }
+      setRunList((prev) => [data.run as PayrollRun, ...prev.filter((r) => r.period !== period)]);
+      toast.success("Draft payroll dibuat ✓");
+    } catch {
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function advance(status: PayrollStatus) {
+    if (!run) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/payroll", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: run.id, status }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.run) {
+        toast.error("Gagal memperbarui status payroll.");
+        return;
+      }
+      setRunList((prev) => prev.map((r) => (r.id === run.id ? (data.run as PayrollRun) : r)));
+      toast.success(status === "paid" ? "Payroll ditandai dibayar ✓" : "Payroll disetujui ✓");
+    } catch {
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const totals = useMemo(() => {
     return slips.reduce(
@@ -34,10 +85,9 @@ export function PayrollView({
         acc.net += s.netPay;
         acc.bpjs += s.bpjsEmployeeTotal;
         acc.pph += s.pph21;
-        acc.ot += s.overtimePay;
         return acc;
       },
-      { gross: 0, net: 0, bpjs: 0, pph: 0, ot: 0 },
+      { gross: 0, net: 0, bpjs: 0, pph: 0 },
     );
   }, [slips]);
 
@@ -65,19 +115,32 @@ export function PayrollView({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="font-display text-lg font-semibold text-ink">Payroll {monthLabel(period)}</h2>
-              <PayrollBadge status={processed ? "approved" : "draft"} />
+              {run && <PayrollBadge status={run.status} />}
             </div>
             <p className="mt-0.5 text-sm text-muted">
-              {slips.length} karyawan · sinkron otomatis dengan rekap absensi
+              {slips.length} karyawan · sinkron otomatis dengan rekap absensi · lembur dibayar terpisah
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={exportCsv}>
               <Download className="h-4 w-4" /> Ekspor transfer (CSV)
             </Button>
-            <Button onClick={() => setProcessed(true)} disabled={processed}>
-              <Banknote className="h-4 w-4" /> {processed ? "Payroll disetujui" : "Proses payroll"}
-            </Button>
+            {!run ? (
+              <Button onClick={createRun} disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />}
+                Proses payroll
+              </Button>
+            ) : run.status === "draft" || run.status === "processing" ? (
+              <Button onClick={() => advance("approved")} disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Setujui payroll
+              </Button>
+            ) : run.status === "approved" ? (
+              <Button onClick={() => advance("paid")} disabled={busy}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />}
+                Tandai dibayar
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -104,7 +167,6 @@ export function PayrollView({
               <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
                 <th className="px-5 py-3">Karyawan</th>
                 <th className="px-5 py-3 text-right">Bruto</th>
-                <th className="px-5 py-3 text-right">Lembur</th>
                 <th className="px-5 py-3 text-right">BPJS</th>
                 <th className="px-5 py-3 text-right">PPh 21</th>
                 <th className="px-5 py-3 text-right">Bersih</th>
@@ -130,7 +192,6 @@ export function PayrollView({
                       </div>
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums text-muted">{rupiah(s.grossPay)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-olive">{s.overtimePay ? rupiah(s.overtimePay) : "—"}</td>
                     <td className="px-5 py-3 text-right tabular-nums text-muted">- {rupiah(s.bpjsEmployeeTotal)}</td>
                     <td className="px-5 py-3 text-right tabular-nums text-muted">- {rupiah(s.pph21)}</td>
                     <td className="px-5 py-3 text-right font-semibold tabular-nums text-forest-700">{rupiah(s.netPay)}</td>
@@ -171,7 +232,7 @@ export function PayrollView({
           <CardTitle>Riwayat Payroll</CardTitle>
         </CardHeader>
         <div className="divide-y divide-line">
-          {runs.map((r) => (
+          {runList.map((r) => (
             <div key={r.id} className="flex items-center justify-between px-5 py-3.5">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-100 text-forest-700">

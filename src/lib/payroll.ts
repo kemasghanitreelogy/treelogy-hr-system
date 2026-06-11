@@ -143,24 +143,7 @@ export function calcPph21(ptkp: PTKP, monthlyGross: number): number {
   return Math.round(monthlyGross * terRate(ptkp, monthlyGross));
 }
 
-// --- Overtime (Kepmenaker formula) ---
-/** Hourly wage = monthly wage / 173. */
-export function hourlyWage(monthly: number): number {
-  return monthly / 173;
-}
-
-/**
- * Weekday overtime pay: first hour 1.5×, subsequent hours 2×.
- * @param overtimeMinutes total OT minutes in the period
- * @param monthlyWage base + fixed allowance
- */
-export function calcOvertimePay(overtimeMinutes: number, monthlyWage: number): number {
-  const hours = overtimeMinutes / 60;
-  if (hours <= 0) return 0;
-  const hw = hourlyWage(monthlyWage);
-  const first = Math.min(hours, 1) * 1.5 * hw;
-  const rest = Math.max(hours - 1, 0) * 2 * hw;
-  return Math.round(first + rest);
-}
+// Lembur sengaja tidak dihitung di payroll: kebijakan perusahaan membayar
+// lembur TERPISAH dari gaji bulanan, lewat modul Lembur (overtime_requests).
 
 export const PTKP_OPTIONS: PTKP[] = ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"];

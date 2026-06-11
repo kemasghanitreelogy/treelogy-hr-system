@@ -114,7 +114,9 @@ const MANAGER_PERMS = [
   "kpi.view",
 ];
 
-const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request"];
+// payroll.view di sini = karyawan boleh melihat SLIP GAJINYA SENDIRI;
+// halaman payroll menampilkan mode operasional hanya untuk payroll.process.
+const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view"];
 
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");

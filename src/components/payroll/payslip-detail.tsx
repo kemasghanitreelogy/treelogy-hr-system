@@ -35,8 +35,8 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
       <Section title="Pendapatan">
         <Line label="Gaji pokok" value={rupiah(slip.baseSalary)} />
         <Line label="Tunjangan tetap" value={rupiah(slip.allowance)} />
-        <Line label={`Lembur (${slip.overtimeHours} jam)`} value={rupiah(slip.overtimePay)} />
         <Line label="Bruto" value={rupiah(slip.grossPay)} strong />
+        <p className="pt-1 text-xs text-faint">Lembur dibayar terpisah lewat menu Lembur — tidak termasuk slip ini.</p>
       </Section>
 
       <Section title="Potongan — BPJS (karyawan)">

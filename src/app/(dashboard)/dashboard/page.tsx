@@ -101,7 +101,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Hadir hari ini" value={`${stats.presentToday}/${stats.activeEmployees}`} sub={`Kehadiran ${stats.attendanceRate}%`} icon={UserCheck} tone="matcha" trend={{ value: `${stats.attendanceRate}%`, up: stats.attendanceRate >= 85 }} />
         <StatCard label="Karyawan aktif" value={String(stats.activeEmployees)} sub={`dari ${stats.totalEmployees} total`} icon={Users} tone="forest" />
-        <StatCard label="Lembur bulan ini" value={`${stats.overtimeHoursMonth} jam`} sub="Sinkron ke payroll" icon={Clock} tone="gold" />
+        <StatCard label="Lembur bulan ini" value={`${stats.overtimeHoursMonth} jam`} sub="Dibayar terpisah dari gaji" icon={Clock} tone="gold" />
         <StatCard label="Payroll bersih (Jun)" value={rupiah(stats.payrollNetMonth, { compact: true })} sub="Periode berjalan" icon={Wallet} tone="olive" />
       </div>
 

@@ -9,11 +9,12 @@ import {
   leaveRequests as seedLeave,
   overtimeRequests as seedOvertime,
   payrollRuns as seedRuns,
+  shiftAssignments as seedAssignments,
   shifts as seedShifts,
   tabunganEntries as seedTabungan,
 } from "./seed";
 import { roles, systemUsers } from "./rbac";
-import { bpjsEmployeeTotal, calcBpjs, calcOvertimePay, calcPph21 } from "./payroll";
+import { bpjsEmployeeTotal, calcBpjs, calcPph21 } from "./payroll";
 import { isSupabaseConfigured } from "./supabase/config";
 import { createClient } from "./supabase/server";
 import type {
@@ -29,6 +30,7 @@ import type {
   PayrollRun,
   Payslip,
   Shift,
+  ShiftAssignment,
   TabunganEntry,
   Team,
   TeamGeofence,
@@ -116,7 +118,7 @@ const mapAttendance = (r: Row): AttendanceRecord => ({
   clockOutPhoto: (r.clock_out_photo as string) ?? null,
 });
 
-const mapShift = (r: Row): Shift => ({
+export const mapShift = (r: Row): Shift => ({
   id: String(r.id),
   name: String(r.name),
   team: r.team as Shift["team"],
@@ -192,7 +194,7 @@ export const mapTabungan = (r: Row): TabunganEntry => ({
   decidedAt: (r.decided_at as string) ?? null,
 });
 
-const mapRun = (r: Row): PayrollRun => ({
+export const mapRun = (r: Row): PayrollRun => ({
   id: String(r.id),
   period: String(r.period),
   status: r.status as PayrollRun["status"],
@@ -213,8 +215,16 @@ const mapKpi = (r: Row): Kpi => ({
 });
 
 // ---- Fetchers ----
+export const mapAssignment = (r: Row): ShiftAssignment => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  shiftId: String(r.shift_id),
+  date: String(r.date),
+});
+
 export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmployees);
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
+export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
 export const getAttendance = () => fetchTable("attendance", mapAttendance, seedAttendance);
 export const getLeaveRequestsRaw = () => fetchTable("leave_requests", mapLeave, seedLeave);
 export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, seedBalances);
@@ -416,23 +426,21 @@ export function buildPayslip(
   periodRows: AttendanceRecord[],
 ): Payslip {
   const recap = computeRecap(periodRows, employee.id, period);
-  const monthlyWage = employee.baseSalary + employee.allowance;
-  const overtimeHours = recap.totalOvertimeMinutes / 60;
-  const overtimePay = calcOvertimePay(recap.totalOvertimeMinutes, monthlyWage);
+  // Lembur TIDAK masuk payslip — dibayar terpisah lewat modul Lembur,
+  // sehingga tidak ada risiko terbayar dua kali.
   const dailyRate = recap.workingDays > 0 ? employee.baseSalary / recap.workingDays : 0;
   const absenceDeduction = Math.round(dailyRate * recap.absentDays);
-  const grossPay = employee.baseSalary + employee.allowance + overtimePay - absenceDeduction;
+  const grossPay = employee.baseSalary + employee.allowance - absenceDeduction;
   const bpjs = calcBpjs(employee, grossPay);
   const bpjsEmp = bpjsEmployeeTotal(bpjs);
   const pph21 = calcPph21(employee.ptkp, grossPay);
   const deductions = bpjsEmp + pph21 + absenceDeduction;
   const netPay =
-    employee.baseSalary + employee.allowance + overtimePay - bpjsEmp - pph21 - absenceDeduction;
+    employee.baseSalary + employee.allowance - bpjsEmp - pph21 - absenceDeduction;
   return {
     id: `${runId}-${employee.id}`, runId, employeeId: employee.id, period,
     workingDays: recap.workingDays, presentDays: recap.presentDays,
     baseSalary: employee.baseSalary, allowance: employee.allowance,
-    overtimePay, overtimeHours: Math.round(overtimeHours * 10) / 10,
     grossPay, bpjs, bpjsEmployeeTotal: bpjsEmp, pph21, deductions, netPay,
   };
 }

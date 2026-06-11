@@ -194,6 +194,8 @@ export interface BpjsBreakdown {
   jkm: number;
 }
 
+// Catatan: lembur sengaja TIDAK ada di payslip — dibayar terpisah lewat
+// modul Lembur (overtime_requests + tanda "dibayar"), bukan lewat gaji bulanan.
 export interface Payslip {
   id: string;
   runId: string;
@@ -203,8 +205,6 @@ export interface Payslip {
   presentDays: number;
   baseSalary: number;
   allowance: number;
-  overtimePay: number;
-  overtimeHours: number;
   grossPay: number;
   bpjs: BpjsBreakdown;
   bpjsEmployeeTotal: number;

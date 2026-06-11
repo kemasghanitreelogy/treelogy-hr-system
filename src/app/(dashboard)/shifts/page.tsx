@@ -1,12 +1,13 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
-import { getEmployees, getLeaveBalances, getShifts, getTabunganEntries } from "@/lib/data";
+import { getEmployees, getLeaveBalances, getShiftAssignments, getShifts, getTabunganEntries } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Shift & Jadwal — Treelogy HR" };
 
 export default async function ShiftsPage() {
-  const [shifts, entries, balances, employeesAll, user] = await Promise.all([
+  const [shifts, assignments, entries, balances, employeesAll, user] = await Promise.all([
     getShifts(),
+    getShiftAssignments(),
     getTabunganEntries(),
     getLeaveBalances(),
     getEmployees(),
@@ -24,6 +25,7 @@ export default async function ShiftsPage() {
   const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
   const canApproveAll = can(user, "employees.manage");
   const approverTeam = !canApproveAll && can(user, "shifts.swap_approve") ? me?.team ?? null : null;
+  const canManageShifts = canApproveAll || can(user, "shifts.manage");
   const selfBalance = user?.employeeId
     ? balances.find((b) => b.employeeId === user.employeeId)?.tabunganLibur ?? 0
     : 0;
@@ -46,6 +48,7 @@ export default async function ShiftsPage() {
       </p>
       <ShiftsView
         shifts={shifts}
+        assignments={assignments}
         entries={visibleEntries}
         employees={employees}
         currentUserName={user?.name ?? "HR"}
@@ -53,6 +56,7 @@ export default async function ShiftsPage() {
         canRequestForOthers={canApproveAll}
         canApproveAll={canApproveAll}
         approverTeam={approverTeam}
+        canManageShifts={canManageShifts}
         selfBalance={selfBalance}
       />
     </div>

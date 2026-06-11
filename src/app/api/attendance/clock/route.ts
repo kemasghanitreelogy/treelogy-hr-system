@@ -47,11 +47,11 @@ export async function POST(req: Request) {
     .select("employee_id")
     .eq("id", user.id)
     .maybeSingle();
-  let emp: { work_start?: string | null; team?: string | null } | null = null;
+  let emp: { work_start?: string | null; work_end?: string | null; team?: string | null } | null = null;
   if (profile?.employee_id) {
     const { data } = await supabase
       .from("employees")
-      .select("work_start, team")
+      .select("work_start, work_end, team")
       .eq("id", profile.employee_id)
       .maybeSingle();
     emp = data;
@@ -174,10 +174,24 @@ export async function POST(req: Request) {
         }
       }
     } else {
+      // Menit lembur = selisih pulang vs jadwal selesai (WITA). INFORMASI
+      // ABSENSI SAJA — lembur dibayar terpisah lewat modul Lembur, bukan payroll.
+      const workEnd = (emp?.work_end as string) ?? "17:00";
+      const witaHM = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Makassar",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(new Date());
+      const [ch, cm] = witaHM.split(":").map(Number);
+      const [eh, em] = workEnd.split(":").map(Number);
+      const overtimeMinutes = Math.max(0, ch * 60 + cm - (eh * 60 + em));
+
       const { error } = await supabase
         .from("attendance")
         .update({
           clock_out: nowIso,
+          overtime_minutes: overtimeMinutes,
           clock_out_lat: body.lat ?? null,
           clock_out_lng: body.lng ?? null,
           clock_out_distance_m: distance,
