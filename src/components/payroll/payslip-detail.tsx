@@ -1,14 +1,32 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { useState } from "react";
+import { FileDown, Loader2, Printer } from "lucide-react";
 import type { Employee, Payslip } from "@/lib/types";
 import { jkkRate } from "@/lib/payroll";
 import { monthLabel, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import { downloadPayslipPdf } from "./payslip-pdf";
 
 export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
   const b = slip.bpjs;
+  const toast = useToast();
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadPdf() {
+    setDownloading(true);
+    try {
+      await downloadPayslipPdf(slip, emp);
+      toast.success("Slip gaji PDF terunduh ✓");
+    } catch {
+      toast.error("Gagal membuat PDF. Coba lagi.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -19,9 +37,15 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
             <p className="text-xs text-faint">{emp.nik} · {emp.position}</p>
           </div>
         </div>
-        <Button variant="outline" size="sm" onClick={() => window.print()}>
-          <Printer className="h-4 w-4" /> Cetak
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" onClick={downloadPdf} disabled={downloading}>
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+            Unduh PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" /> Cetak
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-2xl bg-bark p-4 text-cream">
