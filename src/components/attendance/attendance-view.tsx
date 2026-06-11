@@ -34,6 +34,8 @@ export function AttendanceView({
 }) {
   const [date, setDate] = useState(defaultDate);
   const [team, setTeam] = useState<"all" | Team>("all");
+  // Filter ketepatan waktu: "ontime" = hadir tanpa telat, "late" = terlambat.
+  const [punct, setPunct] = useState<"all" | "ontime" | "late">("all");
   const [selected, setSelected] = useState<Row | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
@@ -43,8 +45,11 @@ export function AttendanceView({
       .filter((r) => r.date === date)
       .map((r) => ({ ...r, emp: empMap.get(r.employeeId)! }))
       .filter((r) => r.emp && (team === "all" || r.emp.team === team))
+      .filter((r) =>
+        punct === "all" ? true : punct === "late" ? r.status === "late" : r.status === "present",
+      )
       .sort((a, b) => a.emp.name.localeCompare(b.emp.name));
-  }, [records, date, team, empMap]);
+  }, [records, date, team, punct, empMap]);
 
   const summary = useMemo(() => {
     const s = { present: 0, late: 0, absent: 0, leave: 0, off: 0, ot: 0 };
@@ -101,17 +106,23 @@ export function AttendanceView({
         </div>
       )}
 
-      {/* Team filter */}
-      {canReviewAll && (
-        <div className="flex flex-wrap gap-2">
-          <Chip active={team === "all"} onClick={() => setTeam("all")}>Semua tim</Chip>
-          {TEAMS.map((t) => (
-            <Chip key={t} active={team === t} onClick={() => setTeam(t)}>
-              {TEAM_META[t].label}
-            </Chip>
-          ))}
-        </div>
-      )}
+      {/* Filters: tim (HR) + ketepatan waktu */}
+      <div className="flex flex-wrap items-center gap-2">
+        {canReviewAll && (
+          <>
+            <Chip active={team === "all"} onClick={() => setTeam("all")}>Semua tim</Chip>
+            {TEAMS.map((t) => (
+              <Chip key={t} active={team === t} onClick={() => setTeam(t)}>
+                {TEAM_META[t].label}
+              </Chip>
+            ))}
+            <span className="mx-1 hidden h-5 w-px bg-line sm:block" aria-hidden />
+          </>
+        )}
+        <Chip active={punct === "all"} onClick={() => setPunct("all")}>Semua</Chip>
+        <Chip active={punct === "ontime"} onClick={() => setPunct("ontime")}>Tepat waktu</Chip>
+        <Chip active={punct === "late"} onClick={() => setPunct("late")}>Terlambat</Chip>
+      </div>
 
       {/* Desktop table */}
       <Card className="hidden overflow-hidden md:block">
@@ -258,7 +269,7 @@ function Empty() {
     <div className="flex flex-col items-center justify-center gap-1 py-12 text-center">
       <Clock className="h-6 w-6 text-faint" />
       <p className="text-sm font-medium text-ink">Tidak ada data absensi</p>
-      <p className="text-sm text-faint">Pilih tanggal lain atau ubah filter tim.</p>
+      <p className="text-sm text-faint">Pilih tanggal lain atau ubah filter tim / ketepatan waktu.</p>
     </div>
   );
 }
