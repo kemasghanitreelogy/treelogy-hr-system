@@ -1,17 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Banknote, Check, Download, FileText, Landmark, Loader2, Receipt, Wallet } from "lucide-react";
+import { Banknote, Check, Download, Landmark, Loader2, Receipt, Wallet } from "lucide-react";
 import type { Employee, Payslip, PayrollRun, PayrollStatus } from "@/lib/types";
 import { monthLabel, rupiah } from "@/lib/utils";
-import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PayrollBadge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
-import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
-import { PayslipDetail } from "./payslip-detail";
+import { PayslipList } from "./payslip-list";
 
 export function PayrollView({
   slips,
@@ -19,19 +17,21 @@ export function PayrollView({
   runs,
   period,
 }: {
+  /** Slip multi-periode (riwayat); baris difilter di PayslipList. */
   slips: Payslip[];
   employees: Employee[];
   runs: PayrollRun[];
+  /** Periode berjalan — target tombol proses/setujui/bayar & ekspor CSV. */
   period: string;
 }) {
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
-  const [openSlip, setOpenSlip] = useState<Payslip | null>(null);
   const [runList, setRunList] = useState(runs);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
   // The run for the active period, persisted in the DB (no local pretend-state).
   const run = runList.find((r) => r.period === period) ?? null;
+  const currentSlips = useMemo(() => slips.filter((s) => s.period === period), [slips, period]);
 
   async function createRun() {
     setBusy(true);
@@ -79,7 +79,7 @@ export function PayrollView({
   }
 
   const totals = useMemo(() => {
-    return slips.reduce(
+    return currentSlips.reduce(
       (acc, s) => {
         acc.gross += s.grossPay;
         acc.net += s.netPay;
@@ -89,11 +89,11 @@ export function PayrollView({
       },
       { gross: 0, net: 0, bpjs: 0, pph: 0 },
     );
-  }, [slips]);
+  }, [currentSlips]);
 
   function exportCsv() {
     const header = ["NIK", "Nama", "Bank", "No Rekening", "Jumlah Transfer", "Keterangan"];
-    const lines = slips.map((s) => {
+    const lines = currentSlips.map((s) => {
       const e = empMap.get(s.employeeId)!;
       return [e.nik, e.name, e.bankName, e.bankAccount, String(s.netPay), `Gaji ${monthLabel(period)}`].join(",");
     });
@@ -118,7 +118,7 @@ export function PayrollView({
               {run && <PayrollBadge status={run.status} />}
             </div>
             <p className="mt-0.5 text-sm text-muted">
-              {slips.length} karyawan · sinkron otomatis dengan rekap absensi · lembur dibayar terpisah
+              {currentSlips.length} karyawan · sinkron otomatis dengan rekap absensi · lembur dibayar terpisah
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -145,7 +145,7 @@ export function PayrollView({
         </CardContent>
       </Card>
 
-      {/* Totals */}
+      {/* Totals (periode berjalan) */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Total bruto" value={rupiah(totals.gross, { compact: true })} icon={Wallet} tone="forest" />
         <StatCard label="Total BPJS (karyawan)" value={rupiah(totals.bpjs, { compact: true })} icon={Landmark} tone="sky" />
@@ -153,78 +153,14 @@ export function PayrollView({
         <StatCard label="Total transfer bersih" value={rupiah(totals.net, { compact: true })} icon={Banknote} tone="matcha" />
       </div>
 
-      {/* Payslip table */}
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>Rincian Gaji per Karyawan</CardTitle>
-          <span className="text-sm text-muted">{monthLabel(period)}</span>
-        </CardHeader>
-
-        {/* Desktop */}
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
-                <th className="px-5 py-3">Karyawan</th>
-                <th className="px-5 py-3 text-right">Bruto</th>
-                <th className="px-5 py-3 text-right">BPJS</th>
-                <th className="px-5 py-3 text-right">PPh 21</th>
-                <th className="px-5 py-3 text-right">Bersih</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {slips.map((s) => {
-                const e = empMap.get(s.employeeId)!;
-                return (
-                  <tr
-                    key={s.id}
-                    onClick={() => setOpenSlip(s)}
-                    className="cursor-pointer transition-colors hover:bg-cream/60"
-                  >
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={e.name} size="sm" />
-                        <div>
-                          <p className="font-medium text-ink">{e.name}</p>
-                          <p className="text-xs text-faint">{e.position}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-right tabular-nums text-muted">{rupiah(s.grossPay)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-muted">- {rupiah(s.bpjsEmployeeTotal)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums text-muted">- {rupiah(s.pph21)}</td>
-                    <td className="px-5 py-3 text-right font-semibold tabular-nums text-forest-700">{rupiah(s.netPay)}</td>
-                    <td className="px-5 py-3 text-right">
-                      <FileText className="ml-auto h-4 w-4 text-faint" />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile */}
-        <div className="divide-y divide-line md:hidden">
-          {slips.map((s) => {
-            const e = empMap.get(s.employeeId)!;
-            return (
-              <button key={s.id} onClick={() => setOpenSlip(s)} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-cream/60">
-                <Avatar name={e.name} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-ink">{e.name}</p>
-                  <p className="text-xs text-faint">Bruto {rupiah(s.grossPay, { compact: true })}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold tabular-nums text-forest-700">{rupiah(s.netPay, { compact: true })}</p>
-                  <p className="text-[11px] text-faint">bersih</p>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </Card>
+      {/* Riwayat slip per baris — klik untuk masuk halaman detail */}
+      <PayslipList
+        slips={slips}
+        employees={employees.map((e) => ({ id: e.id, name: e.name, position: e.position }))}
+        showEmployee
+        title="Slip Gaji per Karyawan"
+        defaultFrom={period}
+      />
 
       {/* Run history */}
       <Card>
@@ -248,16 +184,6 @@ export function PayrollView({
           ))}
         </div>
       </Card>
-
-      <Sheet
-        open={!!openSlip}
-        onClose={() => setOpenSlip(null)}
-        title="Slip Gaji"
-        description={openSlip ? monthLabel(openSlip.period) : ""}
-        width="lg"
-      >
-        {openSlip && <PayslipDetail slip={openSlip} emp={empMap.get(openSlip.employeeId)!} />}
-      </Sheet>
     </div>
   );
 }

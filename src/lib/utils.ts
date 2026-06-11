@@ -45,6 +45,15 @@ export function monthLabel(period: string): string {
   return `${MONTHS_ID[m - 1]} ${y}`;
 }
 
+/** `n` periode "YYYY-MM" mundur dari `from` (inklusif), terbaru dulu. */
+export function periodsBack(n: number, from: string): string[] {
+  const [y, m] = from.split("-").map(Number);
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(y, m - 1 - i, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
 export function formatTime(input?: string | null): string {
   if (!input) return "—";
   const d = new Date(input);
