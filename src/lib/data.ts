@@ -57,7 +57,10 @@ async function fetchTable<T>(
     const supabase = await createClient();
     if (!supabase) return fallback;
     const { data, error } = await supabase.from(table).select("*");
-    if (error || !data || data.length === 0) return fallback;
+    // Only fall back to seed on a genuine failure. An EMPTY result is a valid
+    // answer (e.g. an employee with no records, RLS-scoped) — returning seed
+    // here would leak demo rows with mismatched ids ("?" avatars).
+    if (error || !data) return fallback;
     return (data as Row[]).map(map);
   } catch {
     return fallback;
@@ -218,28 +221,9 @@ export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, s
 export const getDayOffInLieu = () => fetchTable("day_off_in_lieu", mapDayOff, seedDayOff);
 export const getKpis = () => fetchTable("kpis", mapKpi, seedKpis);
 
-/**
- * Tabungan libur ledger entries, newest request first.
- * Unlike the generic fetcher we DON'T fall back to seed when Supabase is
- * configured: seed ids (e01…) would never match live UUID employees and render
- * as "?" avatars. Seed is used only in pure offline/demo mode. Reads are already
- * RLS-scoped (own / team / HR), so each user only receives rows they may see.
- */
+/** Tabungan libur ledger entries, newest request first (RLS-scoped reads). */
 export async function getTabunganEntries(): Promise<TabunganEntry[]> {
-  let rows: TabunganEntry[] = [];
-  if (!isSupabaseConfigured) {
-    rows = seedTabungan;
-  } else {
-    try {
-      const supabase = await createClient();
-      if (supabase) {
-        const { data, error } = await supabase.from("tabungan_libur_entries").select("*");
-        if (!error && data) rows = data.map(mapTabungan);
-      }
-    } catch {
-      rows = [];
-    }
-  }
+  const rows = await fetchTable("tabungan_libur_entries", mapTabungan, seedTabungan);
   return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 }
 

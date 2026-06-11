@@ -121,6 +121,9 @@ export function LeaveView({
 
       {tab === "requests" ? (
         <div className="space-y-3">
+          {list.length === 0 && (
+            <div className="card px-5 py-10 text-center text-sm text-faint">Belum ada pengajuan cuti/izin.</div>
+          )}
           {list.map((r) => {
             const emp = empMap.get(r.employeeId);
             return (
