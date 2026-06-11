@@ -200,8 +200,8 @@ export function ShiftsView({
 
       {/* Tabungan libur — ledger of deposits (kerja hari libur) & withdrawals (ambil libur) */}
       <Card>
-        <CardHeader>
-          <div>
+        <CardHeader className="flex-wrap">
+          <div className="min-w-0">
             <CardTitle>Tabungan Libur</CardTitle>
             <p className="mt-0.5 text-sm text-muted">
               Kerja di hari libur menambah tabungan (dikonfirmasi HR); cairkan untuk ambil libur pengganti.
@@ -402,8 +402,8 @@ function ScheduleCard({
 
   return (
     <Card>
-      <CardHeader>
-        <div>
+      <CardHeader className="flex-wrap">
+        <div className="min-w-0">
           <CardTitle>Jadwal Shift</CardTitle>
           <p className="mt-0.5 text-sm text-muted">
             {canManage ? "Atur shift tiap karyawan untuk tanggal terpilih." : "Jadwal shift karyawan untuk tanggal terpilih."}
@@ -420,7 +420,7 @@ function ScheduleCard({
           const teamShifts = shifts.filter((s) => s.team === e.team);
           const current = assigned ? shiftById.get(assigned) : undefined;
           return (
-            <div key={e.id} className="flex items-center gap-3 px-5 py-3">
+            <div key={e.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
               <Avatar name={e.name} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-ink">{e.name}</p>
@@ -429,13 +429,13 @@ function ScheduleCard({
                 </p>
               </div>
               {canManage ? (
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   {busyEmp === e.id && <Loader2 className="h-4 w-4 animate-spin text-faint" />}
                   <Select
                     value={assigned}
                     disabled={busyEmp === e.id}
                     onChange={(ev) => assign(e.id, ev.target.value)}
-                    className="w-44"
+                    className="w-36 sm:w-48"
                   >
                     <option value="">— Tanpa shift</option>
                     {teamShifts.map((s) => (
@@ -444,12 +444,13 @@ function ScheduleCard({
                   </Select>
                 </div>
               ) : current ? (
-                <span className="flex items-center gap-2 text-sm text-muted">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: current.color }} />
-                  {current.name} · {current.startTime}–{current.endTime}
+                <span className="flex shrink-0 items-center gap-2 text-right text-sm text-muted">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: current.color }} />
+                  <span className="hidden sm:inline">{current.name} · </span>
+                  {current.startTime}–{current.endTime}
                 </span>
               ) : (
-                <span className="text-sm text-faint">— Tanpa shift</span>
+                <span className="shrink-0 text-sm text-faint">— Tanpa shift</span>
               )}
             </div>
           );

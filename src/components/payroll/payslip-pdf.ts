@@ -15,10 +15,10 @@ const LINE: [number, number, number] = [225, 222, 210];
 const rp = (v: number) => rupiah(v).replace(/ /g, " ");
 
 /**
- * Slip gaji sebagai file PDF sungguhan (A4), digenerate di sisi klien.
+ * Slip gaji sebagai dokumen PDF (A4), digenerate di sisi klien.
  * jspdf di-import dinamis supaya tidak ikut bundle awal halaman.
  */
-export async function downloadPayslipPdf(slip: Payslip, emp: Employee): Promise<void> {
+async function buildPayslipPdf(slip: Payslip, emp: Employee) {
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
@@ -157,5 +157,20 @@ export async function downloadPayslipPdf(slip: Payslip, emp: Employee): Promise<
   }).format(new Date());
   doc.text(`Dokumen dihasilkan otomatis oleh Treelogy HR System · ${generated} WITA`, W / 2, y, { align: "center" });
 
+  return doc;
+}
+
+/** Unduh slip sebagai file PDF. */
+export async function downloadPayslipPdf(slip: Payslip, emp: Employee): Promise<void> {
+  const doc = await buildPayslipPdf(slip, emp);
   doc.save(`slip-gaji-${emp.nik}-${slip.period}.pdf`);
+}
+
+/**
+ * Blob URL untuk pratinjau PDF di iframe — pemanggil WAJIB
+ * URL.revokeObjectURL() saat pratinjau ditutup.
+ */
+export async function payslipPdfPreviewUrl(slip: Payslip, emp: Employee): Promise<string> {
+  const doc = await buildPayslipPdf(slip, emp);
+  return URL.createObjectURL(doc.output("blob"));
 }

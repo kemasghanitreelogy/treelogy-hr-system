@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { FileDown, Loader2, Printer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { Eye, FileDown, Loader2, Printer, X } from "lucide-react";
 import type { Employee, Payslip } from "@/lib/types";
 import { jkkRate } from "@/lib/payroll";
 import { monthLabel, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { downloadPayslipPdf } from "./payslip-pdf";
+import { downloadPayslipPdf, payslipPdfPreviewUrl } from "./payslip-pdf";
 
 export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
   const b = slip.bpjs;
   const toast = useToast();
   const [downloading, setDownloading] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   async function downloadPdf() {
     setDownloading(true);
@@ -27,9 +30,25 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
     }
   }
 
+  async function openPreview() {
+    setPreviewing(true);
+    try {
+      setPreviewUrl(await payslipPdfPreviewUrl(slip, emp));
+    } catch {
+      toast.error("Gagal membuat pratinjau PDF. Coba lagi.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+  }
+
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Avatar name={emp.name} />
           <div>
@@ -38,15 +57,26 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button size="sm" onClick={downloadPdf} disabled={downloading}>
-            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            Unduh PDF
+          <Button size="sm" onClick={openPreview} disabled={previewing}>
+            {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+            Pratinjau PDF
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" /> Cetak
+          <Button variant="outline" size="sm" onClick={downloadPdf} disabled={downloading}>
+            {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+            Unduh
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => window.print()} aria-label="Cetak">
+            <Printer className="h-4 w-4" />
           </Button>
         </div>
       </div>
+
+      <PdfPreviewOverlay
+        url={previewUrl}
+        title={`Slip Gaji · ${emp.name} · ${monthLabel(slip.period)}`}
+        onDownload={downloadPdf}
+        onClose={closePreview}
+      />
 
       <div className="rounded-2xl bg-bark p-4 text-cream">
         <p className="text-sm text-forest-100/70">Gaji bersih · {monthLabel(slip.period)}</p>
@@ -91,6 +121,74 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
         Transfer ke {emp.bankName} · {emp.bankAccount}
       </p>
     </div>
+  );
+}
+
+/**
+ * Pratinjau PDF dalam overlay. Mobile-first: layar penuh di HP (iframe PDF
+ * butuh ruang), kartu di tengah pada layar ≥sm. Portal ke body (di atas Sheet,
+ * z-[70] vs z-[60]) — ingat: transform pada ancestor merusak position:fixed.
+ */
+function PdfPreviewOverlay({
+  url,
+  title,
+  onDownload,
+  onClose,
+}: {
+  url: string | null;
+  title: string;
+  onDownload: () => void;
+  onClose: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!url) return;
+    // Capture phase + stopPropagation: Escape menutup pratinjau saja,
+    // bukan Sheet slip gaji di belakangnya (listener Sheet di bubble phase).
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [url, onClose]);
+
+  if (!url || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70]">
+      <div className="absolute inset-0 bg-bark/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="absolute inset-0 flex flex-col overflow-hidden bg-cream sm:inset-y-6 sm:left-1/2 sm:right-auto sm:w-[min(760px,92vw)] sm:-translate-x-1/2 sm:rounded-2xl sm:shadow-pop"
+      >
+        <div className="flex items-center gap-2 border-b border-line bg-panel px-4 py-3">
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{title}</p>
+          <Button variant="outline" size="sm" onClick={onDownload}>
+            <FileDown className="h-4 w-4" />
+            <span className="hidden sm:inline">Unduh</span>
+          </Button>
+          <button
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-sand"
+            aria-label="Tutup pratinjau"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <iframe src={url} title={title} className="w-full flex-1 border-0 bg-white" />
+        <p className="border-t border-line bg-panel px-4 py-2 text-center text-[11px] text-faint sm:hidden">
+          Jika pratinjau tidak tampil di browser HP Anda, gunakan tombol Unduh.
+        </p>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
