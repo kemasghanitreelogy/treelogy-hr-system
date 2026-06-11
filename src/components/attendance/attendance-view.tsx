@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { CalendarDays, ChevronRight, Clock, Download } from "lucide-react";
 import type { AttendanceRecord, Employee, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
-import { cn, formatTime, minutesToHM } from "@/lib/utils";
+import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -130,8 +130,14 @@ export function AttendanceView({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
-                <th className="px-5 py-3">Karyawan</th>
-                <th className="px-5 py-3">Tim</th>
+                {canReviewAll ? (
+                  <>
+                    <th className="px-5 py-3">Karyawan</th>
+                    <th className="px-5 py-3">Tim</th>
+                  </>
+                ) : (
+                  <th className="px-5 py-3">Tanggal</th>
+                )}
                 <th className="px-5 py-3">Masuk</th>
                 <th className="px-5 py-3">Pulang</th>
                 <th className="px-5 py-3">Telat</th>
@@ -148,20 +154,26 @@ export function AttendanceView({
                   onClick={() => setSelected(r)}
                   className="cursor-pointer transition-colors hover:bg-cream/60"
                 >
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={r.emp.name} size="sm" />
-                      <div>
-                        <p className="font-medium text-ink">{r.emp.name}</p>
-                        <p className="text-xs text-faint">{r.emp.position}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", TEAM_META[r.emp.team].chip)}>
-                      {TEAM_META[r.emp.team].label}
-                    </span>
-                  </td>
+                  {canReviewAll ? (
+                    <>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar name={r.emp.name} size="sm" />
+                          <div>
+                            <p className="font-medium text-ink">{r.emp.name}</p>
+                            <p className="text-xs text-faint">{r.emp.position}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", TEAM_META[r.emp.team].chip)}>
+                          {TEAM_META[r.emp.team].label}
+                        </span>
+                      </td>
+                    </>
+                  ) : (
+                    <td className="px-5 py-3 font-medium text-ink">{formatDate(r.date)}</td>
+                  )}
                   <td className="px-5 py-3 tabular-nums text-muted">{formatTime(r.clockIn)}</td>
                   <td className="px-5 py-3 tabular-nums text-muted">{formatTime(r.clockOut)}</td>
                   <td className="px-5 py-3 tabular-nums">
@@ -200,11 +212,17 @@ export function AttendanceView({
             className="card w-full p-4 text-left transition-colors active:bg-cream/60"
           >
             <div className="flex items-center gap-3">
-              <Avatar name={r.emp.name} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-ink">{r.emp.name}</p>
-                <p className="truncate text-xs text-faint">{r.emp.position}</p>
-              </div>
+              {canReviewAll ? (
+                <>
+                  <Avatar name={r.emp.name} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-ink">{r.emp.name}</p>
+                    <p className="truncate text-xs text-faint">{r.emp.position}</p>
+                  </div>
+                </>
+              ) : (
+                <p className="min-w-0 flex-1 truncate font-medium text-ink">{formatDate(r.date)}</p>
+              )}
               <AttendanceBadge status={r.status} />
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">

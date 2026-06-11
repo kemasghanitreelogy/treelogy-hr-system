@@ -19,7 +19,12 @@ export default async function AttendancePage() {
     getAttendanceSettings(),
     getSessionUser(),
   ]);
-  const records = all.filter((r) => r.date.startsWith(CURRENT_PERIOD));
+  const canManage = can(user, "attendance.manage");
+  // Selain HR/admin hanya melihat absensinya sendiri (RLS sudah membatasi di
+  // Supabase; filter ini menjaga perilaku yang sama di mode seed/offline).
+  const records = all
+    .filter((r) => r.date.startsWith(CURRENT_PERIOD))
+    .filter((r) => canManage || (user?.employeeId != null && r.employeeId === user.employeeId));
   const employees = employeesAll.map((e) => ({
     id: e.id,
     name: e.name,
@@ -29,7 +34,6 @@ export default async function AttendancePage() {
     workEnd: e.workEnd ?? "17:00",
   }));
   const dates = Array.from(new Set(records.map((r) => r.date))).sort();
-  const canManage = can(user, "attendance.manage");
 
   // Pick the geofence of the division the current user is registered in.
   const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
