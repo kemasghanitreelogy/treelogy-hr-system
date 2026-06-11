@@ -28,6 +28,17 @@ export default async function ShiftsPage() {
     ? balances.find((b) => b.employeeId === user.employeeId)?.tabunganLibur ?? 0
     : 0;
 
+  // Visibility: HR/admin see everyone; a division manager sees their own team;
+  // everyone else sees only their own entries. (RLS enforces the same on reads;
+  // this keeps it correct even in the seedless/offline path.)
+  const teamOf = new Map(employeesAll.map((e) => [e.id, e.team]));
+  const visibleEntries = entries.filter((e) => {
+    if (canApproveAll) return true;
+    if (user?.employeeId && e.employeeId === user.employeeId) return true;
+    if (approverTeam) return teamOf.get(e.employeeId) === approverTeam;
+    return false;
+  });
+
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
@@ -35,7 +46,7 @@ export default async function ShiftsPage() {
       </p>
       <ShiftsView
         shifts={shifts}
-        entries={entries}
+        entries={visibleEntries}
         employees={employees}
         currentUserName={user?.name ?? "HR"}
         currentEmployeeId={user?.employeeId ?? null}

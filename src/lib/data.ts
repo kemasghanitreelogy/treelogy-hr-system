@@ -218,9 +218,28 @@ export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, s
 export const getDayOffInLieu = () => fetchTable("day_off_in_lieu", mapDayOff, seedDayOff);
 export const getKpis = () => fetchTable("kpis", mapKpi, seedKpis);
 
-/** Tabungan libur ledger entries, newest request first. */
+/**
+ * Tabungan libur ledger entries, newest request first.
+ * Unlike the generic fetcher we DON'T fall back to seed when Supabase is
+ * configured: seed ids (e01…) would never match live UUID employees and render
+ * as "?" avatars. Seed is used only in pure offline/demo mode. Reads are already
+ * RLS-scoped (own / team / HR), so each user only receives rows they may see.
+ */
 export async function getTabunganEntries(): Promise<TabunganEntry[]> {
-  const rows = await fetchTable("tabungan_libur_entries", mapTabungan, seedTabungan);
+  let rows: TabunganEntry[] = [];
+  if (!isSupabaseConfigured) {
+    rows = seedTabungan;
+  } else {
+    try {
+      const supabase = await createClient();
+      if (supabase) {
+        const { data, error } = await supabase.from("tabungan_libur_entries").select("*");
+        if (!error && data) rows = data.map(mapTabungan);
+      }
+    } catch {
+      rows = [];
+    }
+  }
   return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 }
 
