@@ -114,6 +114,26 @@ export interface OvertimeRequest {
   requestedAt: string;
 }
 
+/**
+ * Pengajuan clock-in/out di LUAR area kantor — butuh konfirmasi HR.
+ * Saat disetujui, absensi ditulis memakai requested_at (momen clock asli).
+ */
+export interface ClockApprovalRequest {
+  id: string;
+  employeeId: string;
+  date: string; // YYYY-MM-DD
+  direction: "in" | "out";
+  requestedAt: string; // ISO — momen clock sebenarnya
+  lat?: number | null;
+  lng?: number | null;
+  distanceM?: number | null;
+  photoPath?: string | null;
+  note?: string | null; // catatan opsional dari karyawan untuk HR
+  status: RequestStatus;
+  approver?: string | null;
+  decidedAt?: string | null;
+}
+
 export type NotifTone = "approved" | "rejected" | "paid" | "pending";
 
 export interface AppNotification {

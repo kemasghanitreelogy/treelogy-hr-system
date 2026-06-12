@@ -2,6 +2,7 @@ import {
   CURRENT_PERIOD,
   TODAY,
   attendance as seedAttendance,
+  clockApprovals as seedClockApprovals,
   dayOffInLieu as seedDayOff,
   employees as seedEmployees,
   kpis as seedKpis,
@@ -20,6 +21,7 @@ import { createClient } from "./supabase/server";
 import type {
   AttendanceRecord,
   AttendanceSettings,
+  ClockApprovalRequest,
   DayOffInLieu,
   Employee,
   Kpi,
@@ -268,6 +270,28 @@ export const getLeaveRequestsRaw = () => fetchTable("leave_requests", mapLeave, 
 export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, seedBalances);
 export const getDayOffInLieu = () => fetchTable("day_off_in_lieu", mapDayOff, seedDayOff);
 export const getKpis = () => fetchTable("kpis", mapKpi, seedKpis);
+
+export const mapClockApproval = (r: Row): ClockApprovalRequest => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  date: String(r.date),
+  direction: r.direction as ClockApprovalRequest["direction"],
+  requestedAt: String(r.requested_at),
+  lat: numOrNull(r.lat),
+  lng: numOrNull(r.lng),
+  distanceM: numOrNull(r.distance_m),
+  photoPath: (r.photo_path as string) ?? null,
+  note: (r.note as string) ?? null,
+  status: r.status as ClockApprovalRequest["status"],
+  approver: (r.approver as string) ?? null,
+  decidedAt: (r.decided_at as string) ?? null,
+});
+
+/** Pengajuan clock di luar area, terbaru dulu (RLS: HR semua, karyawan miliknya). */
+export async function getClockApprovals(): Promise<ClockApprovalRequest[]> {
+  const rows = await fetchTable("clock_approval_requests", mapClockApproval, seedClockApprovals);
+  return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+}
 
 /** Tabungan libur ledger entries, newest request first (RLS-scoped reads). */
 export async function getTabunganEntries(): Promise<TabunganEntry[]> {

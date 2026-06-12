@@ -1,5 +1,6 @@
 import type {
   AttendanceRecord,
+  ClockApprovalRequest,
   DayOffInLieu,
   Employee,
   Kpi,
@@ -165,6 +166,12 @@ export const dayOffInLieu: DayOffInLieu[] = [
   { id: "d2", employeeId: "e01", workedDate: "2026-05-31", offDate: "2026-06-14", reason: "Public holiday production run", status: "approved" },
   { id: "d3", employeeId: "e03", workedDate: "2026-06-08", offDate: "2026-06-19", reason: "Maintenance shift on rest day", status: "pending" },
   { id: "d4", employeeId: "e13", workedDate: "2026-06-07", offDate: "2026-06-18", reason: "Packaging backlog (Sunday)", status: "pending" },
+];
+
+// Clock di luar area yang menunggu konfirmasi HR (demo).
+export const clockApprovals: ClockApprovalRequest[] = [
+  { id: "ca1", employeeId: "e06", date: TODAY, direction: "in", requestedAt: `${TODAY}T08:12:00+08:00`, lat: -8.67, lng: 115.21, distanceM: 1850, note: "Kunjungan ke supplier dulu pagi ini, langsung dari rumah.", status: "pending" },
+  { id: "ca2", employeeId: "e04", date: TODAY, direction: "out", requestedAt: `${TODAY}T17:40:00+08:00`, lat: -8.52, lng: 115.18, distanceM: 920, note: null, status: "pending" },
 ];
 
 // Tabungan libur ledger — deposits (kerja hari libur) and withdrawals (ambil libur).

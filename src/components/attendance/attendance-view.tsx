@@ -1,15 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronRight, Clock, Download } from "lucide-react";
-import type { AttendanceRecord, Employee, Team } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LogIn, LogOut, X } from "lucide-react";
+import type { AttendanceRecord, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
+import { formatDistance } from "@/lib/geo";
 import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
+import { useToast } from "@/components/ui/toast";
 import { AttendanceDetail } from "./attendance-detail";
 
 type EmpLite = Pick<Employee, "id" | "name" | "team" | "position" | "workStart" | "workEnd">;
@@ -24,6 +27,8 @@ export function AttendanceView({
   dates,
   defaultDate,
   canReviewAll = true,
+  approvals = [],
+  currentUserName = "HR",
 }: {
   records: AttendanceRecord[];
   employees: EmpLite[];
@@ -31,6 +36,9 @@ export function AttendanceView({
   defaultDate: string;
   /** HR/admin see & review everyone; an employee sees only their own. */
   canReviewAll?: boolean;
+  /** Pengajuan clock di luar area (pending) — panel konfirmasi HR. */
+  approvals?: ClockApprovalRequest[];
+  currentUserName?: string;
 }) {
   const [date, setDate] = useState(defaultDate);
   const [team, setTeam] = useState<"all" | Team>("all");
@@ -94,6 +102,11 @@ export function AttendanceView({
           </Button>
         )}
       </div>
+
+      {/* Konfirmasi clock di luar area (HR) */}
+      {canReviewAll && approvals.length > 0 && (
+        <ClockApprovalsCard approvals={approvals} employees={employees} currentUserName={currentUserName} />
+      )}
 
       {/* Summary */}
       {canReviewAll && (
@@ -247,6 +260,108 @@ export function AttendanceView({
         onClose={() => setSelected(null)}
       />
     </div>
+  );
+}
+
+/** Panel HR: setujui/tolak clock-in/out yang dilakukan di luar area kantor. */
+function ClockApprovalsCard({
+  approvals,
+  employees,
+  currentUserName,
+}: {
+  approvals: ClockApprovalRequest[];
+  employees: EmpLite[];
+  currentUserName: string;
+}) {
+  const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const [list, setList] = useState(approvals);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const toast = useToast();
+  const router = useRouter();
+
+  async function decide(id: string, status: RequestStatus) {
+    const prev = list.find((a) => a.id === id);
+    if (!prev) return;
+    setBusyId(id);
+    try {
+      const res = await fetch("/api/attendance/approvals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status, approver: currentUserName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.request) {
+        toast.error("Gagal memproses. Pastikan Anda HR/admin.");
+        return;
+      }
+      setList((cur) => cur.filter((a) => a.id !== id));
+      toast.success(status === "approved" ? "Absensi dikonfirmasi ✓" : "Pengajuan ditolak ✓");
+      router.refresh();
+    } catch {
+      toast.error("Koneksi bermasalah. Coba lagi.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (list.length === 0) return null;
+
+  return (
+    <Card className="border-2 border-gold/40">
+      <CardHeader className="flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-clay-soft text-[#8c3c1f]">
+            <AlertTriangle className="h-4 w-4" />
+          </span>
+          <div>
+            <CardTitle>Clock di Luar Area — Perlu Konfirmasi</CardTitle>
+            <p className="mt-0.5 text-sm text-muted">Karyawan absen di luar radius kantor. Setujui untuk merekam absensinya.</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {list.map((a) => {
+          const emp = empMap.get(a.employeeId);
+          const isIn = a.direction === "in";
+          return (
+            <div key={a.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3 sm:w-52">
+                <Avatar name={emp?.name ?? "?"} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-ink">{emp?.name}</p>
+                  <p className="truncate text-xs text-faint">{emp?.position}</p>
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  <span className={cn("inline-flex items-center gap-1.5 font-medium", isIn ? "text-forest-700" : "text-[#8c3c1f]")}>
+                    {isIn ? <LogIn className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
+                    Clock-{a.direction}
+                  </span>
+                  <span className="text-ink">{formatDate(a.date)} · {formatTime(a.requestedAt)}</span>
+                  {a.distanceM != null && (
+                    <span className="text-[#8c3c1f]">{formatDistance(a.distanceM)} dari lokasi</span>
+                  )}
+                </div>
+                {a.note && (
+                  <p className="mt-1.5 rounded-lg bg-sand/70 px-2.5 py-1.5 text-sm text-muted">
+                    &ldquo;{a.note}&rdquo;
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 sm:w-auto">
+                <Button size="sm" disabled={busyId === a.id} onClick={() => decide(a.id, "approved")} className="flex-1 sm:flex-none">
+                  <Check className="h-4 w-4" /> Setujui
+                </Button>
+                <Button size="sm" variant="outline" disabled={busyId === a.id} onClick={() => decide(a.id, "rejected")} className="flex-1 sm:flex-none">
+                  <X className="h-4 w-4" /> Tolak
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 

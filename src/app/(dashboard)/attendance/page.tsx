@@ -6,6 +6,7 @@ import {
   TODAY,
   getAttendance,
   getAttendanceSettings,
+  getClockApprovals,
   getEmployees,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
@@ -14,12 +15,14 @@ import { audienceFromPermissions } from "@/components/layout/nav-items";
 export const metadata = { title: "Absensi — Treelogy HR" };
 
 export default async function AttendancePage() {
-  const [all, employeesAll, settings, user] = await Promise.all([
+  const [all, employeesAll, settings, user, approvalsAll] = await Promise.all([
     getAttendance(),
     getEmployees(),
     getAttendanceSettings(),
     getSessionUser(),
+    getClockApprovals(),
   ]);
+  const pendingApprovals = approvalsAll.filter((a) => a.status === "pending");
   const canManage = can(user, "attendance.manage");
   // Selain HR/admin hanya melihat absensinya sendiri (RLS sudah membatasi di
   // Supabase; filter ini menjaga perilaku yang sama di mode seed/offline).
@@ -52,6 +55,8 @@ export default async function AttendancePage() {
       dates={dates}
       defaultDate={dates.includes(TODAY) ? TODAY : dates[dates.length - 1] ?? TODAY}
       canReviewAll={canManage}
+      approvals={canManage ? pendingApprovals : []}
+      currentUserName={user?.name ?? "HR"}
     />
   );
 

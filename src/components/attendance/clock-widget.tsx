@@ -12,9 +12,11 @@ import {
   LogOut,
   MapPin,
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import type { TeamGeofence } from "@/lib/types";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
+import { Field, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { CameraCapture } from "./camera-capture";
 
@@ -76,6 +78,11 @@ export function ClockWidget({
   const [flow, setFlow] = useState<Flow>("idle");
   const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
+  // Alur "di luar area": modal danger → catatan opsional → kirim sebagai
+  // pengajuan konfirmasi HR (absensi tidak langsung tercatat).
+  const [oorPrompt, setOorPrompt] = useState<{ distance: number } | null>(null);
+  const [oorNote, setOorNote] = useState("");
+  const [oorMode, setOorMode] = useState(false);
   const pendingDir = phase === "out" ? "in" : "out";
 
   useEffect(() => {
@@ -110,12 +117,16 @@ export function ClockWidget({
           // rather than truly being away — ask to retry instead of hard-rejecting.
           const couldBeInside = distance - accuracy <= geofence.radiusM;
           setFlow("idle");
-          setNotice({
-            tone: "error",
-            text: couldBeInside
-              ? `Sinyal GPS kurang akurat (±${Math.round(accuracy)} m). Pindah ke area terbuka lalu coba lagi.`
-              : `Anda ${formatDistance(distance)} dari ${geofence.label} — maksimal ${geofence.radiusM} m. Mendekatlah ke lokasi.`,
-          });
+          if (couldBeInside) {
+            setNotice({
+              tone: "error",
+              text: `Sinyal GPS kurang akurat (±${Math.round(accuracy)} m). Pindah ke area terbuka lalu coba lagi.`,
+            });
+            return;
+          }
+          // Benar-benar di luar area → tawarkan jalur konfirmasi HR.
+          setOorNote("");
+          setOorPrompt({ distance });
           return;
         }
       } catch {
@@ -134,19 +145,36 @@ export function ClockWidget({
 
   async function onCapture(dataUrl: string) {
     setFlow("submitting");
-    await submit(geo, dataUrl);
+    await submit(geo, dataUrl, oorMode);
+  }
+
+  // Karyawan setuju mengajukan konfirmasi HR dari modal "di luar area".
+  function confirmOutOfRange() {
+    setOorPrompt(null);
+    setOorMode(true);
+    setNotice(null);
+    if (requirePhoto) setFlow("camera");
+    else submit(geo, null, true);
   }
 
   async function submit(
     coords: { lat: number; lng: number; distance: number; accuracy: number } | null,
     photo: string | null,
+    asOutOfRange = false,
   ) {
     setFlow("submitting");
     try {
       const res = await fetch("/api/attendance/clock", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ direction: pendingDir, lat: coords?.lat, lng: coords?.lng, photo }),
+        body: JSON.stringify({
+          direction: pendingDir,
+          lat: coords?.lat,
+          lng: coords?.lng,
+          photo,
+          confirmOutOfRange: asOutOfRange || undefined,
+          note: asOutOfRange ? oorNote.trim() || undefined : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -160,6 +188,18 @@ export function ClockWidget({
           setNotice({ tone: "error", text: "Gagal merekam absensi. Coba lagi." });
         }
         setFlow("idle");
+        setOorMode(false);
+        return;
+      }
+      // Pengajuan luar area terkirim — absensi MENUNGGU konfirmasi HR.
+      if (data.pending) {
+        setOorMode(false);
+        setOorNote("");
+        setNotice({
+          tone: "ok",
+          text: `Pengajuan clock-${pendingDir} di luar area terkirim — menunggu konfirmasi HR ✓`,
+        });
+        router.refresh();
         return;
       }
       if (pendingDir === "in") {
@@ -294,8 +334,108 @@ export function ClockWidget({
         open={flow === "camera"}
         title={`Verifikasi Wajah · Clock ${pendingDir === "in" ? "In" : "Out"}`}
         onCapture={onCapture}
-        onCancel={() => setFlow("idle")}
+        onCancel={() => {
+          setFlow("idle");
+          setOorMode(false);
+        }}
+      />
+
+      <OutOfRangeModal
+        open={oorPrompt != null}
+        direction={pendingDir}
+        distance={oorPrompt?.distance ?? 0}
+        maxRadius={geofence.radiusM}
+        locationLabel={geofence.label}
+        note={oorNote}
+        onNoteChange={setOorNote}
+        onConfirm={confirmOutOfRange}
+        onCancel={() => setOorPrompt(null)}
       />
     </>
+  );
+}
+
+/**
+ * Modal danger saat clock di luar area: jelaskan jaraknya, minta persetujuan
+ * mengirim PENGAJUAN ke HR + catatan opsional. Portal ke body (transform pada
+ * ancestor seperti .fade-up akan merusak position:fixed).
+ */
+function OutOfRangeModal({
+  open,
+  direction,
+  distance,
+  maxRadius,
+  locationLabel,
+  note,
+  onNoteChange,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  direction: "in" | "out";
+  distance: number;
+  maxRadius: number;
+  locationLabel: string;
+  note: string;
+  onNoteChange: (v: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onCancel]);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[75] flex items-end justify-center sm:items-center">
+      <div className="absolute inset-0 bg-bark/50 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="Anda di luar area kantor"
+        className="relative w-full rounded-t-3xl bg-panel p-5 shadow-pop sm:max-w-md sm:rounded-3xl"
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-clay-soft text-[#8c3c1f]">
+            <AlertTriangle className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-semibold text-ink">Anda di luar area kantor</h2>
+            <p className="mt-1 text-sm text-muted">
+              Posisi Anda <span className="font-semibold text-[#8c3c1f]">{formatDistance(distance)}</span> dari{" "}
+              {locationLabel} (maksimal {maxRadius} m). Clock-{direction} perlu{" "}
+              <span className="font-semibold">konfirmasi HR</span> terlebih dahulu — absensi tercatat setelah disetujui.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <Field label="Catatan untuk HR (opsional)">
+            <Textarea
+              value={note}
+              onChange={(e) => onNoteChange(e.target.value)}
+              placeholder="cth. Kunjungan ke supplier / tugas luar kantor…"
+              rows={3}
+            />
+          </Field>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
+            Batal
+          </Button>
+          <Button type="button" variant="danger" className="flex-1" onClick={onConfirm}>
+            Kirim ke HR
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

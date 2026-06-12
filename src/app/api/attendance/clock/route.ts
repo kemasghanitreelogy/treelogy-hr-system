@@ -17,6 +17,10 @@ interface Body {
   lat?: number;
   lng?: number;
   photo?: string; // data URL
+  /** true = karyawan sadar di luar area dan minta konfirmasi HR. */
+  confirmOutOfRange?: boolean;
+  /** Catatan opsional untuk HR saat mengajukan konfirmasi luar area. */
+  note?: string;
 }
 
 export async function POST(req: Request) {
@@ -47,11 +51,11 @@ export async function POST(req: Request) {
     .select("employee_id")
     .eq("id", user.id)
     .maybeSingle();
-  let emp: { work_start?: string | null; work_end?: string | null; team?: string | null } | null = null;
+  let emp: { name?: string | null; work_start?: string | null; work_end?: string | null; team?: string | null } | null = null;
   if (profile?.employee_id) {
     const { data } = await supabase
       .from("employees")
-      .select("work_start, work_end, team")
+      .select("name, work_start, work_end, team")
       .eq("id", profile.employee_id)
       .maybeSingle();
     emp = data;
@@ -68,6 +72,7 @@ export async function POST(req: Request) {
 
   // Geofence re-validation against the employee's OWN division (never trust client).
   let distance: number | null = null;
+  let outOfRange = false;
   if (requireLocation) {
     if (typeof body.lat !== "number" || typeof body.lng !== "number") {
       return NextResponse.json({ error: "location_required" }, { status: 400 });
@@ -81,10 +86,15 @@ export async function POST(req: Request) {
     const fence = gf ?? { lat: -8.409518, lng: 115.188919, radius_m: 50 };
     distance = distanceMeters(body.lat, body.lng, fence.lat, fence.lng);
     if (distance > fence.radius_m) {
-      return NextResponse.json(
-        { error: "out_of_range", distance, maxRadius: fence.radius_m },
-        { status: 403 },
-      );
+      // Tanpa flag konfirmasi → tolak seperti biasa (klien menampilkan modal).
+      // Dengan flag → lanjut sebagai PENGAJUAN konfirmasi HR, bukan absensi langsung.
+      if (!body.confirmOutOfRange) {
+        return NextResponse.json(
+          { error: "out_of_range", distance, maxRadius: fence.radius_m },
+          { status: 403 },
+        );
+      }
+      outOfRange = true;
     }
   }
 
@@ -100,7 +110,7 @@ export async function POST(req: Request) {
     try {
       const base64 = body.photo.split(",")[1];
       const buffer = Buffer.from(base64, "base64");
-      const path = `${user.id}/${new Date().toISOString().slice(0, 10)}-${direction}.jpg`;
+      const path = `${user.id}/${new Date().toISOString().slice(0, 10)}-${direction}${body.confirmOutOfRange ? "-oor" : ""}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("attendance-selfies")
         .upload(path, buffer, { contentType: "image/jpeg", upsert: true });
@@ -108,6 +118,36 @@ export async function POST(req: Request) {
     } catch {
       /* ignore upload failure */
     }
+  }
+
+  // Di luar area + minta konfirmasi → JANGAN tulis absensi. Simpan sebagai
+  // pengajuan pending; HR menyetujui → absensi ditulis dengan waktu pengajuan.
+  if (outOfRange) {
+    if (!profile?.employee_id) return NextResponse.json({ error: "no_employee" }, { status: 400 });
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: reqErr } = await supabase.from("clock_approval_requests").insert({
+      employee_id: profile.employee_id,
+      date: today,
+      direction,
+      lat: body.lat ?? null,
+      lng: body.lng ?? null,
+      distance_m: distance == null ? null : Math.round(distance),
+      photo_path: photoPath,
+      note: body.note?.trim() || null,
+    });
+    // 23505 = sudah ada pengajuan pending yang sama hari ini → idempoten, anggap terkirim.
+    if (reqErr && reqErr.code !== "23505") {
+      return NextResponse.json({ error: "request_failed" }, { status: 403 });
+    }
+    if (!reqErr && emp?.team) {
+      await notifyApprovers(profile.employee_id, String(emp.team), {
+        type: "attendance",
+        title: `${emp.name ?? "Karyawan"} clock-${direction} di luar area`,
+        body: `${formatDate(today)} · ${distance == null ? "" : `${Math.round(distance)} m dari lokasi · `}perlu konfirmasi Anda`,
+        href: "/attendance",
+      });
+    }
+    return NextResponse.json({ ok: true, pending: true, distance });
   }
 
   let recorded = false;
