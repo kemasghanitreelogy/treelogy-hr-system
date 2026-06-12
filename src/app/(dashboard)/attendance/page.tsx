@@ -9,6 +9,7 @@ import {
   getEmployees,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
+import { audienceFromPermissions } from "@/components/layout/nav-items";
 
 export const metadata = { title: "Absensi — Treelogy HR" };
 
@@ -39,6 +40,25 @@ export default async function AttendancePage() {
   const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
   const myGeofence = settings.geofences[me?.team ?? "office"];
 
+  // Karyawan (audience "self") sudah punya widget clock di Beranda — di sini
+  // cukup riwayat saja, jangan dobel. HR/admin tetap dapat widget di halaman
+  // ini karena Beranda mereka berisi dashboard operasional (tanpa widget).
+  const showClockWidget = audienceFromPermissions(user?.permissions ?? []) === "ops";
+
+  const view = (
+    <AttendanceView
+      records={records}
+      employees={employees}
+      dates={dates}
+      defaultDate={dates.includes(TODAY) ? TODAY : dates[dates.length - 1] ?? TODAY}
+      canReviewAll={canManage}
+    />
+  );
+
+  if (!showClockWidget) {
+    return <div className="space-y-4">{view}</div>;
+  }
+
   return (
     <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
       <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
@@ -50,13 +70,7 @@ export default async function AttendancePage() {
       </div>
       <div className="space-y-4">
         {canManage && <AttendanceSettingsCard initial={settings} />}
-        <AttendanceView
-          records={records}
-          employees={employees}
-          dates={dates}
-          defaultDate={dates.includes(TODAY) ? TODAY : dates[dates.length - 1] ?? TODAY}
-          canReviewAll={canManage}
-        />
+        {view}
       </div>
     </div>
   );
