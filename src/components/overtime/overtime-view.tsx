@@ -14,6 +14,7 @@ import { Badge, RequestBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { ChangeDecision } from "@/components/ui/change-decision";
 import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
@@ -523,6 +524,8 @@ function OvertimeDetail({
           )}
         </div>
       ) : null}
+
+      {r.status !== "pending" && canDecide && <ChangeDecision status={r.status} deciding={busy} onDecide={onDecide} />}
     </div>
   );
 }

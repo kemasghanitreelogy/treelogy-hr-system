@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { ChangeDecision } from "@/components/ui/change-decision";
 import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
@@ -95,6 +96,10 @@ const STR: Record<
     proofLabel: string;
     noProof: string;
     openInNewTab: string;
+    changeDecision: string;
+    setApproved: string;
+    setRejected: string;
+    setPending: string;
   }
 > = {
   id: {
@@ -155,6 +160,10 @@ const STR: Record<
     proofLabel: "Bukti lampiran",
     noProof: "Tidak ada lampiran.",
     openInNewTab: "Buka di tab baru",
+    changeDecision: "Ubah keputusan",
+    setApproved: "Jadikan Disetujui",
+    setRejected: "Jadikan Ditolak",
+    setPending: "Kembalikan ke Menunggu",
   },
   en: {
     decideFailed: "Failed to process. You can only approve employees in your own division.",
@@ -214,6 +223,10 @@ const STR: Record<
     proofLabel: "Attached proof",
     noProof: "No attachment.",
     openInNewTab: "Open in new tab",
+    changeDecision: "Change decision",
+    setApproved: "Set Approved",
+    setRejected: "Set Rejected",
+    setPending: "Back to Pending",
   },
 };
 
@@ -505,6 +518,8 @@ function LeaveDetail({
           </Button>
         </div>
       )}
+
+      {r.status !== "pending" && canDecide && <ChangeDecision status={r.status} deciding={deciding} onDecide={onDecide} />}
     </div>
   );
 }
