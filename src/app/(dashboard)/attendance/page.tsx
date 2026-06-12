@@ -71,6 +71,7 @@ export default async function AttendancePage() {
           geofence={myGeofence}
           requireLocation={settings.requireLocation}
           requirePhoto={settings.requirePhoto}
+          workDays={me?.workDays}
         />
       </div>
       <div className="space-y-4">

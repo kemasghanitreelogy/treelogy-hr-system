@@ -246,6 +246,7 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       bankName: "",
       bankAccount: "",
       location: "Office · Bali",
+      workDays: [1, 2, 3, 4, 5],
       managerId,
     };
     setDraft((cur) => [...cur, node]);

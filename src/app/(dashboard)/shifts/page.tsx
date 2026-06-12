@@ -1,5 +1,5 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
-import { getEmployees, getLeaveBalances, getShiftAssignments, getShifts, getTabunganEntries } from "@/lib/data";
+import { getEmployees, getLeaveBalances, getScheduleTemplates, getTabunganEntries } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -8,17 +8,16 @@ export const metadata = { title: "Shift & Jadwal — Treelogy HR" };
 
 const STR: Record<Locale, { intro: string }> = {
   id: {
-    intro: "Atur shift untuk tim pabrik & kebun, dan kelola tabungan libur (kerja hari libur & pencairannya).",
+    intro: "Atur jadwal kerja (hari & jam) lewat template atau per karyawan, dan kelola tabungan libur.",
   },
   en: {
-    intro: "Manage shifts for the factory & farm teams, and manage leave savings (working on days off & withdrawals).",
+    intro: "Manage work schedules (days & hours) via templates or per employee, and manage leave savings.",
   },
 };
 
 export default async function ShiftsPage() {
-  const [shifts, assignments, entries, balances, employeesAll, user] = await Promise.all([
-    getShifts(),
-    getShiftAssignments(),
+  const [templates, entries, balances, employeesAll, user] = await Promise.all([
+    getScheduleTemplates(),
     getTabunganEntries(),
     getLeaveBalances(),
     getEmployees(),
@@ -26,12 +25,18 @@ export default async function ShiftsPage() {
   ]);
   const locale = await getLocale();
   const t = STR[locale];
-  const employees = employeesAll.map((e) => ({
-    id: e.id,
-    name: e.name,
-    team: e.team,
-    position: e.position,
-  }));
+  const employees = employeesAll
+    .filter((e) => e.status === "active")
+    .map((e) => ({
+      id: e.id,
+      name: e.name,
+      team: e.team,
+      position: e.position,
+      workDays: e.workDays,
+      workStart: e.workStart,
+      workEnd: e.workEnd,
+      scheduleTemplateId: e.scheduleTemplateId,
+    }));
 
   // Approval scope mirrors leave: HR/admin act org-wide; a manager with
   // shifts.swap_approve is scoped to their own division.
@@ -44,8 +49,7 @@ export default async function ShiftsPage() {
     : 0;
 
   // Visibility: HR/admin see everyone; a division manager sees their own team;
-  // everyone else sees only their own entries. (RLS enforces the same on reads;
-  // this keeps it correct even in the seedless/offline path.)
+  // everyone else sees only their own entries (RLS enforces the same on reads).
   const teamOf = new Map(employeesAll.map((e) => [e.id, e.team]));
   const visibleEntries = entries.filter((e) => {
     if (canApproveAll) return true;
@@ -56,12 +60,9 @@ export default async function ShiftsPage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {t.intro}
-      </p>
+      <p className="text-sm text-muted">{t.intro}</p>
       <ShiftsView
-        shifts={shifts}
-        assignments={assignments}
+        templates={templates}
         entries={visibleEntries}
         employees={employees}
         currentUserName={user?.name ?? "HR"}

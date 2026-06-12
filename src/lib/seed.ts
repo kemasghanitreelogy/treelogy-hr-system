@@ -8,6 +8,7 @@ import type {
   LeaveRequest,
   OvertimeRequest,
   PayrollRun,
+  ScheduleTemplate,
   Shift,
   ShiftAssignment,
   TabunganEntry,
@@ -17,7 +18,7 @@ import type {
 export const TODAY = "2026-06-09";
 export const CURRENT_PERIOD = "2026-06";
 
-export const employees: Employee[] = [
+const employeesRaw: Omit<Employee, "workDays">[] = [
   {
     id: "e01", nik: "TRL-0101", name: "Putu Ariana", email: "putu.ariana@treelogy.com",
     phone: "0812-3400-0101", team: "factory", position: "Production Operator", status: "active",
@@ -116,6 +117,18 @@ export const employees: Employee[] = [
     ptkp: "TK/0", npwp: null, bpjsKes: false, bpjsTk: false, bankName: "BCA",
     bankAccount: "7720113414", location: "Office · Bali",
   },
+];
+
+// Hari kerja default: kantor Senin–Jumat, pabrik & kebun Senin–Sabtu.
+export const employees: Employee[] = employeesRaw.map((e) => ({
+  ...e,
+  workDays: e.team === "office" ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6],
+}));
+
+// Contoh template jadwal.
+export const scheduleTemplates: ScheduleTemplate[] = [
+  { id: "tpl-office", name: "Kantor (Sen–Jum)", workDays: [1, 2, 3, 4, 5], workStart: "08:00", workEnd: "17:00" },
+  { id: "tpl-prod", name: "Produksi (Sen–Sab)", workDays: [1, 2, 3, 4, 5, 6], workStart: "07:00", workEnd: "15:00" },
 ];
 
 // Default reporting lines (direct supervisor per employee). Heads of a division
@@ -237,9 +250,8 @@ export function generateAttendance(): AttendanceRecord[] {
       const dow = date.getDay();
       const r = hash(emp.id + iso);
 
-      // Weekend off for office/sales; farm/factory work Saturdays
-      const isWeekend = dow === 0 || (dow === 6 && emp.team === "office");
-      if (isWeekend) {
+      // Hari libur = bukan hari kerja menurut jadwal karyawan.
+      if (!emp.workDays.includes(dow)) {
         records.push({ id: `${emp.id}-${iso}`, employeeId: emp.id, date: iso, status: "off", lateMinutes: 0, overtimeMinutes: 0, source: "biometric" });
         continue;
       }

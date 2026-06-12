@@ -178,6 +178,7 @@ export default async function DashboardPage() {
         balance={balance}
         canPayroll={can(user, "payroll.view")}
         scheduleLabel={scheduleLabel}
+        workDays={me?.workDays}
         locale={locale}
       />
     );

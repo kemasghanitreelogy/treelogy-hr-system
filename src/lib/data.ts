@@ -10,6 +10,7 @@ import {
   leaveRequests as seedLeave,
   overtimeRequests as seedOvertime,
   payrollRuns as seedRuns,
+  scheduleTemplates as seedScheduleTemplates,
   shiftAssignments as seedAssignments,
   shifts as seedShifts,
   tabunganEntries as seedTabungan,
@@ -31,6 +32,7 @@ import type {
   OvertimeRequest,
   PayrollRun,
   Payslip,
+  ScheduleTemplate,
   Shift,
   ShiftAssignment,
   TabunganEntry,
@@ -94,8 +96,23 @@ export const mapEmployee = (r: Row): Employee => ({
   location: r.location as Employee["location"],
   workStart: r.work_start ? hhmm(r.work_start) : "08:00",
   workEnd: r.work_end ? hhmm(r.work_end) : "17:00",
+  workDays: Array.isArray(r.work_days) ? (r.work_days as number[]).map(Number) : [1, 2, 3, 4, 5],
+  scheduleTemplateId: (r.schedule_template_id as string) ?? null,
   managerId: (r.manager_id as string) ?? null,
 });
+
+export const mapScheduleTemplate = (r: Row): ScheduleTemplate => ({
+  id: String(r.id),
+  name: String(r.name),
+  workDays: Array.isArray(r.work_days) ? (r.work_days as number[]).map(Number) : [1, 2, 3, 4, 5],
+  workStart: hhmm(r.work_start),
+  workEnd: hhmm(r.work_end),
+});
+
+/** True jika `date` adalah hari kerja menurut jadwal (workDays: 0=Min..6=Sab). */
+export function isWorkday(workDays: number[] | undefined, date: Date): boolean {
+  return (workDays ?? [1, 2, 3, 4, 5]).includes(date.getDay());
+}
 
 const numOrNull = (v: unknown) => (v == null ? null : Number(v));
 
@@ -118,6 +135,7 @@ const mapAttendance = (r: Row): AttendanceRecord => ({
   clockOutLng: numOrNull(r.clock_out_lng),
   clockOutDistanceM: numOrNull(r.clock_out_distance_m),
   clockOutPhoto: (r.clock_out_photo as string) ?? null,
+  offDayChoice: (r.off_day_choice as AttendanceRecord["offDayChoice"]) ?? null,
 });
 
 export const mapShift = (r: Row): Shift => ({
@@ -227,6 +245,7 @@ export const mapAssignment = (r: Row): ShiftAssignment => ({
 export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmployees);
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
 export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
+export const getScheduleTemplates = () => fetchTable("schedule_templates", mapScheduleTemplate, seedScheduleTemplates);
 
 /** Absensi sejak `fromDate` (YYYY-MM-DD) saja — payload jauh lebih kecil dari getAttendance(). */
 export async function getAttendanceSince(fromDate: string): Promise<AttendanceRecord[]> {

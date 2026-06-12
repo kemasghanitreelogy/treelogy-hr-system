@@ -25,8 +25,21 @@ export interface Employee {
   location: "Factory · Bali" | "Farm · Bali" | "Office · Bali" | "Field";
   workStart?: string; // "HH:MM" — scheduled clock-in (WITA), set by HR
   workEnd?: string; // "HH:MM" — scheduled clock-out (WITA)
+  /** Hari kerja (0=Min..6=Sab). Default Senin–Jumat. Menentukan hadir/alpa & hari libur. */
+  workDays: number[];
+  /** Template jadwal yang sedang diikuti (null = jadwal kustom). */
+  scheduleTemplateId?: string | null;
   /** Direct supervisor (employee id); null = top of their division. Drives the org tree. */
   managerId?: string | null;
+}
+
+/** Pola jadwal kerja yang bisa diterapkan ke banyak karyawan sekaligus. */
+export interface ScheduleTemplate {
+  id: string;
+  name: string;
+  workDays: number[]; // 0=Min..6=Sab
+  workStart: string; // "HH:MM"
+  workEnd: string; // "HH:MM"
 }
 
 export type AttendanceStatus =
@@ -58,6 +71,8 @@ export interface AttendanceRecord {
   clockOutLng?: number | null;
   clockOutDistanceM?: number | null;
   clockOutPhoto?: string | null;
+  /** Saat clock-in di hari libur: 'swap' (tukar→tabungan) / 'overtime' (lembur). */
+  offDayChoice?: "swap" | "overtime" | null;
 }
 
 export interface Shift {

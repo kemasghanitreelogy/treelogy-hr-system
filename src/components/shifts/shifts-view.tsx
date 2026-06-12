@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownToLine, ArrowUpFromLine, CalendarDays, Check, Clock, Coffee, Loader2, Pencil, PiggyBank, Plus, Trash2, Wallet, X } from "lucide-react";
-import type { Employee, RequestStatus, Shift, ShiftAssignment, TabunganEntry, TabunganKind, Team } from "@/lib/types";
+import { ArrowDownToLine, ArrowUpFromLine, CalendarRange, Check, Clock, Loader2, Pencil, PiggyBank, Plus, Trash2, Users, Wallet, X } from "lucide-react";
+import type { Employee, RequestStatus, ScheduleTemplate, TabunganEntry, TabunganKind, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
@@ -17,35 +17,78 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 
-type Emp = Pick<Employee, "id" | "name" | "team" | "position">;
+type Emp = Pick<Employee, "id" | "name" | "team" | "position" | "workDays" | "workStart" | "workEnd" | "scheduleTemplateId">;
+
+// Tampilan minggu mulai Senin → Sabtu → Minggu (getDay: 0=Min..6=Sab).
+const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const WD2: Record<Locale, string[]> = {
+  id: ["Mg", "Sn", "Sl", "Rb", "Km", "Jm", "Sb"],
+  en: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
+};
 
 const KIND_LABEL: Record<Locale, Record<TabunganKind, string>> = {
-  id: {
-    deposit: "Setor",
-    withdrawal: "Cairkan",
-  },
-  en: {
-    deposit: "Deposit",
-    withdrawal: "Withdraw",
-  },
+  id: { deposit: "Setor", withdrawal: "Cairkan" },
+  en: { deposit: "Deposit", withdrawal: "Withdraw" },
 };
 
 const STR: Record<
   Locale,
   {
-    // ShiftsView
+    connectionError: string;
+    approve: string;
+    reject: string;
+    cancel: string;
+    save: string;
+    deleteLabel: string;
+    edit: string;
+    startTimeLabel: string;
+    endTimeLabel: string;
+    // Templates
+    scheduleTemplates: string;
+    templatesDesc: string;
+    newTemplate: string;
+    noTemplates: string;
+    applyToEmployees: string;
+    editTemplateAria: (name: string) => string;
+    templateNameLabel: string;
+    templateNamePlaceholder: string;
+    workDaysLabel: string;
+    selectAtLeastOneDay: string;
+    templateNameRequired: string;
+    saveTemplateFailed: string;
+    templateAdded: string;
+    templateUpdated: string;
+    templateDeleted: string;
+    deleteTemplateFailed: string;
+    deleteTemplateTitle: (name: string) => string;
+    deleteTemplateMessage: string;
+    deleteTemplateConfirm: string;
+    addTemplateTitle: string;
+    editTemplateTitle: string;
+    // Apply template
+    applyTitle: (name: string) => string;
+    applyDesc: string;
+    selectEmployeesFirst: string;
+    applied: (n: number) => string;
+    applyFailed: string;
+    apply: string;
+    // Employee schedules
+    employeeSchedules: string;
+    employeeSchedulesDesc: string;
+    mySchedule: string;
+    myScheduleDesc: string;
+    dayOffEveryday: string;
+    followsTemplate: (name: string) => string;
+    customSchedule: string;
+    editScheduleTitle: (name: string) => string;
+    editScheduleDesc: string;
+    saveScheduleFailed: string;
+    scheduleSaved: string;
+    // Tabungan
     insufficientBalanceEmployee: string;
     decideFailed: string;
     approvedToast: string;
     rejectedToast: string;
-    connectionError: string;
-    deleteShiftFailed: string;
-    shiftDeleted: string;
-    shiftDefinitions: string;
-    addShift: string;
-    editShiftAria: (name: string) => string;
-    breakMinutes: (min: number) => string;
-    overtimeAfter: string;
     leaveSavings: string;
     leaveSavingsDesc: string;
     pendingCount: (n: number) => string;
@@ -54,42 +97,9 @@ const STR: Record<
     days: (n: number) => string;
     noSavingsRecords: string;
     autoFromAttendance: string;
-    approve: string;
-    reject: string;
     tabunganSheetTitle: string;
     tabunganSheetDesc: string;
     requestSent: string;
-    addShiftTitle: string;
-    editShiftTitle: string;
-    newShiftDesc: string;
-    shiftAdded: string;
-    shiftUpdated: string;
-    deleteShiftTitle: (name: string) => string;
-    deleteShiftMessage: string;
-    deleteShiftConfirm: string;
-    // ScheduleCard
-    scheduleSaved: string;
-    scheduleSaveFailed: string;
-    shiftSchedule: string;
-    scheduleDescManage: string;
-    scheduleDescView: string;
-    noShift: string;
-    // ShiftForm
-    shiftNameRequired: string;
-    saveShiftFailed: string;
-    shiftNameLabel: string;
-    shiftNamePlaceholder: string;
-    teamLabel: string;
-    startTimeLabel: string;
-    endTimeLabel: string;
-    breakMinutesLabel: string;
-    overtimeAfterLabel: string;
-    colorLabel: string;
-    shiftColorAria: string;
-    deleteLabel: string;
-    cancel: string;
-    save: string;
-    // TabunganForm
     pickEmployeeFirst: string;
     dateRequired: string;
     minOneDay: string;
@@ -110,59 +120,68 @@ const STR: Record<
   }
 > = {
   id: {
+    connectionError: "Koneksi bermasalah. Coba lagi.",
+    approve: "Setujui",
+    reject: "Tolak",
+    cancel: "Batal",
+    save: "Simpan",
+    deleteLabel: "Hapus",
+    edit: "Edit",
+    startTimeLabel: "Jam mulai",
+    endTimeLabel: "Jam selesai",
+    scheduleTemplates: "Template Jadwal",
+    templatesDesc: "Buat pola jadwal lalu terapkan ke beberapa karyawan sekaligus.",
+    newTemplate: "Buat template",
+    noTemplates: "Belum ada template. Buat satu untuk mempercepat pengaturan jadwal.",
+    applyToEmployees: "Terapkan ke karyawan",
+    editTemplateAria: (name) => `Ubah template ${name}`,
+    templateNameLabel: "Nama template",
+    templateNamePlaceholder: "cth. Kantor (Sen–Jum)",
+    workDaysLabel: "Hari kerja",
+    selectAtLeastOneDay: "Pilih minimal 1 hari kerja.",
+    templateNameRequired: "Nama template wajib diisi.",
+    saveTemplateFailed: "Gagal menyimpan template. Pastikan Anda berhak.",
+    templateAdded: "Template dibuat ✓",
+    templateUpdated: "Template diperbarui ✓",
+    templateDeleted: "Template dihapus ✓",
+    deleteTemplateFailed: "Gagal menghapus template.",
+    deleteTemplateTitle: (name) => `Hapus template "${name}"?`,
+    deleteTemplateMessage: "Karyawan yang sudah memakai template ini tidak berubah jadwalnya. Tindakan ini tidak bisa dibatalkan.",
+    deleteTemplateConfirm: "Ya, hapus",
+    addTemplateTitle: "Buat Template Jadwal",
+    editTemplateTitle: "Ubah Template Jadwal",
+    applyTitle: (name) => `Terapkan "${name}" ke karyawan`,
+    applyDesc: "Jadwal karyawan terpilih akan disetel mengikuti template ini.",
+    selectEmployeesFirst: "Pilih minimal 1 karyawan.",
+    applied: (n) => `Jadwal diterapkan ke ${n} karyawan ✓`,
+    applyFailed: "Gagal menerapkan template. Coba lagi.",
+    apply: "Terapkan",
+    employeeSchedules: "Jadwal Karyawan",
+    employeeSchedulesDesc: "Hari & jam kerja tiap karyawan. Edit langsung untuk jadwal khusus.",
+    mySchedule: "Jadwal Saya",
+    myScheduleDesc: "Hari & jam kerja Anda. Hari di luar ini terhitung libur.",
+    dayOffEveryday: "Belum ada hari kerja",
+    followsTemplate: (name) => `Template: ${name}`,
+    customSchedule: "Jadwal kustom",
+    editScheduleTitle: (name) => `Edit Jadwal · ${name}`,
+    editScheduleDesc: "Pilih hari & jam kerja karyawan ini.",
+    saveScheduleFailed: "Gagal menyimpan jadwal. Pastikan Anda berhak.",
+    scheduleSaved: "Jadwal disimpan ✓",
     insufficientBalanceEmployee: "Saldo tabungan karyawan tidak cukup untuk dicairkan.",
     decideFailed: "Gagal memproses. Pastikan Anda berhak menyetujui.",
     approvedToast: "Disetujui ✓",
     rejectedToast: "Ditolak ✓",
-    connectionError: "Koneksi bermasalah. Coba lagi.",
-    deleteShiftFailed: "Gagal menghapus shift.",
-    shiftDeleted: "Shift dihapus ✓",
-    shiftDefinitions: "Definisi Shift",
-    addShift: "Tambah shift",
-    editShiftAria: (name: string) => `Ubah shift ${name}`,
-    breakMinutes: (min: number) => `Istirahat ${min} menit`,
-    overtimeAfter: "Lembur setelah",
     leaveSavings: "Tabungan Libur",
     leaveSavingsDesc: "Kerja di hari libur menambah tabungan (dikonfirmasi HR); cairkan untuk ambil libur pengganti.",
-    pendingCount: (n: number) => `${n} menunggu`,
+    pendingCount: (n) => `${n} menunggu`,
     withdrawSavings: "Cairkan tabungan",
     yourLeaveSavings: "Tabungan libur Anda",
-    days: (n: number) => `${n} hari`,
+    days: (n) => `${n} hari`,
     noSavingsRecords: "Belum ada catatan tabungan libur.",
     autoFromAttendance: "otomatis dari absensi",
-    approve: "Setujui",
-    reject: "Tolak",
     tabunganSheetTitle: "Cairkan / Setor Tabungan Libur",
     tabunganSheetDesc: "Buat catatan tabungan libur baru",
     requestSent: "Pengajuan terkirim ✓",
-    addShiftTitle: "Tambah Shift",
-    editShiftTitle: "Ubah Shift",
-    newShiftDesc: "Definisikan shift baru",
-    shiftAdded: "Shift ditambahkan ✓",
-    shiftUpdated: "Shift diperbarui ✓",
-    deleteShiftTitle: (name: string) => `Hapus shift "${name}"?`,
-    deleteShiftMessage: "Jadwal yang memakai shift ini ikut terhapus. Tindakan ini tidak bisa dibatalkan.",
-    deleteShiftConfirm: "Ya, hapus",
-    scheduleSaved: "Jadwal disimpan ✓",
-    scheduleSaveFailed: "Gagal menyimpan jadwal. Coba lagi.",
-    shiftSchedule: "Jadwal Shift",
-    scheduleDescManage: "Atur shift tiap karyawan untuk tanggal terpilih.",
-    scheduleDescView: "Jadwal shift karyawan untuk tanggal terpilih.",
-    noShift: "— Tanpa shift",
-    shiftNameRequired: "Nama shift wajib diisi.",
-    saveShiftFailed: "Gagal menyimpan shift. Pastikan Anda berhak.",
-    shiftNameLabel: "Nama shift",
-    shiftNamePlaceholder: "cth. Factory Pagi",
-    teamLabel: "Tim",
-    startTimeLabel: "Jam mulai",
-    endTimeLabel: "Jam selesai",
-    breakMinutesLabel: "Istirahat (menit)",
-    overtimeAfterLabel: "Lembur setelah",
-    colorLabel: "Warna",
-    shiftColorAria: "Warna shift",
-    deleteLabel: "Hapus",
-    cancel: "Batal",
-    save: "Simpan",
     pickEmployeeFirst: "Pilih karyawan dulu.",
     dateRequired: "Tanggal wajib diisi.",
     minOneDay: "Jumlah hari minimal 1.",
@@ -182,59 +201,68 @@ const STR: Record<
     submit: "Ajukan",
   },
   en: {
+    connectionError: "Connection problem. Try again.",
+    approve: "Approve",
+    reject: "Reject",
+    cancel: "Cancel",
+    save: "Save",
+    deleteLabel: "Delete",
+    edit: "Edit",
+    startTimeLabel: "Start time",
+    endTimeLabel: "End time",
+    scheduleTemplates: "Schedule Templates",
+    templatesDesc: "Build a schedule pattern, then apply it to several employees at once.",
+    newTemplate: "New template",
+    noTemplates: "No templates yet. Create one to speed up scheduling.",
+    applyToEmployees: "Apply to employees",
+    editTemplateAria: (name) => `Edit template ${name}`,
+    templateNameLabel: "Template name",
+    templateNamePlaceholder: "e.g. Office (Mon–Fri)",
+    workDaysLabel: "Work days",
+    selectAtLeastOneDay: "Select at least 1 work day.",
+    templateNameRequired: "Template name is required.",
+    saveTemplateFailed: "Failed to save the template. Make sure you are authorized.",
+    templateAdded: "Template created ✓",
+    templateUpdated: "Template updated ✓",
+    templateDeleted: "Template deleted ✓",
+    deleteTemplateFailed: "Failed to delete the template.",
+    deleteTemplateTitle: (name) => `Delete template "${name}"?`,
+    deleteTemplateMessage: "Employees already using this template keep their schedule. This action cannot be undone.",
+    deleteTemplateConfirm: "Yes, delete",
+    addTemplateTitle: "Create Schedule Template",
+    editTemplateTitle: "Edit Schedule Template",
+    applyTitle: (name) => `Apply "${name}" to employees`,
+    applyDesc: "The selected employees' schedules will be set to follow this template.",
+    selectEmployeesFirst: "Select at least 1 employee.",
+    applied: (n) => `Schedule applied to ${n} employee${n === 1 ? "" : "s"} ✓`,
+    applyFailed: "Failed to apply the template. Try again.",
+    apply: "Apply",
+    employeeSchedules: "Employee Schedules",
+    employeeSchedulesDesc: "Each employee's work days & hours. Edit directly for a custom schedule.",
+    mySchedule: "My Schedule",
+    myScheduleDesc: "Your work days & hours. Days outside these count as days off.",
+    dayOffEveryday: "No work days set",
+    followsTemplate: (name) => `Template: ${name}`,
+    customSchedule: "Custom schedule",
+    editScheduleTitle: (name) => `Edit Schedule · ${name}`,
+    editScheduleDesc: "Pick this employee's work days & hours.",
+    saveScheduleFailed: "Failed to save the schedule. Make sure you are authorized.",
+    scheduleSaved: "Schedule saved ✓",
     insufficientBalanceEmployee: "The employee's savings balance is not enough to withdraw.",
     decideFailed: "Failed to process. Make sure you are authorized to approve.",
     approvedToast: "Approved ✓",
     rejectedToast: "Rejected ✓",
-    connectionError: "Connection problem. Try again.",
-    deleteShiftFailed: "Failed to delete the shift.",
-    shiftDeleted: "Shift deleted ✓",
-    shiftDefinitions: "Shift Definitions",
-    addShift: "Add shift",
-    editShiftAria: (name: string) => `Edit shift ${name}`,
-    breakMinutes: (min: number) => `${min} minute break`,
-    overtimeAfter: "Overtime after",
     leaveSavings: "Leave Savings",
     leaveSavingsDesc: "Working on a day off adds to your savings (confirmed by HR); withdraw to take a replacement day off.",
-    pendingCount: (n: number) => `${n} pending`,
+    pendingCount: (n) => `${n} pending`,
     withdrawSavings: "Withdraw savings",
     yourLeaveSavings: "Your leave savings",
-    days: (n: number) => `${n} day${n === 1 ? "" : "s"}`,
+    days: (n) => `${n} day${n === 1 ? "" : "s"}`,
     noSavingsRecords: "No leave savings records yet.",
     autoFromAttendance: "automatic from attendance",
-    approve: "Approve",
-    reject: "Reject",
     tabunganSheetTitle: "Withdraw / Deposit Leave Savings",
     tabunganSheetDesc: "Create a new leave savings record",
     requestSent: "Request sent ✓",
-    addShiftTitle: "Add Shift",
-    editShiftTitle: "Edit Shift",
-    newShiftDesc: "Define a new shift",
-    shiftAdded: "Shift added ✓",
-    shiftUpdated: "Shift updated ✓",
-    deleteShiftTitle: (name: string) => `Delete shift "${name}"?`,
-    deleteShiftMessage: "Schedules using this shift will also be deleted. This action cannot be undone.",
-    deleteShiftConfirm: "Yes, delete",
-    scheduleSaved: "Schedule saved ✓",
-    scheduleSaveFailed: "Failed to save the schedule. Try again.",
-    shiftSchedule: "Shift Schedule",
-    scheduleDescManage: "Set each employee's shift for the selected date.",
-    scheduleDescView: "Employee shift schedule for the selected date.",
-    noShift: "— No shift",
-    shiftNameRequired: "Shift name is required.",
-    saveShiftFailed: "Failed to save the shift. Make sure you are authorized.",
-    shiftNameLabel: "Shift name",
-    shiftNamePlaceholder: "e.g. Factory Morning",
-    teamLabel: "Team",
-    startTimeLabel: "Start time",
-    endTimeLabel: "End time",
-    breakMinutesLabel: "Break (minutes)",
-    overtimeAfterLabel: "Overtime after",
-    colorLabel: "Color",
-    shiftColorAria: "Shift color",
-    deleteLabel: "Delete",
-    cancel: "Cancel",
-    save: "Save",
     pickEmployeeFirst: "Select an employee first.",
     dateRequired: "Date is required.",
     minOneDay: "Minimum of 1 day.",
@@ -255,14 +283,55 @@ const STR: Record<
   },
 };
 
-/** YYYY-MM-DD hari ini menurut WITA. */
-function todayWita(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Makassar" }).format(new Date());
+/** Pil hari kerja (read-only). */
+function DayChips({ days, locale }: { days: number[]; locale: Locale }) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {DAY_ORDER.map((d) => {
+        const on = days.includes(d);
+        return (
+          <span
+            key={d}
+            className={cn(
+              "flex h-6 w-7 items-center justify-center rounded-md text-[11px] font-medium",
+              on ? "bg-forest-100 text-forest-700" : "bg-sand text-faint/70",
+            )}
+          >
+            {WD2[locale][d]}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Toggle hari kerja (editable). */
+function DayToggle({ value, onChange, locale }: { value: number[]; onChange: (d: number[]) => void; locale: Locale }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {DAY_ORDER.map((d) => {
+        const on = value.includes(d);
+        return (
+          <button
+            type="button"
+            key={d}
+            onClick={() => onChange(on ? value.filter((x) => x !== d) : [...value, d].sort((a, b) => a - b))}
+            className={cn(
+              "h-9 w-11 rounded-lg text-sm font-medium transition-colors",
+              on ? "bg-forest-600 text-cream" : "bg-sand text-muted hover:bg-sand/70",
+            )}
+            aria-pressed={on}
+          >
+            {WD2[locale][d]}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function ShiftsView({
-  shifts,
-  assignments,
+  templates,
   entries,
   employees,
   currentUserName = "HR",
@@ -273,8 +342,7 @@ export function ShiftsView({
   canManageShifts = false,
   selfBalance = 0,
 }: {
-  shifts: Shift[];
-  assignments: ShiftAssignment[];
+  templates: ScheduleTemplate[];
   entries: TabunganEntry[];
   employees: Emp[];
   currentUserName?: string;
@@ -282,25 +350,18 @@ export function ShiftsView({
   canRequestForOthers?: boolean;
   canApproveAll?: boolean;
   approverTeam?: Team | null;
-  /** HR/admin atau pemegang shifts.manage: boleh CRUD shift & atur jadwal. */
+  /** HR/admin atau pemegang shifts.manage: boleh kelola template & jadwal. */
   canManageShifts?: boolean;
-  /** Saved-day balance of the logged-in user, for the withdrawal cap. */
   selfBalance?: number;
 }) {
   const locale = useLocale();
   const t = STR[locale];
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
-  const [shiftList, setShiftList] = useState(shifts);
   const [list, setList] = useState(entries);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Shift CRUD state: null = closed, "new" = create, otherwise the shift being edited.
-  const [shiftForm, setShiftForm] = useState<Shift | "new" | null>(null);
-  const [deletingShift, setDeletingShift] = useState<Shift | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
   const toast = useToast();
   const router = useRouter();
-  // A plain employee only sees their own entries → the name/avatar is redundant.
   const showEmployee = canApproveAll || approverTeam != null;
 
   const canDecide = useMemo(
@@ -327,16 +388,12 @@ export function ShiftsView({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
         setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
-        toast.error(
-          data.error === "insufficient_balance"
-            ? t.insufficientBalanceEmployee
-            : t.decideFailed,
-        );
+        toast.error(data.error === "insufficient_balance" ? t.insufficientBalanceEmployee : t.decideFailed);
         return;
       }
       setList((cur) => cur.map((e) => (e.id === id ? (data.request as TabunganEntry) : e)));
       toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
-      router.refresh(); // saldo tabungan & halaman lain ikut segar
+      router.refresh();
     } catch {
       setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
       toast.error(t.connectionError);
@@ -345,111 +402,29 @@ export function ShiftsView({
     }
   }
 
-  async function deleteShift() {
-    if (!deletingShift) return;
-    setDeleteBusy(true);
-    try {
-      const res = await fetch("/api/shifts", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deletingShift.id }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        toast.error(t.deleteShiftFailed);
-        return;
-      }
-      setShiftList((cur) => cur.filter((s) => s.id !== deletingShift.id));
-      setShiftForm(null);
-      toast.success(t.shiftDeleted);
-      router.refresh();
-    } catch {
-      toast.error(t.connectionError);
-    } finally {
-      setDeleteBusy(false);
-      setDeletingShift(null);
-    }
-  }
-
   const pending = list.filter((e) => e.status === "pending" && canDecide(e)).length;
+  const self = currentEmployeeId ? empMap.get(currentEmployeeId) : undefined;
 
   return (
     <div className="space-y-5 fade-up">
-      {/* Shift definitions */}
-      <div>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-ink">{t.shiftDefinitions}</h2>
-          {canManageShifts && (
-            <Button size="sm" variant="outline" onClick={() => setShiftForm("new")}>
-              <Plus className="h-4 w-4" /> {t.addShift}
-            </Button>
-          )}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {shiftList.map((s) => (
-            <div key={s.id} className="card overflow-hidden">
-              <div className="h-1.5 w-full" style={{ background: s.color }} />
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-semibold text-ink">{s.name}</h3>
-                    <span className={cn("mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium", TEAM_META[s.team].chip)}>
-                      {TEAM_META[s.team].label}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-display text-lg font-bold tabular-nums text-forest-600">
-                      {s.startTime}
-                    </span>
-                    {canManageShifts && (
-                      <button
-                        onClick={() => setShiftForm(s)}
-                        className="cursor-pointer rounded-lg p-1.5 text-faint transition-colors hover:bg-sand hover:text-ink"
-                        aria-label={t.editShiftAria(s.name)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-3 space-y-1.5 text-sm text-muted">
-                  <p className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-faint" /> {s.startTime} – {s.endTime}
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <Coffee className="h-4 w-4 text-faint" /> {t.breakMinutes(s.breakMinutes)}
-                  </p>
-                  <p className="flex items-center gap-2">
-                    <ArrowUpFromLine className="h-4 w-4 text-faint" /> {t.overtimeAfter} {s.overtimeAfter}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {canManageShifts ? (
+        <>
+          <TemplatesSection templates={templates} employees={employees} />
+          <EmployeeSchedules employees={employees} templates={templates} />
+        </>
+      ) : (
+        self && <MyScheduleCard emp={self} />
+      )}
 
-      {/* Jadwal shift per tanggal */}
-      <ScheduleCard
-        shifts={shiftList}
-        assignments={assignments}
-        employees={employees}
-        canManage={canManageShifts}
-      />
-
-      {/* Tabungan libur — ledger of deposits (kerja hari libur) & withdrawals (ambil libur) */}
+      {/* Tabungan libur */}
       <Card>
         <CardHeader className="flex-wrap">
           <div className="min-w-0">
             <CardTitle>{t.leaveSavings}</CardTitle>
-            <p className="mt-0.5 text-sm text-muted">
-              {t.leaveSavingsDesc}
-            </p>
+            <p className="mt-0.5 text-sm text-muted">{t.leaveSavingsDesc}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {pending > 0 && (
-              <Badge tone="gold" className="whitespace-nowrap">{t.pendingCount(pending)}</Badge>
-            )}
+            {pending > 0 && <Badge tone="gold" className="whitespace-nowrap">{t.pendingCount(pending)}</Badge>}
             <Button size="sm" onClick={() => setAdding(true)}>
               <Wallet className="h-4 w-4" /> {t.withdrawSavings}
             </Button>
@@ -476,10 +451,7 @@ export function ShiftsView({
             const emp = empMap.get(e.employeeId);
             const isDeposit = e.kind === "deposit";
             return (
-              <div
-                key={e.id}
-                className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center"
-              >
+              <div key={e.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center">
                 {showEmployee && (
                   <div className="flex items-center gap-3 sm:w-52">
                     <Avatar name={emp?.name ?? "?"} size="sm" />
@@ -489,7 +461,6 @@ export function ShiftsView({
                     </div>
                   </div>
                 )}
-
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={isDeposit ? "matcha" : "clay"}>
@@ -506,7 +477,6 @@ export function ShiftsView({
                   </div>
                   {e.reason && <p className="mt-1 line-clamp-1 text-sm text-faint">{e.reason}</p>}
                 </div>
-
                 <div className="flex items-center gap-2 sm:w-auto">
                   {e.status === "pending" && canDecide(e) ? (
                     <>
@@ -542,106 +512,46 @@ export function ShiftsView({
           onCancel={() => setAdding(false)}
         />
       </Sheet>
-
-      <Sheet
-        open={shiftForm !== null}
-        onClose={() => setShiftForm(null)}
-        title={shiftForm === "new" ? t.addShiftTitle : t.editShiftTitle}
-        description={shiftForm === "new" ? t.newShiftDesc : shiftForm?.name}
-      >
-        <ShiftForm
-          key={shiftForm === "new" ? "new" : shiftForm?.id ?? "none"}
-          shift={shiftForm === "new" ? null : shiftForm}
-          onSaved={(s, isNew) => {
-            setShiftList((cur) => (isNew ? [...cur, s] : cur.map((x) => (x.id === s.id ? s : x))));
-            setShiftForm(null);
-            toast.success(isNew ? t.shiftAdded : t.shiftUpdated);
-            router.refresh();
-          }}
-          onDelete={shiftForm !== "new" && shiftForm ? () => setDeletingShift(shiftForm) : undefined}
-          onCancel={() => setShiftForm(null)}
-        />
-      </Sheet>
-
-      <ConfirmDialog
-        open={deletingShift !== null}
-        title={t.deleteShiftTitle(deletingShift?.name ?? "")}
-        message={t.deleteShiftMessage}
-        confirmLabel={t.deleteShiftConfirm}
-        tone="danger"
-        busy={deleteBusy}
-        onConfirm={deleteShift}
-        onCancel={() => setDeletingShift(null)}
-      />
     </div>
   );
 }
 
-/* ---------------- Jadwal shift per tanggal ---------------- */
+/* ---------------- Template Jadwal ---------------- */
 
-function ScheduleCard({
-  shifts,
-  assignments,
-  employees,
-  canManage,
-}: {
-  shifts: Shift[];
-  assignments: ShiftAssignment[];
-  employees: Emp[];
-  canManage: boolean;
-}) {
+function TemplatesSection({ templates, employees }: { templates: ScheduleTemplate[]; employees: Emp[] }) {
   const locale = useLocale();
   const t = STR[locale];
   const toast = useToast();
   const router = useRouter();
-  const [date, setDate] = useState(todayWita());
-  // (employeeId|date) → shiftId, seeded from the server, updated optimistically.
-  const [map, setMap] = useState<Map<string, string>>(
-    () => new Map(assignments.map((a) => [`${a.employeeId}|${a.date}`, a.shiftId])),
-  );
-  const [busyEmp, setBusyEmp] = useState<string | null>(null);
+  const [list, setList] = useState(templates);
+  const [form, setForm] = useState<ScheduleTemplate | "new" | null>(null);
+  const [applying, setApplying] = useState<ScheduleTemplate | null>(null);
+  const [deleting, setDeleting] = useState<ScheduleTemplate | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
-  const shiftById = useMemo(() => new Map(shifts.map((s) => [s.id, s])), [shifts]);
-  const teamOrder: Team[] = ["factory", "farm", "office"];
-  const rows = useMemo(
-    () =>
-      [...employees].sort(
-        (a, b) => teamOrder.indexOf(a.team) - teamOrder.indexOf(b.team) || a.name.localeCompare(b.name),
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [employees],
-  );
-
-  async function assign(employeeId: string, shiftId: string) {
-    const key = `${employeeId}|${date}`;
-    const prev = map.get(key) ?? "";
-    setBusyEmp(employeeId);
-    setMap((cur) => {
-      const next = new Map(cur);
-      if (shiftId) next.set(key, shiftId);
-      else next.delete(key);
-      return next;
-    });
+  async function remove() {
+    if (!deleting) return;
+    setDeleteBusy(true);
     try {
-      const res = await fetch("/api/shifts/assignments", {
-        method: "POST",
+      const res = await fetch("/api/schedule/templates", {
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId, date, shiftId: shiftId || null }),
+        body: JSON.stringify({ id: deleting.id }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error();
-      toast.success(t.scheduleSaved);
+      if (!res.ok || !data.ok) {
+        toast.error(t.deleteTemplateFailed);
+        return;
+      }
+      setList((cur) => cur.filter((x) => x.id !== deleting.id));
+      setForm(null);
+      toast.success(t.templateDeleted);
       router.refresh();
     } catch {
-      setMap((cur) => {
-        const next = new Map(cur);
-        if (prev) next.set(key, prev);
-        else next.delete(key);
-        return next;
-      });
-      toast.error(t.scheduleSaveFailed);
+      toast.error(t.connectionError);
     } finally {
-      setBusyEmp(null);
+      setDeleteBusy(false);
+      setDeleting(null);
     }
   }
 
@@ -649,72 +559,105 @@ function ScheduleCard({
     <Card>
       <CardHeader className="flex-wrap">
         <div className="min-w-0">
-          <CardTitle>{t.shiftSchedule}</CardTitle>
-          <p className="mt-0.5 text-sm text-muted">
-            {canManage ? t.scheduleDescManage : t.scheduleDescView}
-          </p>
+          <CardTitle>{t.scheduleTemplates}</CardTitle>
+          <p className="mt-0.5 text-sm text-muted">{t.templatesDesc}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-faint" />
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-auto" />
-        </div>
+        <Button size="sm" variant="outline" className="shrink-0" onClick={() => setForm("new")}>
+          <Plus className="h-4 w-4" /> {t.newTemplate}
+        </Button>
       </CardHeader>
-      <div className="divide-y divide-line">
-        {rows.map((e) => {
-          const assigned = map.get(`${e.id}|${date}`) ?? "";
-          const teamShifts = shifts.filter((s) => s.team === e.team);
-          const current = assigned ? shiftById.get(assigned) : undefined;
-          return (
-            <div key={e.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-              <Avatar name={e.name} size="sm" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-ink">{e.name}</p>
-                <p className="truncate text-xs text-faint">
-                  <span className={TEAM_META[e.team].tone}>{TEAM_META[e.team].label}</span> · {e.position}
-                </p>
-              </div>
-              {canManage ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  {busyEmp === e.id && <Loader2 className="h-4 w-4 animate-spin text-faint" />}
-                  <Select
-                    value={assigned}
-                    disabled={busyEmp === e.id}
-                    onChange={(ev) => assign(e.id, ev.target.value)}
-                    className="w-36 sm:w-48"
+      <CardContent>
+        {list.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-line bg-cream/40 px-5 py-8 text-center text-sm text-faint">
+            {t.noTemplates}
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {list.map((tpl) => (
+              <div key={tpl.id} className="rounded-2xl border border-line bg-cream/40 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-ink">{tpl.name}</p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-sm text-muted">
+                      <Clock className="h-3.5 w-3.5 text-faint" /> {tpl.workStart}–{tpl.workEnd}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setForm(tpl)}
+                    className="shrink-0 cursor-pointer rounded-lg p-1.5 text-faint transition-colors hover:bg-sand hover:text-ink"
+                    aria-label={t.editTemplateAria(tpl.name)}
                   >
-                    <option value="">{t.noShift}</option>
-                    {teamShifts.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</option>
-                    ))}
-                  </Select>
+                    <Pencil className="h-4 w-4" />
+                  </button>
                 </div>
-              ) : current ? (
-                <span className="flex shrink-0 items-center gap-2 text-right text-sm text-muted">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: current.color }} />
-                  <span className="hidden sm:inline">{current.name} · </span>
-                  {current.startTime}–{current.endTime}
-                </span>
-              ) : (
-                <span className="shrink-0 text-sm text-faint">{t.noShift}</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                <div className="mt-3">
+                  <DayChips days={tpl.workDays} locale={locale} />
+                </div>
+                <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => setApplying(tpl)}>
+                  <Users className="h-4 w-4" /> {t.applyToEmployees}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      <Sheet
+        open={form !== null}
+        onClose={() => setForm(null)}
+        title={form === "new" ? t.addTemplateTitle : t.editTemplateTitle}
+        description={form === "new" ? undefined : (form?.name ?? undefined)}
+      >
+        <TemplateForm
+          key={form === "new" ? "new" : form?.id ?? "none"}
+          template={form === "new" ? null : form}
+          onSaved={(tpl, isNew) => {
+            setList((cur) => (isNew ? [...cur, tpl] : cur.map((x) => (x.id === tpl.id ? tpl : x))));
+            setForm(null);
+            toast.success(isNew ? t.templateAdded : t.templateUpdated);
+            router.refresh();
+          }}
+          onDelete={form !== "new" && form ? () => setDeleting(form) : undefined}
+          onCancel={() => setForm(null)}
+        />
+      </Sheet>
+
+      <Sheet open={applying !== null} onClose={() => setApplying(null)} title={applying ? t.applyTitle(applying.name) : ""} description={t.applyDesc}>
+        {applying && (
+          <ApplyTemplateForm
+            template={applying}
+            employees={employees}
+            onDone={() => {
+              setApplying(null);
+              router.refresh();
+            }}
+            onCancel={() => setApplying(null)}
+          />
+        )}
+      </Sheet>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title={t.deleteTemplateTitle(deleting?.name ?? "")}
+        message={t.deleteTemplateMessage}
+        confirmLabel={t.deleteTemplateConfirm}
+        tone="danger"
+        busy={deleteBusy}
+        onConfirm={remove}
+        onCancel={() => setDeleting(null)}
+      />
     </Card>
   );
 }
 
-/* ---------------- Form shift (tambah / ubah) ---------------- */
-
-function ShiftForm({
-  shift,
+function TemplateForm({
+  template,
   onSaved,
   onDelete,
   onCancel,
 }: {
-  shift: Shift | null;
-  onSaved: (s: Shift, isNew: boolean) => void;
+  template: ScheduleTemplate | null;
+  onSaved: (tpl: ScheduleTemplate, isNew: boolean) => void;
   onDelete?: () => void;
   onCancel: () => void;
 }) {
@@ -723,31 +666,29 @@ function ShiftForm({
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    name: shift?.name ?? "",
-    team: (shift?.team ?? "factory") as Team,
-    startTime: shift?.startTime ?? "07:00",
-    endTime: shift?.endTime ?? "15:00",
-    breakMinutes: shift?.breakMinutes ?? 60,
-    overtimeAfter: shift?.overtimeAfter ?? "15:00",
-    color: shift?.color ?? "#3d5a2e",
+    name: template?.name ?? "",
+    workDays: template?.workDays ?? [1, 2, 3, 4, 5],
+    workStart: template?.workStart ?? "08:00",
+    workEnd: template?.workEnd ?? "17:00",
   });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return toast.error(t.shiftNameRequired);
+    if (!form.name.trim()) return toast.error(t.templateNameRequired);
+    if (form.workDays.length === 0) return toast.error(t.selectAtLeastOneDay);
     setSaving(true);
     try {
-      const res = await fetch("/api/shifts", {
-        method: shift ? "PATCH" : "POST",
+      const res = await fetch("/api/schedule/templates", {
+        method: template ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(shift ? { id: shift.id, ...form } : form),
+        body: JSON.stringify(template ? { id: template.id, ...form } : form),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.shift) {
-        toast.error(t.saveShiftFailed);
+      if (!res.ok || !data.template) {
+        toast.error(t.saveTemplateFailed);
         return;
       }
-      onSaved(data.shift as Shift, !shift);
+      onSaved(data.template as ScheduleTemplate, !template);
     } catch {
       toast.error(t.connectionError);
     } finally {
@@ -757,49 +698,20 @@ function ShiftForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label={t.shiftNameLabel}>
-        <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t.shiftNamePlaceholder} required />
+      <Field label={t.templateNameLabel}>
+        <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t.templateNamePlaceholder} required />
       </Field>
-      <Field label={t.teamLabel}>
-        <Select value={form.team} onChange={(e) => setForm((f) => ({ ...f, team: e.target.value as Team }))}>
-          {(["factory", "farm", "office"] as Team[]).map((t) => (
-            <option key={t} value={t}>{TEAM_META[t].label}</option>
-          ))}
-        </Select>
+      <Field label={t.workDaysLabel}>
+        <DayToggle value={form.workDays} onChange={(workDays) => setForm((f) => ({ ...f, workDays }))} locale={locale} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.startTimeLabel}>
-          <Input type="time" value={form.startTime} onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} required />
+          <Input type="time" value={form.workStart} onChange={(e) => setForm((f) => ({ ...f, workStart: e.target.value }))} required />
         </Field>
         <Field label={t.endTimeLabel}>
-          <Input type="time" value={form.endTime} onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} required />
+          <Input type="time" value={form.workEnd} onChange={(e) => setForm((f) => ({ ...f, workEnd: e.target.value }))} required />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={t.breakMinutesLabel}>
-          <Input
-            type="number"
-            min={0}
-            value={form.breakMinutes}
-            onChange={(e) => setForm((f) => ({ ...f, breakMinutes: Math.max(0, Number(e.target.value) || 0) }))}
-          />
-        </Field>
-        <Field label={t.overtimeAfterLabel}>
-          <Input type="time" value={form.overtimeAfter} onChange={(e) => setForm((f) => ({ ...f, overtimeAfter: e.target.value }))} required />
-        </Field>
-      </div>
-      <Field label={t.colorLabel}>
-        <div className="flex items-center gap-3">
-          <input
-            type="color"
-            value={form.color}
-            onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-            className="h-10 w-14 cursor-pointer rounded-lg border border-line bg-panel p-1"
-            aria-label={t.shiftColorAria}
-          />
-          <span className="text-sm text-muted">{form.color}</span>
-        </div>
-      </Field>
       <div className="flex gap-2 pt-2">
         {onDelete && (
           <Button type="button" variant="outline" onClick={onDelete} disabled={saving} className="text-[#8c3c1f]">
@@ -813,6 +725,250 @@ function ShiftForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+function ApplyTemplateForm({
+  template,
+  employees,
+  onDone,
+  onCancel,
+}: {
+  template: ScheduleTemplate;
+  employees: Emp[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const locale = useLocale();
+  const t = STR[locale];
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+
+  function toggle(id: string) {
+    setPicked((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function submit() {
+    if (picked.size === 0) return toast.error(t.selectEmployeesFirst);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/schedule/employee", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: template.id, employeeIds: [...picked] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(t.applyFailed);
+        return;
+      }
+      toast.success(t.applied(data.applied ?? picked.size));
+      onDone();
+    } catch {
+      toast.error(t.connectionError);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="max-h-[55vh] space-y-1.5 overflow-y-auto">
+        {employees.map((e) => {
+          const on = picked.has(e.id);
+          return (
+            <button
+              key={e.id}
+              type="button"
+              onClick={() => toggle(e.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                on ? "border-forest-300 bg-[#e9f0d8]" : "border-line bg-panel hover:bg-sand",
+              )}
+            >
+              <Avatar name={e.name} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-ink">{e.name}</p>
+                <p className="truncate text-xs text-faint">{TEAM_META[e.team].label} · {e.position}</p>
+              </div>
+              <span className={cn("flex h-5 w-5 items-center justify-center rounded-md border", on ? "border-forest-600 bg-forest-600 text-cream" : "border-line")}>
+                {on && <Check className="h-3.5 w-3.5" />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-2 pt-1">
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
+        <Button type="button" className="flex-1" onClick={submit} disabled={saving || picked.size === 0}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {t.apply}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Jadwal per karyawan ---------------- */
+
+function EmployeeSchedules({ employees, templates }: { employees: Emp[]; templates: ScheduleTemplate[] }) {
+  const locale = useLocale();
+  const t = STR[locale];
+  const router = useRouter();
+  const tplMap = useMemo(() => new Map(templates.map((tp) => [tp.id, tp])), [templates]);
+  const teamOrder: Team[] = ["factory", "farm", "office"];
+  const rows = useMemo(
+    () => [...employees].sort((a, b) => teamOrder.indexOf(a.team) - teamOrder.indexOf(b.team) || a.name.localeCompare(b.name)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees],
+  );
+  const [editing, setEditing] = useState<Emp | null>(null);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div>
+          <CardTitle>{t.employeeSchedules}</CardTitle>
+          <p className="mt-0.5 text-sm text-muted">{t.employeeSchedulesDesc}</p>
+        </div>
+      </CardHeader>
+      <div className="divide-y divide-line">
+        {rows.map((e) => {
+          const tpl = e.scheduleTemplateId ? tplMap.get(e.scheduleTemplateId) : undefined;
+          return (
+            <div key={e.id} className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
+              <div className="flex items-center gap-3 sm:w-56">
+                <Avatar name={e.name} size="sm" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">{e.name}</p>
+                  <p className="truncate text-xs text-faint">
+                    <span className={TEAM_META[e.team].tone}>{TEAM_META[e.team].label}</span> · {e.position}
+                  </p>
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <DayChips days={e.workDays} locale={locale} />
+                  <span className="text-sm text-muted">{e.workStart}–{e.workEnd}</span>
+                  <span className="text-xs text-faint">{tpl ? t.followsTemplate(tpl.name) : t.customSchedule}</span>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" className="shrink-0 sm:w-auto" onClick={() => setEditing(e)}>
+                <Pencil className="h-4 w-4" /> {t.edit}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+
+      <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing ? t.editScheduleTitle(editing.name) : ""} description={t.editScheduleDesc}>
+        {editing && (
+          <ScheduleForm
+            key={editing.id}
+            emp={editing}
+            onDone={() => {
+              setEditing(null);
+              router.refresh();
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        )}
+      </Sheet>
+    </Card>
+  );
+}
+
+function ScheduleForm({ emp, onDone, onCancel }: { emp: Emp; onDone: () => void; onCancel: () => void }) {
+  const locale = useLocale();
+  const t = STR[locale];
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    workDays: emp.workDays,
+    workStart: emp.workStart ?? "08:00",
+    workEnd: emp.workEnd ?? "17:00",
+  });
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (form.workDays.length === 0) return toast.error(t.selectAtLeastOneDay);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/schedule/employee", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: emp.id, ...form }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(t.saveScheduleFailed);
+        return;
+      }
+      toast.success(t.scheduleSaved);
+      onDone();
+    } catch {
+      toast.error(t.connectionError);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <Field label={t.workDaysLabel}>
+        <DayToggle value={form.workDays} onChange={(workDays) => setForm((f) => ({ ...f, workDays }))} locale={locale} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t.startTimeLabel}>
+          <Input type="time" value={form.workStart} onChange={(e) => setForm((f) => ({ ...f, workStart: e.target.value }))} required />
+        </Field>
+        <Field label={t.endTimeLabel}>
+          <Input type="time" value={form.workEnd} onChange={(e) => setForm((f) => ({ ...f, workEnd: e.target.value }))} required />
+        </Field>
+      </div>
+      <div className="flex gap-2 pt-2">
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
+        <Button type="submit" className="flex-1" disabled={saving}>
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {t.save}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Kartu jadwal read-only untuk karyawan (melihat jadwalnya sendiri). */
+function MyScheduleCard({ emp }: { emp: Emp }) {
+  const locale = useLocale();
+  const t = STR[locale];
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-forest-100 text-forest-700">
+            <CalendarRange className="h-4 w-4" />
+          </span>
+          <div>
+            <CardTitle>{t.mySchedule}</CardTitle>
+            <p className="mt-0.5 text-sm text-muted">{t.myScheduleDesc}</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          {emp.workDays.length > 0 ? <DayChips days={emp.workDays} locale={locale} /> : <span className="text-sm text-faint">{t.dayOffEveryday}</span>}
+          <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
+            <Clock className="h-4 w-4 text-faint" /> {emp.workStart}–{emp.workEnd}
+          </span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -841,14 +997,12 @@ function TabunganForm({
   const lockToSelf = !canRequestForOthers && !!selfEmployee;
   const [form, setForm] = useState({
     employeeId: lockToSelf ? selfEmployee!.id : employees[0]?.id ?? "",
-    // Employees can only withdraw; HR may also file a manual deposit.
     kind: "withdrawal" as TabunganKind,
     eventDate: "",
     days: 1,
     reason: "",
   });
 
-  // Cap a self-withdrawal at the visible balance (server re-checks regardless).
   const selfWithdraw = form.employeeId === currentEmployeeId && form.kind === "withdrawal";
   const overBalance = selfWithdraw && form.days > selfBalance;
 
@@ -873,11 +1027,7 @@ function TabunganForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        toast.error(
-          data.error === "insufficient_balance"
-            ? t.insufficientBalance
-            : t.submitFailed,
-        );
+        toast.error(data.error === "insufficient_balance" ? t.insufficientBalance : t.submitFailed);
         return;
       }
       onSubmit(data.request as TabunganEntry);

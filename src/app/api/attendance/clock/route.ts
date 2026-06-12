@@ -7,10 +7,23 @@ import { formatDate } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
-/** WITA (Asia/Makassar) weekday short name for `when`, e.g. "Sun". */
-function witaWeekday(when: Date): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Makassar", weekday: "short" }).format(when);
+const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Nomor hari (0=Min..6=Sab) menurut WITA (Asia/Makassar). */
+function witaDow(when: Date): number {
+  return WD.indexOf(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Makassar", weekday: "short" }).format(when));
 }
+/** HH:MM menurut WITA. */
+function witaHHMM(when: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Makassar",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(when);
+}
+
+// Tarif lembur per jam = gaji pokok / 20 hari / 8 jam (sama dengan modul Lembur).
+const OVERTIME_DIVISOR = 20 * 8;
 
 interface Body {
   direction: "in" | "out";
@@ -21,6 +34,8 @@ interface Body {
   confirmOutOfRange?: boolean;
   /** Catatan opsional untuk HR saat mengajukan konfirmasi luar area. */
   note?: string;
+  /** Saat clock-in di hari libur: 'swap' (→tabungan) / 'overtime' (→lembur). */
+  offDayChoice?: "swap" | "overtime";
 }
 
 export async function POST(req: Request) {
@@ -51,15 +66,25 @@ export async function POST(req: Request) {
     .select("employee_id")
     .eq("id", user.id)
     .maybeSingle();
-  let emp: { name?: string | null; work_start?: string | null; work_end?: string | null; team?: string | null } | null = null;
+  let emp: {
+    name?: string | null;
+    work_start?: string | null;
+    work_end?: string | null;
+    team?: string | null;
+    work_days?: number[] | null;
+    base_salary?: number | null;
+  } | null = null;
   if (profile?.employee_id) {
     const { data } = await supabase
       .from("employees")
-      .select("name, work_start, work_end, team")
+      .select("name, work_start, work_end, team, work_days, base_salary")
       .eq("id", profile.employee_id)
       .maybeSingle();
     emp = data;
   }
+  // Hari libur = hari ini bukan hari kerja menurut jadwal karyawan.
+  const workDays = Array.isArray(emp?.work_days) ? emp!.work_days!.map(Number) : [1, 2, 3, 4, 5];
+  const isOffDay = !workDays.includes(witaDow(new Date()));
 
   // Global toggles.
   const { data: s } = await supabase
@@ -155,18 +180,15 @@ export async function POST(req: Request) {
     const today = new Date().toISOString().slice(0, 10);
     const nowIso = new Date().toISOString();
     if (direction === "in") {
-      // Derive late status against the employee's scheduled start (WITA).
+      // Pada hari libur tidak ada jadwal → tidak ada hitungan telat (status hadir).
+      // Pada hari kerja, telat = selisih jam masuk vs jadwal mulai (WITA).
       const workStart = (emp?.work_start as string) ?? "08:00";
-      // Wall-clock HH:MM in WITA (Asia/Makassar = UTC+8) at clock-in moment.
-      const witaHM = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Makassar",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(new Date());
-      const [ch, cm] = witaHM.split(":").map(Number);
+      const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
       const [sh, sm] = workStart.split(":").map(Number);
-      const lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
+      const lateMinutes = isOffDay ? 0 : Math.max(0, ch * 60 + cm - (sh * 60 + sm));
+      const choice = isOffDay && (body.offDayChoice === "swap" || body.offDayChoice === "overtime")
+        ? body.offDayChoice
+        : null;
 
       const { data: att, error } = await supabase
         .from("attendance")
@@ -177,6 +199,7 @@ export async function POST(req: Request) {
             clock_in: nowIso,
             status: lateMinutes > 0 ? "late" : "present",
             late_minutes: lateMinutes,
+            off_day_choice: choice,
             source: "mobile",
             clock_in_lat: body.lat ?? null,
             clock_in_lng: body.lng ?? null,
@@ -189,43 +212,40 @@ export async function POST(req: Request) {
         .maybeSingle();
       recorded = !error;
 
-      // Tabungan libur: clocking in on a rest day (weekend, WITA) earns a saved
-      // day-off. We file it as a PENDING deposit and notify HR/the manager to
-      // confirm the off-hours attendance — it only credits the bank once approved.
-      const weekday = witaWeekday(new Date());
-      const isRestDay = weekday === "Sat" || weekday === "Sun";
-      if (recorded && isRestDay) {
+      // Hari libur + pilih TUKAR LIBUR → setoran tabungan pending (konfirmasi HR).
+      // Pilih LEMBUR → dicatat di off_day_choice, request lembur dibuat saat clock-out.
+      if (recorded && choice === "swap") {
         const { error: depErr } = await supabase.from("tabungan_libur_entries").insert({
           employee_id: profile.employee_id,
           kind: "deposit",
           days: 1,
           event_date: today,
-          reason: "Kehadiran di hari libur — perlu konfirmasi HR",
+          reason: "Kerja di hari libur — tukar jadi tabungan (konfirmasi HR)",
           source: "attendance",
           source_id: att?.id ?? null,
           status: "pending",
         });
-        // The partial unique index rejects a duplicate same-day deposit; that's fine.
         if (!depErr && emp?.team) {
           await notifyApprovers(profile.employee_id, String(emp.team), {
             type: "tabungan",
-            title: "Kehadiran di hari libur — konfirmasi tabungan",
+            title: "Kerja di hari libur — konfirmasi tabungan",
             body: `${formatDate(today)} · konfirmasi untuk kreditkan 1 hari tabungan libur`,
             href: "/shifts",
           });
         }
       }
     } else {
-      // Menit lembur = selisih pulang vs jadwal selesai (WITA). INFORMASI
-      // ABSENSI SAJA — lembur dibayar terpisah lewat modul Lembur, bukan payroll.
+      // Baca dulu baris hari ini untuk tahu jam masuk & pilihan hari libur.
+      const { data: row } = await supabase
+        .from("attendance")
+        .select("clock_in, off_day_choice")
+        .eq("employee_id", profile.employee_id)
+        .eq("date", today)
+        .maybeSingle();
+
+      // Menit lembur (informasi absensi) = selisih pulang vs jadwal selesai (WITA).
       const workEnd = (emp?.work_end as string) ?? "17:00";
-      const witaHM = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Asia/Makassar",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(new Date());
-      const [ch, cm] = witaHM.split(":").map(Number);
+      const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
       const [eh, em] = workEnd.split(":").map(Number);
       const overtimeMinutes = Math.max(0, ch * 60 + cm - (eh * 60 + em));
 
@@ -242,6 +262,48 @@ export async function POST(req: Request) {
         .eq("employee_id", profile.employee_id)
         .eq("date", today);
       recorded = !error;
+
+      // Hari libur + pilih LEMBUR → buat pengajuan lembur dari seluruh durasi kerja.
+      if (recorded && row?.off_day_choice === "overtime" && row.clock_in) {
+        const start = witaHHMM(new Date(String(row.clock_in)));
+        const end = witaHHMM(new Date(nowIso));
+        const [a, b] = start.split(":").map(Number);
+        const [c, d] = end.split(":").map(Number);
+        const mins = c * 60 + d - (a * 60 + b);
+        if (mins > 0) {
+          // Hindari duplikat jika clock-out terjadi dua kali.
+          const { data: existing } = await supabase
+            .from("overtime_requests")
+            .select("id")
+            .eq("employee_id", profile.employee_id)
+            .eq("date", today)
+            .maybeSingle();
+          if (!existing) {
+            const hours = Math.round((mins / 60) * 100) / 100;
+            const ratePerHour = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
+            await supabase.from("overtime_requests").insert({
+              employee_id: profile.employee_id,
+              date: today,
+              start_time: start,
+              end_time: end,
+              hours,
+              reason: "Kerja di hari libur (otomatis dari absensi)",
+              rate_per_hour: ratePerHour,
+              amount: Math.round(ratePerHour * hours),
+              status: "pending",
+              paid: false,
+            });
+            if (emp?.team) {
+              await notifyApprovers(profile.employee_id, String(emp.team), {
+                type: "overtime",
+                title: `${emp.name ?? "Karyawan"} lembur di hari libur`,
+                body: `${formatDate(today)} · ${hours} jam · perlu persetujuan Anda`,
+                href: "/overtime",
+              });
+            }
+          }
+        }
+      }
     }
   }
 

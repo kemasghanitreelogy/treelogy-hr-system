@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Fingerprint,
   Loader2,
   LogIn,
   LogOut,
   MapPin,
+  PartyPopper,
+  PiggyBank,
+  Timer,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { TeamGeofence } from "@/lib/types";
@@ -64,6 +68,14 @@ const STR: Record<
     oorNotePlaceholder: string;
     cancel: string;
     sendToHr: string;
+    offDayTitle: string;
+    offDayBody: string;
+    offDaySwapTitle: string;
+    offDaySwapDesc: string;
+    offDayOtTitle: string;
+    offDayOtDesc: string;
+    swapSent: string;
+    overtimeSent: string;
   }
 > = {
   id: {
@@ -104,6 +116,14 @@ const STR: Record<
     oorNotePlaceholder: "cth. Kunjungan ke supplier / tugas luar kantor…",
     cancel: "Batal",
     sendToHr: "Kirim ke HR",
+    offDayTitle: "Hari ini jadwal libur Anda 🎉",
+    offDayBody: "Anda tetap masuk di hari libur. Mau dihitung sebagai apa?",
+    offDaySwapTitle: "Tukar hari libur",
+    offDaySwapDesc: "Disimpan jadi tabungan libur — bisa dicairkan jadi libur lain (perlu konfirmasi HR).",
+    offDayOtTitle: "Hitung sebagai lembur",
+    offDayOtDesc: "Seluruh jam kerja hari ini dicatat sebagai lembur (dibuat saat Anda clock-out).",
+    swapSent: "Tercatat — diajukan jadi tabungan libur ✓",
+    overtimeSent: "Tercatat sebagai lembur — selesaikan dengan clock-out ✓",
   },
   en: {
     loading: "Loading…",
@@ -143,6 +163,14 @@ const STR: Record<
     oorNotePlaceholder: "e.g. Supplier visit / off-site assignment…",
     cancel: "Cancel",
     sendToHr: "Send to HR",
+    offDayTitle: "Today is your day off 🎉",
+    offDayBody: "You're clocking in on a day off. How should it count?",
+    offDaySwapTitle: "Swap a day off",
+    offDaySwapDesc: "Saved as leave savings — withdraw it for another day off later (needs HR confirmation).",
+    offDayOtTitle: "Count as overtime",
+    offDayOtDesc: "Your whole day's work is recorded as overtime (created when you clock out).",
+    swapSent: "Recorded — submitted as leave savings ✓",
+    overtimeSent: "Recorded as overtime — finish by clocking out ✓",
   },
 };
 
@@ -183,19 +211,29 @@ function getBestPosition(targetAccuracy = 30, maxWait = 10000): Promise<Geolocat
   });
 }
 
+/** Nomor hari (0=Min..6=Sab) sekarang menurut WITA. */
+function witaDowNow(): number {
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Makassar", weekday: "short" }).format(new Date());
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd);
+}
+
 export function ClockWidget({
   geofence,
   requireLocation,
   requirePhoto,
   shiftLabel = "Office Reguler · 08:00–17:00",
+  workDays = [1, 2, 3, 4, 5],
 }: {
   geofence: TeamGeofence;
   requireLocation: boolean;
   requirePhoto: boolean;
   shiftLabel?: string;
+  /** Hari kerja karyawan (0=Min..6=Sab); clock-in di luar ini → modal pilihan. */
+  workDays?: number[];
 }) {
   const locale = useLocale();
   const t = STR[locale];
+  const offDayToday = !workDays.includes(witaDowNow());
   const [now, setNow] = useState<Date | null>(null);
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("out");
@@ -208,6 +246,11 @@ export function ClockWidget({
   const [oorPrompt, setOorPrompt] = useState<{ distance: number } | null>(null);
   const [oorNote, setOorNote] = useState("");
   const [oorMode, setOorMode] = useState(false);
+  // Alur "hari libur": clock-in sukses verifikasi → modal pilih tukar libur / lembur.
+  const [oodPending, setOodPending] = useState<{
+    coords: { lat: number; lng: number; distance: number; accuracy: number } | null;
+    photo: string | null;
+  } | null>(null);
   const pendingDir = phase === "out" ? "in" : "out";
 
   useEffect(() => {
@@ -283,11 +326,26 @@ export function ClockWidget({
     else submit(geo, null, true);
   }
 
+  // Karyawan memilih perlakuan clock-in di hari libur.
+  function chooseOffDay(choice: "swap" | "overtime") {
+    const p = oodPending;
+    setOodPending(null);
+    if (!p) return;
+    submit(p.coords, p.photo, false, choice);
+  }
+
   async function submit(
     coords: { lat: number; lng: number; distance: number; accuracy: number } | null,
     photo: string | null,
     asOutOfRange = false,
+    offDayChoice?: "swap" | "overtime",
   ) {
+    // Clock-in di hari libur (dalam area) → minta pilihan dulu sebelum kirim.
+    if (pendingDir === "in" && offDayToday && !asOutOfRange && !offDayChoice) {
+      setFlow("idle");
+      setOodPending({ coords, photo });
+      return;
+    }
     setFlow("submitting");
     try {
       const res = await fetch("/api/attendance/clock", {
@@ -300,6 +358,7 @@ export function ClockWidget({
           photo,
           confirmOutOfRange: asOutOfRange || undefined,
           note: asOutOfRange ? oorNote.trim() || undefined : undefined,
+          offDayChoice,
         }),
       });
       const data = await res.json();
@@ -331,7 +390,10 @@ export function ClockWidget({
       if (pendingDir === "in") {
         setClockInAt(new Date());
         setPhase("in");
-        setNotice({ tone: "ok", text: t.clockInOk });
+        setNotice({
+          tone: "ok",
+          text: offDayChoice === "swap" ? t.swapSent : offDayChoice === "overtime" ? t.overtimeSent : t.clockInOk,
+        });
       } else {
         setPhase("out");
         setNotice({ tone: "ok", text: t.clockOutOk });
@@ -477,6 +539,8 @@ export function ClockWidget({
         onConfirm={confirmOutOfRange}
         onCancel={() => setOorPrompt(null)}
       />
+
+      <OffDayModal open={oodPending != null} t={t} onChoose={chooseOffDay} onCancel={() => setOodPending(null)} />
     </>
   );
 }
@@ -564,6 +628,97 @@ function OutOfRangeModal({
           <Button type="button" variant="danger" className="flex-1" onClick={onConfirm}>
             {t.sendToHr}
           </Button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * Modal pilihan saat clock-in di hari libur. Psikologi: hangat & apresiatif
+ * (bukan error) — header emas + ikon perayaan, lalu dua kartu pilihan besar
+ * (tukar libur = hijau/tabungan, lembur = biru/jam). Portal ke body.
+ */
+function OffDayModal({
+  open,
+  t,
+  onChoose,
+  onCancel,
+}: {
+  open: boolean;
+  t: (typeof STR)["id"];
+  onChoose: (choice: "swap" | "overtime") => void;
+  onCancel: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onCancel]);
+
+  if (!open || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[75] flex items-end justify-center sm:items-center">
+      <div className="absolute inset-0 bg-bark/50 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t.offDayTitle}
+        className="relative w-full overflow-hidden rounded-t-3xl bg-panel shadow-pop sm:max-w-md sm:rounded-3xl"
+      >
+        <div className="flex items-center gap-3 bg-gradient-to-br from-gold to-[#c8941f] px-5 py-5 text-white">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20">
+            <PartyPopper className="h-6 w-6" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-lg font-bold">{t.offDayTitle}</h2>
+            <p className="mt-0.5 text-sm text-white/90">{t.offDayBody}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2.5 p-5">
+          <button
+            type="button"
+            onClick={() => onChoose("swap")}
+            className="flex w-full items-center gap-3 rounded-2xl border border-forest-200 bg-[#e9f0d8] px-4 py-3.5 text-left transition-transform active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-forest-600 text-cream">
+              <PiggyBank className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-forest-700">{t.offDaySwapTitle}</span>
+              <span className="block text-xs text-forest-700/80">{t.offDaySwapDesc}</span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-forest-600" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onChoose("overtime")}
+            className="flex w-full items-center gap-3 rounded-2xl border border-sky/30 bg-sky-soft px-4 py-3.5 text-left transition-transform active:scale-[0.98]"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky text-cream">
+              <Timer className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold text-[#2c5775]">{t.offDayOtTitle}</span>
+              <span className="block text-xs text-[#2c5775]/80">{t.offDayOtDesc}</span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-sky" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onCancel}
+            className="mt-1 w-full rounded-xl py-2 text-sm font-medium text-muted transition-colors hover:bg-sand"
+          >
+            {t.cancel}
+          </button>
         </div>
       </div>
     </div>,

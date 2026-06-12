@@ -60,6 +60,7 @@ export function SelfDashboard({
   balance,
   canPayroll,
   scheduleLabel,
+  workDays,
   locale = "id",
 }: {
   firstName: string;
@@ -70,6 +71,7 @@ export function SelfDashboard({
   balance?: LeaveBalance;
   canPayroll: boolean;
   scheduleLabel?: string;
+  workDays?: number[];
   locale?: Locale;
 }) {
   const t = STR[locale];
@@ -88,6 +90,7 @@ export function SelfDashboard({
           requireLocation={requireLocation}
           requirePhoto={requirePhoto}
           shiftLabel={scheduleLabel}
+          workDays={workDays}
         />
       </div>
 
