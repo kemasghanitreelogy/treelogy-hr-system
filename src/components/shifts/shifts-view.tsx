@@ -15,6 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
+import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
 type Emp = Pick<Employee, "id" | "name" | "team" | "position" | "workDays" | "workStart" | "workEnd" | "scheduleTemplateId">;
@@ -362,7 +364,12 @@ export function ShiftsView({
   const [busyId, setBusyId] = useState<string | null>(null);
   const toast = useToast();
   const router = useRouter();
-  const showEmployee = canApproveAll || approverTeam != null;
+  // Scope: HR/pengelola → Semua/Data Saya (default Data Saya).
+  const scopeOpts = scopeOptionsFor(canManageShifts, false);
+  const [scope, setScope] = useStickyTab<Scope>("schedule.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const matchScope = (employeeId: string) =>
+    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
+  const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
   const canDecide = useMemo(
     () => (e: TabunganEntry) => {
@@ -405,9 +412,13 @@ export function ShiftsView({
   const pending = list.filter((e) => e.status === "pending" && canDecide(e)).length;
   const self = currentEmployeeId ? empMap.get(currentEmployeeId) : undefined;
 
+  const scopedList = list.filter((e) => matchScope(e.employeeId));
+
   return (
     <div className="space-y-5 fade-up">
-      {canManageShifts ? (
+      {scopeOpts.length > 0 && <ScopeTabs options={scopeOpts} value={scope} onChange={setScope} />}
+
+      {canManageShifts && scope === "all" ? (
         <>
           <TemplatesSection templates={templates} employees={employees} />
           <EmployeeSchedules employees={employees} templates={templates} />
@@ -441,13 +452,13 @@ export function ShiftsView({
             </div>
           )}
 
-          {list.length === 0 && (
+          {scopedList.length === 0 && (
             <div className="rounded-2xl border border-line bg-cream/40 px-5 py-10 text-center text-sm text-faint">
               {t.noSavingsRecords}
             </div>
           )}
 
-          {list.map((e) => {
+          {scopedList.map((e) => {
             const emp = empMap.get(e.employeeId);
             const isDeposit = e.kind === "deposit";
             return (

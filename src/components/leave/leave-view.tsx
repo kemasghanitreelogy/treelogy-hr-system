@@ -16,6 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
+import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
 const LEAVE_LABEL: Record<Locale, Record<LeaveType, string>> = {
@@ -240,7 +242,7 @@ export function LeaveView({
   /** Division a manager heads; may approve only this team's requests (not their own). */
   approverTeam?: Team | null;
 }) {
-  const [tab, setTab] = useState<Tab>("requests");
+  const [tab, setTab] = useStickyTab<Tab>("leave.primary", "requests", ["requests", "balances"]);
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
   const [decidingId, setDecidingId] = useState<string | null>(null);
@@ -251,9 +253,14 @@ export function LeaveView({
   const router = useRouter();
   const locale = useLocale();
   const t = STR[locale];
-  // A plain employee only ever sees their own rows, so the name/avatar per row
-  // is redundant. Show it only for approvers (HR/admin or a division manager).
-  const showEmployee = canApproveAll || approverTeam != null;
+
+  // Scope: HR → Semua/Data Saya; manajer → Data Tim/Data Saya; default Data Saya.
+  const scopeOpts = scopeOptionsFor(canApproveAll, approverTeam != null);
+  const [scope, setScope] = useStickyTab<Scope>("leave.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const matchScope = (employeeId: string) =>
+    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
+  // Tampilkan nama/identitas hanya saat melihat data lebih dari diri sendiri.
+  const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
   // Who may act on a given request: HR/admin on anyone; a division manager only on
   // their own team's members, and never on their own request.
@@ -305,6 +312,9 @@ export function LeaveView({
 
   // Only count requests the current user can actually act on.
   const pending = list.filter((r) => r.status === "pending" && canDecide(r)).length;
+  const scopedList = list.filter((r) => matchScope(r.employeeId));
+  const scopedBalances = balances.filter((b) => matchScope(b.employeeId));
+  const scopedTabungan = tabungan.filter((e) => matchScope(e.employeeId));
 
   return (
     <div className="space-y-4 fade-up">
@@ -322,12 +332,14 @@ export function LeaveView({
         </Button>
       </div>
 
+      {scopeOpts.length > 0 && <ScopeTabs options={scopeOpts} value={scope} onChange={setScope} />}
+
       {tab === "requests" ? (
         <div className="space-y-3">
-          {list.length === 0 && (
+          {scopedList.length === 0 && (
             <div className="card px-5 py-10 text-center text-sm text-faint">{t.emptyRequests}</div>
           )}
-          {list.map((r) => {
+          {scopedList.map((r) => {
             const emp = empMap.get(r.employeeId);
             return (
               <div
@@ -382,7 +394,7 @@ export function LeaveView({
           })}
         </div>
       ) : (
-        <BalancesView balances={balances} tabungan={tabungan} employees={employees} showEmployee={showEmployee} />
+        <BalancesView balances={scopedBalances} tabungan={scopedTabungan} employees={employees} showEmployee={showEmployee} />
       )}
 
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.sheetTitle} description={t.sheetDesc}>

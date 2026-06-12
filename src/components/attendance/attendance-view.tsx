@@ -12,6 +12,8 @@ import { AttendanceBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
+import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
+import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
@@ -138,6 +140,7 @@ export function AttendanceView({
   canReviewAll = true,
   approvals = [],
   currentUserName = "HR",
+  currentEmployeeId = null,
 }: {
   records: AttendanceRecord[];
   employees: EmpLite[];
@@ -148,6 +151,7 @@ export function AttendanceView({
   /** Pengajuan clock di luar area (pending) — panel konfirmasi HR. */
   approvals?: ClockApprovalRequest[];
   currentUserName?: string;
+  currentEmployeeId?: string | null;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -157,18 +161,25 @@ export function AttendanceView({
   const [punct, setPunct] = useState<"all" | "ontime" | "late">("all");
   const [selected, setSelected] = useState<Row | null>(null);
 
+  // Scope: HR → Semua/Data Saya (default Data Saya). Karyawan: hanya datanya.
+  const scopeOpts = scopeOptionsFor(canReviewAll, false);
+  const [scope, setScope] = useStickyTab<Scope>("attendance.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  // "reviewing" = tampilan HR (roster, ringkasan, kolom nama). Data Saya → tampilan mandiri.
+  const reviewing = canReviewAll && scope !== "mine";
+
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
   const rows: Row[] = useMemo(() => {
     return records
       .filter((r) => r.date === date)
+      .filter((r) => reviewing || !currentEmployeeId || r.employeeId === currentEmployeeId)
       .map((r) => ({ ...r, emp: empMap.get(r.employeeId)! }))
       .filter((r) => r.emp && (team === "all" || r.emp.team === team))
       .filter((r) =>
         punct === "all" ? true : punct === "late" ? r.status === "late" : r.status === "present",
       )
       .sort((a, b) => a.emp.name.localeCompare(b.emp.name));
-  }, [records, date, team, punct, empMap]);
+  }, [records, date, team, punct, empMap, reviewing, currentEmployeeId]);
 
   const summary = useMemo(() => {
     const s = { present: 0, late: 0, absent: 0, leave: 0, off: 0, ot: 0 };
@@ -186,28 +197,31 @@ export function AttendanceView({
   return (
     <div className="space-y-4 fade-up">
       {/* Heading (employee self-view) */}
-      {!canReviewAll && (
+      {!reviewing && (
         <div>
           <h2 className="font-display text-lg font-semibold text-ink">{t.myHistory}</h2>
           <p className="text-sm text-muted">{t.myHistoryHint}</p>
         </div>
       )}
 
-      {/* Date + controls */}
+      {/* Scope + date + controls */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative sm:max-w-[220px]">
-          <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
-          <Input
-            type="date"
-            value={date}
-            min={dates[0]}
-            max={dates[dates.length - 1]}
-            onChange={(e) => setDate(e.target.value)}
-            className="pl-9"
-            aria-label={t.pickDate}
-          />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          {scopeOpts.length > 0 && <ScopeTabs options={scopeOpts} value={scope} onChange={setScope} />}
+          <div className="relative sm:max-w-[220px]">
+            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+            <Input
+              type="date"
+              value={date}
+              min={dates[0]}
+              max={dates[dates.length - 1]}
+              onChange={(e) => setDate(e.target.value)}
+              className="pl-9"
+              aria-label={t.pickDate}
+            />
+          </div>
         </div>
-        {canReviewAll && (
+        {reviewing && (
           <Button variant="outline" className="shrink-0">
             <Download className="h-4 w-4" /> {t.exportRecap}
           </Button>
@@ -215,12 +229,12 @@ export function AttendanceView({
       </div>
 
       {/* Konfirmasi clock di luar area (HR) */}
-      {canReviewAll && approvals.length > 0 && (
+      {reviewing && approvals.length > 0 && (
         <ClockApprovalsCard approvals={approvals} employees={employees} currentUserName={currentUserName} />
       )}
 
       {/* Summary */}
-      {canReviewAll && (
+      {reviewing && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <SummaryChip label={t.present} value={summary.present} className="text-forest-600" />
           <SummaryChip label={t.late} value={summary.late} className="text-[#8a6512]" />
@@ -232,7 +246,7 @@ export function AttendanceView({
 
       {/* Filters: tim (HR) + ketepatan waktu */}
       <div className="flex flex-wrap items-center gap-2">
-        {canReviewAll && (
+        {reviewing && (
           <>
             <Chip active={team === "all"} onClick={() => setTeam("all")}>{t.allTeams}</Chip>
             {TEAMS.map((t) => (
@@ -254,7 +268,7 @@ export function AttendanceView({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
-                {canReviewAll ? (
+                {reviewing ? (
                   <>
                     <th className="px-5 py-3">{t.thEmployee}</th>
                     <th className="px-5 py-3">{t.thTeam}</th>
@@ -278,7 +292,7 @@ export function AttendanceView({
                   onClick={() => setSelected(r)}
                   className="cursor-pointer transition-colors hover:bg-cream/60"
                 >
-                  {canReviewAll ? (
+                  {reviewing ? (
                     <>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
@@ -336,7 +350,7 @@ export function AttendanceView({
             className="card w-full p-4 text-left transition-colors active:bg-cream/60"
           >
             <div className="flex items-center gap-3">
-              {canReviewAll ? (
+              {reviewing ? (
                 <>
                   <Avatar name={r.emp.name} size="sm" />
                   <div className="min-w-0 flex-1">

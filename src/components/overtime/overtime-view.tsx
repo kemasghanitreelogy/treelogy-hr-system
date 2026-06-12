@@ -14,6 +14,8 @@ import { Badge, RequestBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
+import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
 type Emp = Pick<Employee, "id" | "name" | "team" | "position">;
@@ -223,8 +225,12 @@ export function OvertimeView({
   const router = useRouter();
   const locale = useLocale();
   const t = STR[locale];
-  // A plain employee only sees their own rows → the name/avatar is redundant.
-  const showEmployee = canApproveAll || approverTeam != null;
+
+  const scopeOpts = scopeOptionsFor(canApproveAll, approverTeam != null);
+  const [scope, setScope] = useStickyTab<Scope>("overtime.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const matchScope = (employeeId: string) =>
+    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
+  const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
   const canDecide = useMemo(
     () => (r: OvertimeRequest) => {
@@ -300,11 +306,13 @@ export function OvertimeView({
         </Button>
       </div>
 
+      {scopeOpts.length > 0 && <ScopeTabs options={scopeOpts} value={scope} onChange={setScope} />}
+
       <div className="space-y-3">
-        {list.length === 0 && (
+        {list.filter((r) => matchScope(r.employeeId)).length === 0 && (
           <div className="card px-5 py-10 text-center text-sm text-faint">{t.emptyRequests}</div>
         )}
-        {list.map((r) => {
+        {list.filter((r) => matchScope(r.employeeId)).map((r) => {
           const emp = empMap.get(r.employeeId);
           return (
             <div

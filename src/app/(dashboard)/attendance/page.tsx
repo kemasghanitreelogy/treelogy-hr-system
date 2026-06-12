@@ -57,6 +57,7 @@ export default async function AttendancePage() {
       canReviewAll={canManage}
       approvals={canManage ? pendingApprovals : []}
       currentUserName={user?.name ?? "HR"}
+      currentEmployeeId={user?.employeeId ?? null}
     />
   );
 
