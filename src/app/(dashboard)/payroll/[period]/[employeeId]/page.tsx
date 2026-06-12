@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { PayslipDetail } from "@/components/payroll/payslip-detail";
 import { Card, CardContent } from "@/components/ui/card";
-import { buildPayslip, getAttendanceForEmployee, getEmployees } from "@/lib/data";
+import { buildPayslip, getAttendanceForEmployee, getEmployees, getOvertimeRequests } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import { monthLabel } from "@/lib/utils";
@@ -20,11 +20,11 @@ const STR: Record<
 > = {
   id: {
     backToPayroll: "Kembali ke Payroll",
-    intro: (month) => `Slip gaji ${month}. Lembur dibayar terpisah lewat menu Lembur.`,
+    intro: (month) => `Slip gaji ${month}. Lembur yang disetujui sudah termasuk di gaji.`,
   },
   en: {
     backToPayroll: "Back to Payroll",
-    intro: (month) => `Payslip for ${month}. Overtime is paid separately via the Overtime menu.`,
+    intro: (month) => `Payslip for ${month}. Approved overtime is included in the salary.`,
   },
 };
 
@@ -45,14 +45,15 @@ export default async function PayslipPage({
   // Karyawan biasa hanya boleh membuka slip miliknya sendiri.
   if (!isOps && user?.employeeId !== employeeId) notFound();
 
-  const [employees, periodRows] = await Promise.all([
+  const [employees, periodRows, overtime] = await Promise.all([
     getEmployees(),
     getAttendanceForEmployee(employeeId, period),
+    getOvertimeRequests(),
   ]);
   const emp = employees.find((e) => e.id === employeeId);
   if (!emp) notFound();
 
-  const slip = buildPayslip(emp, period, "pr-" + period, periodRows);
+  const slip = buildPayslip(emp, period, "pr-" + period, periodRows, overtime);
 
   return (
     <div className="space-y-4 fade-up">

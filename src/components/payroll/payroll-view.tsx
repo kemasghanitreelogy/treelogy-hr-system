@@ -49,8 +49,8 @@ const STR: Record<
     processPayroll: "Proses payroll",
     approvePayroll: "Setujui payroll",
     markPaid: "Tandai dibayar",
-    totalGross: "Total bruto",
-    totalBpjs: "Total BPJS (karyawan)",
+    totalGross: "Total pokok + tunjangan",
+    totalBpjs: "Total lembur",
     totalPph: "Total PPh 21",
     totalNet: "Total transfer bersih",
     payslipsPerEmployee: "Slip Gaji per Karyawan",
@@ -69,8 +69,8 @@ const STR: Record<
     processPayroll: "Process payroll",
     approvePayroll: "Approve payroll",
     markPaid: "Mark as paid",
-    totalGross: "Total gross",
-    totalBpjs: "Total BPJS (employee)",
+    totalGross: "Total base + allowance",
+    totalBpjs: "Total overtime",
     totalPph: "Total PPh 21",
     totalNet: "Total net transfers",
     payslipsPerEmployee: "Payslips per Employee",
@@ -154,13 +154,12 @@ export function PayrollView({
   const totals = useMemo(() => {
     return currentSlips.reduce(
       (acc, s) => {
-        acc.gross += s.grossPay;
+        acc.base += s.baseSalary + s.allowance;
+        acc.overtime += s.overtimePay;
         acc.net += s.netPay;
-        acc.bpjs += s.bpjsEmployeeTotal;
-        acc.pph += s.pph21;
         return acc;
       },
-      { gross: 0, net: 0, bpjs: 0, pph: 0 },
+      { base: 0, overtime: 0, net: 0 },
     );
   }, [currentSlips]);
 
@@ -219,10 +218,9 @@ export function PayrollView({
       </Card>
 
       {/* Totals (periode berjalan) */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard label={t.totalGross} value={rupiah(totals.gross, { compact: true })} icon={Wallet} tone="forest" />
-        <StatCard label={t.totalBpjs} value={rupiah(totals.bpjs, { compact: true })} icon={Landmark} tone="sky" />
-        <StatCard label={t.totalPph} value={rupiah(totals.pph, { compact: true })} icon={Receipt} tone="gold" />
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <StatCard label={t.totalGross} value={rupiah(totals.base, { compact: true })} icon={Wallet} tone="forest" />
+        <StatCard label={t.totalBpjs} value={rupiah(totals.overtime, { compact: true })} icon={Receipt} tone="gold" />
         <StatCard label={t.totalNet} value={rupiah(totals.net, { compact: true })} icon={Banknote} tone="matcha" />
       </div>
 

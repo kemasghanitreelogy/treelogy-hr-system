@@ -16,7 +16,6 @@ import {
   tabunganEntries as seedTabungan,
 } from "./seed";
 import { roles, systemUsers } from "./rbac";
-import { bpjsEmployeeTotal, calcBpjs, calcPph21 } from "./payroll";
 import { isSupabaseConfigured } from "./supabase/config";
 import { createClient } from "./supabase/server";
 import type {
@@ -542,36 +541,37 @@ export function computeRecap(
   return recap;
 }
 
+/**
+ * Gaji bersih sederhana: pokok + tunjangan + lembur (dari modul Lembur yang
+ * DISETUJUI pada periode itu) − potongan ketidakhadiran. Tanpa BPJS/PPh.
+ */
 export function buildPayslip(
   employee: Employee,
   period: string,
   runId: string,
   periodRows: AttendanceRecord[],
+  overtime: OvertimeRequest[] = [],
 ): Payslip {
   const recap = computeRecap(periodRows, employee.id, period);
-  // Lembur TIDAK masuk payslip — dibayar terpisah lewat modul Lembur,
-  // sehingga tidak ada risiko terbayar dua kali.
+  const ot = overtime.filter((o) => o.employeeId === employee.id && o.status === "approved" && o.date.startsWith(period));
+  const overtimePay = ot.reduce((s, o) => s + o.amount, 0);
+  const overtimeHours = Math.round(ot.reduce((s, o) => s + o.hours, 0) * 10) / 10;
   const dailyRate = recap.workingDays > 0 ? employee.baseSalary / recap.workingDays : 0;
   const absenceDeduction = Math.round(dailyRate * recap.absentDays);
-  const grossPay = employee.baseSalary + employee.allowance - absenceDeduction;
-  const bpjs = calcBpjs(employee, grossPay);
-  const bpjsEmp = bpjsEmployeeTotal(bpjs);
-  const pph21 = calcPph21(employee.ptkp, grossPay);
-  const deductions = bpjsEmp + pph21 + absenceDeduction;
-  const netPay =
-    employee.baseSalary + employee.allowance - bpjsEmp - pph21 - absenceDeduction;
+  const grossPay = employee.baseSalary + employee.allowance + overtimePay;
+  const netPay = grossPay - absenceDeduction;
   return {
     id: `${runId}-${employee.id}`, runId, employeeId: employee.id, period,
     workingDays: recap.workingDays, presentDays: recap.presentDays,
     baseSalary: employee.baseSalary, allowance: employee.allowance,
-    grossPay, bpjs, bpjsEmployeeTotal: bpjsEmp, pph21, deductions, netPay,
+    overtimePay, overtimeHours, absenceDeduction, grossPay, netPay,
   };
 }
 
 export async function getPayslipsForRun(runId: string, period: string): Promise<Payslip[]> {
-  const [emps, att] = await Promise.all([getEmployees(), getAttendance()]);
+  const [emps, att, overtime] = await Promise.all([getEmployees(), getAttendance(), getOvertimeRequests()]);
   const periodRows = att.filter((a) => a.date.startsWith(period));
-  return emps.filter((e) => e.status === "active").map((e) => buildPayslip(e, period, runId, periodRows));
+  return emps.filter((e) => e.status === "active").map((e) => buildPayslip(e, period, runId, periodRows, overtime));
 }
 
 // ---- Dashboard aggregate ----
@@ -598,11 +598,12 @@ export interface DashboardData {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [employees, attendanceRows, leave, dayOff] = await Promise.all([
+  const [employees, attendanceRows, leave, dayOff, overtime] = await Promise.all([
     getEmployees(),
     getAttendance(),
     getLeaveRequests(),
     getDayOffInLieu(),
+    getOvertimeRequests(),
   ]);
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const active = employees.filter((e) => e.status === "active");
@@ -618,7 +619,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const periodRows = monthRows;
   const payrollNet = active.reduce(
-    (s, e) => s + buildPayslip(e, CURRENT_PERIOD, "pr-" + CURRENT_PERIOD, periodRows).netPay,
+    (s, e) => s + buildPayslip(e, CURRENT_PERIOD, "pr-" + CURRENT_PERIOD, periodRows, overtime).netPay,
     0,
   );
 

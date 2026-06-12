@@ -224,19 +224,8 @@ export interface PayrollRun {
   employeeCount: number;
 }
 
-export interface BpjsBreakdown {
-  kesEmployee: number;
-  kesEmployer: number;
-  jhtEmployee: number;
-  jhtEmployer: number;
-  jpEmployee: number;
-  jpEmployer: number;
-  jkk: number;
-  jkm: number;
-}
-
-// Catatan: lembur sengaja TIDAK ada di payslip — dibayar terpisah lewat
-// modul Lembur (overtime_requests + tanda "dibayar"), bukan lewat gaji bulanan.
+// Payroll sederhana: net = pokok + tunjangan + lembur − potongan absen.
+// Lembur (dari modul Lembur yang disetujui) DISATUKAN ke gaji. Tanpa BPJS/PPh.
 export interface Payslip {
   id: string;
   runId: string;
@@ -246,12 +235,11 @@ export interface Payslip {
   presentDays: number;
   baseSalary: number;
   allowance: number;
-  grossPay: number;
-  bpjs: BpjsBreakdown;
-  bpjsEmployeeTotal: number;
-  pph21: number;
-  deductions: number;
-  netPay: number;
+  overtimePay: number;
+  overtimeHours: number;
+  absenceDeduction: number;
+  grossPay: number; // pokok + tunjangan + lembur
+  netPay: number; // grossPay − potongan absen
 }
 
 /** A clock-in geofence for one division (team). */

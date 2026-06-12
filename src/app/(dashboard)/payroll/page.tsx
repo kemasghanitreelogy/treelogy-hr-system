@@ -5,12 +5,13 @@ import {
   buildPayslip,
   getAttendanceSince,
   getEmployees,
+  getOvertimeRequests,
   getPayrollRuns,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import { periodsBack } from "@/lib/utils";
-import type { AttendanceRecord, Employee, Payslip } from "@/lib/types";
+import type { AttendanceRecord, Employee, OvertimeRequest, Payslip } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Payroll — Treelogy HR" };
@@ -26,26 +27,26 @@ const STR: Record<
 > = {
   id: {
     notLinked: "Akun Anda belum tertaut ke data karyawan. Hubungi HR.",
-    selfIntro: "Slip gaji Anda per bulan — klik untuk melihat detail. Lembur dibayar terpisah lewat menu Lembur.",
+    selfIntro: "Slip gaji Anda per bulan — klik untuk melihat detail. Lembur yang disetujui sudah termasuk di gaji.",
     myPayslips: "Slip Gaji Saya",
-    opsIntro: "Payroll otomatis dari rekap hari kerja — BPJS, PPh 21 (TER), dan ekspor transfer bank. Lembur dibayar terpisah.",
+    opsIntro: "Payroll otomatis dari rekap hari kerja — gaji bersih sudah termasuk lembur, plus ekspor transfer bank.",
   },
   en: {
     notLinked: "Your account is not linked to an employee record. Contact HR.",
-    selfIntro: "Your monthly payslips — click to view details. Overtime is paid separately via the Overtime menu.",
+    selfIntro: "Your monthly payslips — click to view details. Approved overtime is included in the salary.",
     myPayslips: "My Payslips",
-    opsIntro: "Payroll automated from working-day summaries — BPJS, PPh 21 (TER), and bank transfer export. Overtime paid separately.",
+    opsIntro: "Payroll automated from working-day summaries — net pay already includes overtime, plus bank transfer export.",
   },
 };
 
 // Riwayat slip yang ditampilkan: 12 bulan terakhir (difilter lagi di UI).
 const HISTORY_MONTHS = 12;
 
-function buildHistory(emps: Employee[], attendance: AttendanceRecord[]): Payslip[] {
+function buildHistory(emps: Employee[], attendance: AttendanceRecord[], overtime: OvertimeRequest[]): Payslip[] {
   const periods = periodsBack(HISTORY_MONTHS, CURRENT_PERIOD);
   return periods.flatMap((p) => {
     const rows = attendance.filter((a) => a.date.startsWith(p));
-    return emps.map((e) => buildPayslip(e, p, "pr-" + p, rows));
+    return emps.map((e) => buildPayslip(e, p, "pr-" + p, rows, overtime));
   });
 }
 
@@ -58,9 +59,10 @@ export default async function PayrollPage() {
   const isOps = can(user, "payroll.process") || can(user, "employees.manage");
 
   // Absensi hanya untuk jendela riwayat (bukan seluruh tabel) — lebih cepat.
-  const [employeesAll, attendance] = await Promise.all([
+  const [employeesAll, attendance, overtime] = await Promise.all([
     getEmployees(),
     getAttendanceSince(`${oldest}-01`),
+    getOvertimeRequests(),
   ]);
 
   // Self-service: a plain employee sees ONLY their own payslips, built from
@@ -74,7 +76,7 @@ export default async function PayrollPage() {
         </div>
       );
     }
-    const slips = buildHistory([me], attendance);
+    const slips = buildHistory([me], attendance, overtime);
     return (
       <div className="space-y-4 fade-up">
         <p className="text-sm text-muted">
@@ -86,7 +88,7 @@ export default async function PayrollPage() {
   }
 
   const employees = employeesAll.filter((e) => e.status === "active");
-  const [slips, runs] = [buildHistory(employees, attendance), await getPayrollRuns()];
+  const [slips, runs] = [buildHistory(employees, attendance, overtime), await getPayrollRuns()];
 
   return (
     <div className="space-y-4">

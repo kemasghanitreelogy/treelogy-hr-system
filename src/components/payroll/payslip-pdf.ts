@@ -1,7 +1,6 @@
 import type { Employee, Payslip } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { TEAM_META } from "@/lib/constants";
-import { jkkRate } from "@/lib/payroll";
 import { monthLabel, rupiah } from "@/lib/utils";
 
 const STR: Record<
@@ -15,6 +14,9 @@ const STR: Record<
     fixedAllowance: string;
     gross: string;
     overtimeNote: string;
+    overtimeLine: (hours: number) => string;
+    absenceLine: (days: number) => string;
+    deductionsTitle: string;
     bpjsDeductions: string;
     bpjsKes1: string;
     jht2: string;
@@ -40,8 +42,11 @@ const STR: Record<
     earnings: "Pendapatan",
     baseSalary: "Gaji pokok",
     fixedAllowance: "Tunjangan tetap",
-    gross: "Bruto",
-    overtimeNote: "Lembur dibayar terpisah lewat modul Lembur — tidak termasuk slip ini.",
+    gross: "Total pendapatan",
+    overtimeNote: "Lembur yang disetujui pada bulan ini sudah termasuk di gaji.",
+    overtimeLine: (hours) => `Lembur (${hours} jam)`,
+    absenceLine: (days) => `Potongan absen (${days} hari)`,
+    deductionsTitle: "Potongan",
     bpjsDeductions: "Potongan — BPJS (karyawan)",
     bpjsKes1: "BPJS Kesehatan (1%)",
     jht2: "JHT (2%)",
@@ -66,8 +71,11 @@ const STR: Record<
     earnings: "Earnings",
     baseSalary: "Base salary",
     fixedAllowance: "Fixed allowance",
-    gross: "Gross",
-    overtimeNote: "Overtime is paid separately via the Overtime module — not included in this payslip.",
+    gross: "Total earnings",
+    overtimeNote: "Approved overtime this month is already included in the salary.",
+    overtimeLine: (hours) => `Overtime (${hours} h)`,
+    absenceLine: (days) => `Absence deduction (${days} days)`,
+    deductionsTitle: "Deductions",
     bpjsDeductions: "Deductions — BPJS (employee)",
     bpjsKes1: "BPJS Kesehatan (1%)",
     jht2: "JHT (2%)",
@@ -185,34 +193,19 @@ async function buildPayslipPdf(slip: Payslip, emp: Employee, locale: Locale = "i
   };
 
   // ---- Pendapatan ----
-  const b = slip.bpjs;
   section(t.earnings);
   line(t.baseSalary, rp(slip.baseSalary));
   line(t.fixedAllowance, rp(slip.allowance));
+  if (slip.overtimePay > 0) line(t.overtimeLine(slip.overtimeHours), rp(slip.overtimePay));
   line(t.gross, rp(slip.grossPay), { strong: true });
   note(t.overtimeNote);
 
-  // ---- Potongan BPJS ----
-  section(t.bpjsDeductions);
-  line(t.bpjsKes1, `- ${rp(b.kesEmployee)}`);
-  line(t.jht2, `- ${rp(b.jhtEmployee)}`);
-  line(t.jp1, `- ${rp(b.jpEmployee)}`);
-  line(t.bpjsEmployeeTotal, `- ${rp(slip.bpjsEmployeeTotal)}`, { strong: true });
-  y += 2;
-
-  // ---- Potongan pajak ----
-  section(t.taxDeductions);
-  line(t.pph21(emp.ptkp), `- ${rp(slip.pph21)}`);
-  y += 2;
-
-  // ---- Ditanggung perusahaan ----
-  section(t.employerPaid);
-  line(t.bpjsKes4, rp(b.kesEmployer), { muted: true });
-  line(t.jht37, rp(b.jhtEmployer), { muted: true });
-  line(t.jp2, rp(b.jpEmployer), { muted: true });
-  line(t.jkk((jkkRate(emp.team) * 100).toFixed(2)), rp(b.jkk), { muted: true });
-  line(t.jkm, rp(b.jkm), { muted: true });
-  y += 3;
+  // ---- Potongan absen (jika ada) ----
+  if (slip.absenceDeduction > 0) {
+    section(t.deductionsTitle);
+    line(t.absenceLine(slip.workingDays - slip.presentDays), `- ${rp(slip.absenceDeduction)}`);
+    y += 2;
+  }
 
   // ---- Take-home pay box ----
   doc.setDrawColor(...FOREST);

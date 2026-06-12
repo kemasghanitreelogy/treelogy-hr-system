@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import { Eye, FileDown, Loader2, Printer, X } from "lucide-react";
 import type { Employee, Payslip } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
-import { jkkRate } from "@/lib/payroll";
 import { monthLabel, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -30,6 +29,8 @@ const STR: Record<
     fixedAllowance: string;
     gross: string;
     overtimeNote: string;
+    overtimeLine: (hours: number) => string;
+    absenceLine: (days: number) => string;
     bpjsDeductions: string;
     bpjsKes1: string;
     jht2: string;
@@ -62,8 +63,10 @@ const STR: Record<
     earnings: "Pendapatan",
     baseSalary: "Gaji pokok",
     fixedAllowance: "Tunjangan tetap",
-    gross: "Bruto",
-    overtimeNote: "Lembur dibayar terpisah lewat menu Lembur — tidak termasuk slip ini.",
+    gross: "Total pendapatan",
+    overtimeNote: "Lembur yang disetujui pada bulan ini sudah termasuk di gaji.",
+    overtimeLine: (hours: number) => `Lembur (${hours} jam)`,
+    absenceLine: (days: number) => `Potongan absen (${days} hari)`,
     bpjsDeductions: "Potongan — BPJS (karyawan)",
     bpjsKes1: "BPJS Kesehatan (1%)",
     jht2: "JHT (2%)",
@@ -95,8 +98,10 @@ const STR: Record<
     earnings: "Earnings",
     baseSalary: "Base salary",
     fixedAllowance: "Fixed allowance",
-    gross: "Gross",
-    overtimeNote: "Overtime is paid separately via the Overtime menu — not included in this payslip.",
+    gross: "Total earnings",
+    overtimeNote: "Approved overtime this month is already included in the salary.",
+    overtimeLine: (hours: number) => `Overtime (${hours} h)`,
+    absenceLine: (days: number) => `Absence deduction (${days} days)`,
     bpjsDeductions: "Deductions — BPJS (employee)",
     bpjsKes1: "BPJS Kesehatan (1%)",
     jht2: "JHT (2%)",
@@ -118,7 +123,6 @@ const STR: Record<
 };
 
 export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
-  const b = slip.bpjs;
   const toast = useToast();
   const locale = useLocale();
   const t = STR[locale];
@@ -197,28 +201,16 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
       <Section title={t.earnings}>
         <Line label={t.baseSalary} value={rupiah(slip.baseSalary)} />
         <Line label={t.fixedAllowance} value={rupiah(slip.allowance)} />
+        {slip.overtimePay > 0 && <Line label={t.overtimeLine(slip.overtimeHours)} value={rupiah(slip.overtimePay)} />}
         <Line label={t.gross} value={rupiah(slip.grossPay)} strong />
         <p className="pt-1 text-xs text-faint">{t.overtimeNote}</p>
       </Section>
 
-      <Section title={t.bpjsDeductions}>
-        <Line label={t.bpjsKes1} value={`- ${rupiah(b.kesEmployee)}`} />
-        <Line label={t.jht2} value={`- ${rupiah(b.jhtEmployee)}`} />
-        <Line label={t.jp1} value={`- ${rupiah(b.jpEmployee)}`} />
-        <Line label={t.bpjsEmployeeTotal} value={`- ${rupiah(slip.bpjsEmployeeTotal)}`} strong />
-      </Section>
-
-      <Section title={t.taxDeductions}>
-        <Line label={t.pph21(emp.ptkp)} value={`- ${rupiah(slip.pph21)}`} />
-      </Section>
-
-      <Section title={t.employerPaid}>
-        <Line label={t.bpjsKes4} value={rupiah(b.kesEmployer)} muted />
-        <Line label={t.jht37} value={rupiah(b.jhtEmployer)} muted />
-        <Line label={t.jp2} value={rupiah(b.jpEmployer)} muted />
-        <Line label={t.jkk((jkkRate(emp.team) * 100).toFixed(2))} value={rupiah(b.jkk)} muted />
-        <Line label={t.jkm} value={rupiah(b.jkm)} muted />
-      </Section>
+      {slip.absenceDeduction > 0 && (
+        <Section title={locale === "en" ? "Deductions" : "Potongan"}>
+          <Line label={t.absenceLine(slip.workingDays - slip.presentDays)} value={`- ${rupiah(slip.absenceDeduction)}`} />
+        </Section>
+      )}
 
       <div className="flex items-center justify-between rounded-2xl border-2 border-forest-200 bg-[#e9f0d8] px-4 py-3">
         <span className="font-semibold text-forest-700">{t.takeHome}</span>
