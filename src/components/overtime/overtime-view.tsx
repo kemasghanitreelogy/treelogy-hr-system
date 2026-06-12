@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Check, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
+import { BadgeCheck, Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
 import type { Employee, OvertimeRequest, RequestStatus, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { compressImageFile } from "@/lib/image";
-import { formatDate, rupiah } from "@/lib/utils";
+import { formatDate, formatTime, rupiah } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { Avatar } from "@/components/ui/avatar";
@@ -66,6 +66,15 @@ const STR: Record<
     proofNote: string;
     cancel: string;
     submit: string;
+    detailTitle: string;
+    statusLabel: string;
+    requestedAtLabel: string;
+    decidedByLabel: string;
+    paymentLabel: string;
+    amountLabel: string;
+    proofLabel: string;
+    noProof: string;
+    openInNewTab: string;
   }
 > = {
   id: {
@@ -114,6 +123,15 @@ const STR: Record<
     proofNote: "Maks. 5 MB. Tidak wajib.",
     cancel: "Batal",
     submit: "Ajukan",
+    detailTitle: "Detail Lembur",
+    statusLabel: "Status",
+    requestedAtLabel: "Diajukan",
+    decidedByLabel: "Diputuskan oleh",
+    paymentLabel: "Pembayaran",
+    amountLabel: "Upah lembur",
+    proofLabel: "Bukti lampiran",
+    noProof: "Tidak ada lampiran.",
+    openInNewTab: "Buka di tab baru",
   },
   en: {
     processFailed: "Failed to process. Make sure you are authorized.",
@@ -161,6 +179,15 @@ const STR: Record<
     proofNote: "Max 5 MB. Optional.",
     cancel: "Cancel",
     submit: "Submit",
+    detailTitle: "Overtime Details",
+    statusLabel: "Status",
+    requestedAtLabel: "Submitted",
+    decidedByLabel: "Decided by",
+    paymentLabel: "Payment",
+    amountLabel: "Overtime pay",
+    proofLabel: "Attached proof",
+    noProof: "No attachment.",
+    openInNewTab: "Open in new tab",
   },
 };
 
@@ -190,6 +217,7 @@ export function OvertimeView({
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<OvertimeRequest | null>(null);
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
   const router = useRouter();
@@ -279,7 +307,11 @@ export function OvertimeView({
         {list.map((r) => {
           const emp = empMap.get(r.employeeId);
           return (
-            <div key={r.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+            <div
+              key={r.id}
+              onClick={() => setSelected(r)}
+              className="card flex cursor-pointer flex-col gap-3 p-4 transition-colors hover:bg-cream/60 sm:flex-row sm:items-center"
+            >
               {showEmployee && (
                 <div className="flex items-center gap-3 sm:w-44">
                   <Avatar name={emp?.name ?? "?"} size="sm" />
@@ -302,18 +334,13 @@ export function OvertimeView({
                 </div>
                 {r.reason && <p className="mt-1 line-clamp-1 text-sm text-faint">{r.reason}</p>}
                 {r.proofPath && (
-                  <a
-                    href={`/api/overtime/proof?path=${encodeURIComponent(r.proofPath)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-sky hover:underline"
-                  >
+                  <span className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-sky">
                     <Paperclip className="h-3.5 w-3.5" /> {t.viewProof}
-                  </a>
+                  </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 sm:w-auto">
+              <div className="flex flex-wrap items-center justify-end gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
                 {r.status === "pending" && canDecide(r) ? (
                   <>
                     <Button size="sm" disabled={busyId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
@@ -369,6 +396,157 @@ export function OvertimeView({
           onCancel={() => setAdding(false)}
         />
       </Sheet>
+
+      <Sheet
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title={t.detailTitle}
+        description={selected ? empMap.get(selected.employeeId)?.name : ""}
+        width="lg"
+      >
+        {selected && (() => {
+          const live = list.find((r) => r.id === selected.id) ?? selected;
+          return (
+            <OvertimeDetail
+              request={live}
+              emp={empMap.get(live.employeeId)}
+              t={t}
+              locale={locale}
+              canDecide={canDecide(live)}
+              canMarkPaid={canMarkPaid}
+              busy={busyId === live.id}
+              onDecide={(status) => decide(live.id, status)}
+              onMarkPaid={() => markPaid(live.id)}
+            />
+          );
+        })()}
+      </Sheet>
+    </div>
+  );
+}
+
+/** Detail satu pengajuan lembur + pratinjau bukti (gambar/PDF) tanpa unduh. */
+function OvertimeDetail({
+  request: r,
+  emp,
+  t,
+  locale,
+  canDecide,
+  canMarkPaid,
+  busy,
+  onDecide,
+  onMarkPaid,
+}: {
+  request: OvertimeRequest;
+  emp?: Emp;
+  t: (typeof STR)["id"];
+  locale: Locale;
+  canDecide: boolean;
+  canMarkPaid: boolean;
+  busy: boolean;
+  onDecide: (status: RequestStatus) => void;
+  onMarkPaid: () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <Avatar name={emp?.name ?? "?"} />
+        <div className="min-w-0">
+          <p className="font-semibold text-ink">{emp?.name ?? "?"}</p>
+          <p className="truncate text-xs text-faint">
+            {emp && <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span>}
+            {emp?.position ? ` · ${emp.position}` : ""}
+          </p>
+        </div>
+        <span className="ml-auto"><RequestBadge status={r.status} /></span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <OtInfo label={`${formatDate(r.date, "short", locale)}`}>
+          <span className="text-sm font-medium text-ink">{r.startTime}–{r.endTime} · {t.hours(r.hours)}</span>
+        </OtInfo>
+        <OtInfo label={t.amountLabel}>
+          <span className="text-sm font-semibold text-forest-700">{rupiah(r.amount)}</span>
+        </OtInfo>
+        <OtInfo label={t.requestedAtLabel}>
+          <span className="text-sm text-ink">{formatDate(r.requestedAt, "short", locale)} · {formatTime(r.requestedAt)}</span>
+        </OtInfo>
+        {r.approver && (
+          <OtInfo label={t.decidedByLabel}>
+            <span className="text-sm text-ink">{r.approver}</span>
+          </OtInfo>
+        )}
+        {r.status === "approved" && (
+          <OtInfo label={t.paymentLabel}>
+            {r.paid ? (
+              <Badge tone="matcha"><BadgeCheck className="h-3.5 w-3.5" /> {t.paid}</Badge>
+            ) : (
+              <Badge tone="gold">{t.unpaid}</Badge>
+            )}
+          </OtInfo>
+        )}
+      </div>
+
+      <OtInfo label={t.reasonLabel}>
+        <p className="whitespace-pre-wrap text-sm text-ink">{r.reason || "—"}</p>
+      </OtInfo>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{t.proofLabel}</p>
+        {r.proofPath ? <OtProofPreview path={r.proofPath} t={t} /> : <p className="text-sm text-faint">{t.noProof}</p>}
+      </div>
+
+      {(r.status === "pending" && canDecide) || (r.status === "approved" && !r.paid && canMarkPaid) ? (
+        <div className="flex gap-2 border-t border-line pt-4">
+          {r.status === "pending" && canDecide && (
+            <>
+              <Button className="flex-1" disabled={busy} onClick={() => onDecide("approved")}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t.approve}
+              </Button>
+              <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onDecide("rejected")}>
+                <X className="h-4 w-4" /> {t.reject}
+              </Button>
+            </>
+          )}
+          {r.status === "approved" && !r.paid && canMarkPaid && (
+            <Button variant="secondary" className="flex-1" disabled={busy} onClick={onMarkPaid}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />} {t.markPaid}
+            </Button>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OtInfo({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-line bg-sand/40 px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">{label}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+function OtProofPreview({ path, t }: { path: string; t: (typeof STR)["id"] }) {
+  const url = `/api/overtime/proof?path=${encodeURIComponent(path)}`;
+  const isPdf = path.toLowerCase().endsWith(".pdf");
+  return (
+    <div className="overflow-hidden rounded-2xl border border-line bg-cream/40">
+      {isPdf ? (
+        <iframe src={url} title={t.proofLabel} className="h-[58vh] w-full border-0 bg-white" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={t.proofLabel} className="max-h-[58vh] w-full bg-white object-contain" />
+      )}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center justify-center gap-1.5 border-t border-line py-2 text-xs font-medium text-sky hover:bg-sand"
+      >
+        {isPdf ? <FileText className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />} {t.openInNewTab}
+      </a>
     </div>
   );
 }
