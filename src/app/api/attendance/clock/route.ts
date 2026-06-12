@@ -93,12 +93,14 @@ export async function POST(req: Request) {
   }
 
   // Upload selfie (best-effort) to private storage.
+  // Path per (hari, arah) + upsert: clock ulang di hari yang sama MENIMPA
+  // foto sebelumnya, bukan menumpuk file yatim di storage.
   let photoPath: string | null = null;
   if (body.photo?.startsWith("data:image")) {
     try {
       const base64 = body.photo.split(",")[1];
       const buffer = Buffer.from(base64, "base64");
-      const path = `${user.id}/${Date.now()}-${direction}.jpg`;
+      const path = `${user.id}/${new Date().toISOString().slice(0, 10)}-${direction}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("attendance-selfies")
         .upload(path, buffer, { contentType: "image/jpeg", upsert: true });

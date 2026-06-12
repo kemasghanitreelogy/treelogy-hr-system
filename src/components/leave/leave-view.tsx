@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
+import { compressImageDataUrl } from "@/lib/image";
 import { cn, formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, RequestBadge } from "@/components/ui/badge";
@@ -405,7 +406,11 @@ function LeaveForm({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setProof({ dataUrl: String(reader.result), name: file.name });
+    reader.onload = async () => {
+      // Kompres gambar sebelum upload agar storage tidak cepat penuh (PDF dilewatkan).
+      const dataUrl = await compressImageDataUrl(String(reader.result));
+      setProof({ dataUrl, name: file.name });
+    };
     reader.onerror = () => toast.error("Gagal membaca file.");
     reader.readAsDataURL(file);
   }
