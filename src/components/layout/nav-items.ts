@@ -12,25 +12,33 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import type { Locale } from "@/lib/i18n";
+
 export interface NavItem {
   href: string;
   label: string;
+  /** English label — `label` stays Indonesian (default locale). */
+  labelEn: string;
   icon: LucideIcon;
   /** Permission required to see this item. */
   perm: string;
 }
 
+export function navLabel(item: NavItem, locale: Locale): string {
+  return locale === "en" ? item.labelEn : item.label;
+}
+
 const ITEMS: Record<string, NavItem> = {
-  "/dashboard": { href: "/dashboard", label: "Beranda", icon: LayoutDashboard, perm: "dashboard.view" },
-  "/attendance": { href: "/attendance", label: "Absensi", icon: CalendarClock, perm: "attendance.view" },
-  "/leave": { href: "/leave", label: "Cuti & Izin", icon: CalendarDays, perm: "leave.view" },
-  "/overtime": { href: "/overtime", label: "Lembur", icon: Timer, perm: "attendance.view" },
-  "/payroll": { href: "/payroll", label: "Payroll", icon: Wallet, perm: "payroll.view" },
-  "/employees": { href: "/employees", label: "Karyawan", icon: Users, perm: "employees.view" },
-  "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", icon: Network, perm: "dashboard.view" },
-  "/shifts": { href: "/shifts", label: "Shift & Jadwal", icon: Layers, perm: "shifts.view" },
-  "/kpi": { href: "/kpi", label: "KPI & Kinerja", icon: Target, perm: "kpi.view" },
-  "/access": { href: "/access", label: "Peran & Akses", icon: ShieldCheck, perm: "access.roles" },
+  "/dashboard": { href: "/dashboard", label: "Beranda", labelEn: "Home", icon: LayoutDashboard, perm: "dashboard.view" },
+  "/attendance": { href: "/attendance", label: "Absensi", labelEn: "Attendance", icon: CalendarClock, perm: "attendance.view" },
+  "/leave": { href: "/leave", label: "Cuti & Izin", labelEn: "Leave", icon: CalendarDays, perm: "leave.view" },
+  "/overtime": { href: "/overtime", label: "Lembur", labelEn: "Overtime", icon: Timer, perm: "attendance.view" },
+  "/payroll": { href: "/payroll", label: "Payroll", labelEn: "Payroll", icon: Wallet, perm: "payroll.view" },
+  "/employees": { href: "/employees", label: "Karyawan", labelEn: "Employees", icon: Users, perm: "employees.view" },
+  "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", labelEn: "Org Structure", icon: Network, perm: "dashboard.view" },
+  "/shifts": { href: "/shifts", label: "Shift & Jadwal", labelEn: "Shifts & Schedule", icon: Layers, perm: "shifts.view" },
+  "/kpi": { href: "/kpi", label: "KPI & Kinerja", labelEn: "KPI & Performance", icon: Target, perm: "kpi.view" },
+  "/access": { href: "/access", label: "Peran & Akses", labelEn: "Roles & Access", icon: ShieldCheck, perm: "access.roles" },
 };
 
 export type Audience = "ops" | "self";

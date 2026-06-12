@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { createClient } from "@/lib/supabase/client";
-import { bottomNav, visibleNav, type NavItem } from "./nav-items";
+import { shellDict, type Locale } from "@/lib/i18n";
+import { bottomNav, navLabel, visibleNav, type NavItem } from "./nav-items";
+import { LanguageToggle } from "./language-toggle";
 import { Logo } from "./logo";
 
 export interface ShellUser {
@@ -17,7 +19,7 @@ export interface ShellUser {
   permissions: string[];
 }
 
-function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+function NavLinks({ items, locale, onNavigate }: { items: NavItem[]; locale: Locale; onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
     <nav className="flex flex-col gap-1">
@@ -40,7 +42,7 @@ function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => 
             )}
           >
             <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-lime" : "text-forest-100/60 group-hover:text-lime")} />
-            {item.label}
+            {navLabel(item, locale)}
           </Link>
         );
       })}
@@ -51,14 +53,17 @@ function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => 
 function SidebarInner({
   items,
   user,
+  locale,
   onLogout,
   onNavigate,
 }: {
   items: NavItem[];
   user: ShellUser;
+  locale: Locale;
   onLogout: () => void;
   onNavigate?: () => void;
 }) {
+  const dict = shellDict(locale);
   return (
     <div className="flex h-full flex-col bg-bark text-cream">
       <div className="flex h-16 items-center px-5">
@@ -66,9 +71,9 @@ function SidebarInner({
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-2">
         <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-forest-100/40">
-          Menu
+          {dict.menu}
         </p>
-        <NavLinks items={items} onNavigate={onNavigate} />
+        <NavLinks items={items} locale={locale} onNavigate={onNavigate} />
       </div>
       <div className="border-t border-forest-700/50 p-3">
         <div className="flex items-center gap-3 rounded-xl px-2 py-2">
@@ -80,7 +85,7 @@ function SidebarInner({
           <button
             onClick={onLogout}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-forest-100/60 transition-colors hover:bg-forest-700/60 hover:text-cream"
-            aria-label="Keluar"
+            aria-label={dict.logout}
           >
             <LogOut className="h-4 w-4" />
           </button>
@@ -94,11 +99,14 @@ export function AppShell({
   children,
   user,
   unreadCount = 0,
+  locale = "id",
 }: {
   children: React.ReactNode;
   user: ShellUser;
   unreadCount?: number;
+  locale?: Locale;
 }) {
+  const dict = shellDict(locale);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -130,8 +138,8 @@ export function AppShell({
     (i) => pathname === i.href || pathname.startsWith(i.href + "/"),
   );
   // Titles for routes that aren't in the sidebar menu.
-  const EXTRA_TITLES: Record<string, string> = { "/notifications": "Notifikasi", "/profile": "Profil" };
-  const title = current?.label ?? EXTRA_TITLES[pathname] ?? "Treelogy HR";
+  const EXTRA_TITLES: Record<string, string> = { "/notifications": dict.notifications, "/profile": dict.profile };
+  const title = (current ? navLabel(current, locale) : undefined) ?? EXTRA_TITLES[pathname] ?? "Treelogy HR";
 
   function requestLogout() {
     setDrawerOpen(false);
@@ -151,7 +159,7 @@ export function AppShell({
     <div className="min-h-screen lg:grid lg:grid-cols-[16rem_1fr]">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen lg:block">
-        <SidebarInner items={items} user={user} onLogout={requestLogout} />
+        <SidebarInner items={items} user={user} locale={locale} onLogout={requestLogout} />
       </aside>
 
       {/* Mobile drawer */}
@@ -165,11 +173,11 @@ export function AppShell({
             <button
               className="absolute -right-11 top-4 flex h-9 w-9 items-center justify-center rounded-lg bg-bark/80 text-cream"
               onClick={() => setDrawerOpen(false)}
-              aria-label="Tutup menu"
+              aria-label={dict.closeMenu}
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarInner items={items} user={user} onLogout={requestLogout} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarInner items={items} user={user} locale={locale} onLogout={requestLogout} onNavigate={() => setDrawerOpen(false)} />
           </div>
         </div>
       )}
@@ -180,7 +188,7 @@ export function AppShell({
           <button
             className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted transition-colors hover:bg-sand lg:hidden"
             onClick={() => setDrawerOpen(true)}
-            aria-label="Buka menu"
+            aria-label={dict.openMenu}
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -191,11 +199,12 @@ export function AppShell({
             </h1>
           </div>
 
+          <LanguageToggle locale={locale} />
           <Link
             href="/notifications"
             prefetch={true}
             className="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl text-muted transition-colors hover:bg-sand"
-            aria-label="Notifikasi"
+            aria-label={dict.notifications}
           >
             <Bell className="h-5 w-5" />
             {hasUnread && (
@@ -208,7 +217,7 @@ export function AppShell({
               className="flex cursor-pointer items-center rounded-full outline-none ring-offset-2 ring-offset-cream transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-forest-300"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
-              aria-label="Menu akun"
+              aria-label={dict.accountMenu}
             >
               <Avatar name={user.name} size="sm" className="ring-0" />
             </button>
@@ -228,7 +237,7 @@ export function AppShell({
                   onClick={() => setMenuOpen(false)}
                   className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-ink transition-colors hover:bg-sand"
                 >
-                  <UserRound className="h-4 w-4 text-muted" /> Lihat Profil
+                  <UserRound className="h-4 w-4 text-muted" /> {dict.viewProfile}
                 </Link>
                 <button
                   onClick={() => {
@@ -237,7 +246,7 @@ export function AppShell({
                   }}
                   className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-clay transition-colors hover:bg-clay-soft"
                 >
-                  <LogOut className="h-4 w-4" /> Keluar
+                  <LogOut className="h-4 w-4" /> {dict.logout}
                 </button>
               </div>
             )}
@@ -276,7 +285,7 @@ export function AppShell({
                   >
                     <Icon className={cn("h-5 w-5", active && "text-forest-700")} />
                   </span>
-                  {item.label.split(" ")[0]}
+                  {navLabel(item, locale).split(" ")[0]}
                 </Link>
               );
             })}
@@ -287,7 +296,7 @@ export function AppShell({
             <span className="flex h-7 w-12 items-center justify-center">
               <Menu className="h-5 w-5" />
             </span>
-            Lainnya
+            {dict.more}
           </button>
         </div>
       </nav>
@@ -296,10 +305,10 @@ export function AppShell({
         open={confirmLogout}
         tone="danger"
         icon={loggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
-        title="Keluar dari akun?"
-        message="Anda akan keluar dan kembali ke halaman masuk."
-        confirmLabel={loggingOut ? "Keluar…" : "Ya, keluar"}
-        cancelLabel="Batal"
+        title={dict.logoutTitle}
+        message={dict.logoutMessage}
+        confirmLabel={loggingOut ? dict.logoutBusy : dict.logoutConfirm}
+        cancelLabel={dict.cancel}
         busy={loggingOut}
         onConfirm={logout}
         onCancel={() => setConfirmLogout(false)}
