@@ -261,21 +261,32 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   prefetch={true}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
-                    active ? "text-forest-600" : "text-faint",
+                    "flex flex-col items-center gap-0.5 py-2 text-[11px] transition-colors",
+                    active ? "font-semibold text-forest-700" : "font-medium text-faint",
                   )}
                 >
-                  <Icon className="h-5 w-5" />
+                  {/* Pil di belakang ikon menandai halaman aktif dengan jelas */}
+                  <span
+                    className={cn(
+                      "flex h-7 w-12 items-center justify-center rounded-full transition-colors",
+                      active && "bg-forest-100",
+                    )}
+                  >
+                    <Icon className={cn("h-5 w-5", active && "text-forest-700")} />
+                  </span>
                   {item.label.split(" ")[0]}
                 </Link>
               );
             })}
           <button
             onClick={() => setDrawerOpen(true)}
-            className="flex cursor-pointer flex-col items-center gap-1 py-2.5 text-[11px] font-medium text-faint"
+            className="flex cursor-pointer flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-faint"
           >
-            <Menu className="h-5 w-5" />
+            <span className="flex h-7 w-12 items-center justify-center">
+              <Menu className="h-5 w-5" />
+            </span>
             Lainnya
           </button>
         </div>

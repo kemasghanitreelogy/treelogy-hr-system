@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
-import { compressImageDataUrl } from "@/lib/image";
+import { compressImageFile } from "@/lib/image";
 import { cn, formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, RequestBadge } from "@/components/ui/badge";
@@ -393,7 +393,7 @@ function LeaveForm({
   // Optional proof attachment (image or PDF), read client-side into a data URL.
   const [proof, setProof] = useState<{ dataUrl: string; name: string } | null>(null);
 
-  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-picking the same file after removal
     if (!file) return;
@@ -405,14 +405,19 @@ function LeaveForm({
       toast.error("Ukuran file maksimal 5 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      // Kompres gambar sebelum upload agar storage tidak cepat penuh (PDF dilewatkan).
-      const dataUrl = await compressImageDataUrl(String(reader.result));
-      setProof({ dataUrl, name: file.name });
-    };
-    reader.onerror = () => toast.error("Gagal membaca file.");
-    reader.readAsDataURL(file);
+    try {
+      if (file.type.startsWith("image/")) {
+        // Kompres di Web Worker (EXIF aman, UI tidak macet) sebelum upload.
+        setProof({ dataUrl: await compressImageFile(file), name: file.name });
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => setProof({ dataUrl: String(reader.result), name: file.name });
+        reader.onerror = () => toast.error("Gagal membaca file.");
+        reader.readAsDataURL(file);
+      }
+    } catch {
+      toast.error("Gagal membaca file.");
+    }
   }
 
   async function submit(e: React.FormEvent) {

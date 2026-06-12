@@ -1,39 +1,28 @@
 /**
- * Kompresi gambar di sisi klien sebelum upload — foto HP 3–5 MB menjadi
- * ±200–400 KB tanpa perubahan berarti secara visual, sehingga storage
- * Supabase tidak cepat penuh. PDF dan non-gambar dilewatkan apa adanya.
+ * Kompresi gambar di sisi klien sebelum upload (browser-image-compression):
+ * berjalan di Web Worker (UI tidak macet), menangani rotasi EXIF foto HP,
+ * dan iteratif menekan sampai target ukuran — foto 3–5 MB menjadi ±300 KB.
+ * Library di-import dinamis agar tidak membebani bundle awal halaman.
  */
-export async function compressImageDataUrl(
-  dataUrl: string,
-  maxDim = 1600,
-  quality = 0.8,
-): Promise<string> {
-  if (!dataUrl.startsWith("data:image/")) return dataUrl;
+
+const MAX_SIZE_MB = 0.4;
+const MAX_DIMENSION = 1600;
+
+/** Kompres File gambar → data URL siap upload. Non-gambar dilempar error oleh pemanggil. */
+export async function compressImageFile(file: File): Promise<string> {
+  const { default: imageCompression } = await import("browser-image-compression");
+  let chosen: File | Blob = file;
   try {
-    const img = await loadImage(dataUrl);
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    // Sudah kecil dan bukan format boros (HEIC/PNG) → biarkan.
-    if (scale === 1 && dataUrl.startsWith("data:image/jpeg")) return dataUrl;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(img.width * scale);
-    canvas.height = Math.round(img.height * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return dataUrl;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const out = canvas.toDataURL("image/jpeg", quality);
+    const out = await imageCompression(file, {
+      maxSizeMB: MAX_SIZE_MB,
+      maxWidthOrHeight: MAX_DIMENSION,
+      useWebWorker: true,
+      initialQuality: 0.8,
+    });
     // Jaga-jaga: jangan pernah hasilkan file yang lebih besar dari aslinya.
-    return out.length < dataUrl.length ? out : dataUrl;
+    if (out.size < file.size) chosen = out;
   } catch {
-    return dataUrl;
+    /* kompresi gagal → pakai file asli, validasi ukuran server tetap menjaga */
   }
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
+  return imageCompression.getDataUrlFromFile(chosen as File);
 }
