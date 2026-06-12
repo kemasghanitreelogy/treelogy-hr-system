@@ -1,9 +1,40 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, findUserByEmail } from "@/lib/supabase/admin";
 import { mapEmployee } from "@/lib/data";
 import type { Employee, Team } from "@/lib/types";
 
 export const runtime = "nodejs";
+
+/**
+ * Buat akun login untuk karyawan baru (service-role). Password awal = email
+ * agar mudah login pertama kali; karyawan diberi peran default "Karyawan".
+ * Jika email sudah punya akun, cukup tautkan profilnya.
+ */
+async function ensureAccount(employeeId: string, email: string | null | undefined): Promise<boolean> {
+  const admin = createAdminClient();
+  const mail = email?.trim();
+  if (!admin || !mail) return false;
+  let userId: string | undefined;
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email: mail,
+    password: mail, // password awal = email (default login)
+    email_confirm: true,
+  });
+  userId = created?.user?.id;
+  if (error || !userId) {
+    const existing = await findUserByEmail(admin, mail);
+    if (!existing) return false;
+    userId = existing.id;
+  }
+  const { error: pErr } = await admin
+    .from("profiles")
+    .upsert(
+      { id: userId, employee_id: employeeId, role_id: "role-employee", role: "employee" },
+      { onConflict: "id" },
+    );
+  return !pErr;
+}
 
 const TEAM_PREFIX: Record<Team, string> = { factory: "01", farm: "02", office: "04" };
 const LOCATION: Record<Team, Employee["location"]> = {
@@ -108,7 +139,10 @@ export async function POST(req: Request) {
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
-  return NextResponse.json({ ok: true, employee: mapEmployee(data) });
+  const employee = mapEmployee(data);
+  // Akun login otomatis (password awal = email).
+  const accountCreated = await ensureAccount(employee.id, employee.email);
+  return NextResponse.json({ ok: true, employee, accountCreated });
 }
 
 // ---- Update ----

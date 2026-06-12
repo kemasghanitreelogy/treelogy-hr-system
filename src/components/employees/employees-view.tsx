@@ -111,6 +111,7 @@ const ID_STR = {
   save: "Simpan",
   saveEditFailed: "Gagal menyimpan perubahan. Pastikan Anda HR/admin.",
   saveCreateFailed: "Gagal menambah karyawan. Pastikan Anda HR/admin.",
+  accountCreatedMsg: "Akun login dibuat — kata sandi awal = email.",
 };
 
 const STR: Record<Locale, typeof ID_STR> = {
@@ -194,6 +195,7 @@ const STR: Record<Locale, typeof ID_STR> = {
     save: "Save",
     saveEditFailed: "Failed to save changes. Make sure you are HR/admin.",
     saveCreateFailed: "Failed to add the employee. Make sure you are HR/admin.",
+    accountCreatedMsg: "Login account created — initial password = email.",
   },
 };
 
@@ -826,6 +828,7 @@ function EmployeeForm({
         return;
       }
       onSaved(data.employee as Employee);
+      if (!isEdit && data.accountCreated) toast.success(t.accountCreatedMsg);
     } catch {
       toast.error(t.connection);
     } finally {
