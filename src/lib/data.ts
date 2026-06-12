@@ -197,8 +197,6 @@ export const mapOvertime = (r: Row): OvertimeRequest => ({
   amount: n(r.amount),
   status: r.status as OvertimeRequest["status"],
   approver: (r.approver as string) ?? null,
-  paid: Boolean(r.paid),
-  paidAt: (r.paid_at as string) ?? null,
   proofPath: (r.proof_path as string) ?? null,
   requestedAt: String(r.requested_at),
 });

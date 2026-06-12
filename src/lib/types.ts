@@ -145,8 +145,6 @@ export interface OvertimeRequest {
   amount: number; // ratePerHour * hours
   status: RequestStatus; // approval flow
   approver?: string | null;
-  paid: boolean; // payment is settled SEPARATELY from payroll
-  paidAt?: string | null;
   proofPath?: string | null;
   requestedAt: string;
 }

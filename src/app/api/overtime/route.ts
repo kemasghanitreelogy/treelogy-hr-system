@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapOvertime } from "@/lib/data";
 import { notifyApprovers, pushNotifications } from "@/lib/notify";
-import { formatDate, rupiah } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import type { RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -49,7 +49,6 @@ interface UpdatePayload {
   id?: string;
   status?: RequestStatus;
   approver?: string;
-  paid?: boolean;
 }
 
 async function auth() {
@@ -120,7 +119,6 @@ export async function POST(req: Request) {
     rate_per_hour: ratePerHour,
     amount,
     status: "pending",
-    paid: false,
     proof_path: proofPath,
   };
 
@@ -142,7 +140,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, request: mapOvertime(data) });
 }
 
-// ---- Approve / reject, or mark paid ----
+// ---- Approve / reject ----
 export async function PATCH(req: Request) {
   let body: UpdatePayload;
   try {
@@ -157,10 +155,6 @@ export async function PATCH(req: Request) {
     if (!STATUSES.includes(body.status)) return NextResponse.json({ error: "invalid_status" }, { status: 400 });
     update.status = body.status;
     update.approver = body.approver?.trim() || null;
-  }
-  if (typeof body.paid === "boolean") {
-    update.paid = body.paid;
-    update.paid_at = body.paid ? new Date().toISOString() : null;
   }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
@@ -180,13 +174,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
 
-  // Notify the requester: payment takes precedence over a status change.
+  // Notify the requester of the approval decision.
   const meta = `${formatDate(String(data.date))} · ${data.hours} jam`;
-  if (body.paid === true) {
-    await pushNotifications([
-      { employeeId: String(data.employee_id), type: "overtime", tone: "paid", title: "Lembur telah dibayar", body: `${meta} · ${rupiah(Number(data.amount))}`, href: "/overtime" },
-    ]);
-  } else if (body.status === "approved" || body.status === "rejected") {
+  if (body.status === "approved" || body.status === "rejected") {
     await pushNotifications([
       {
         employeeId: String(data.employee_id),

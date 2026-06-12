@@ -185,10 +185,10 @@ export const leaveRequests: LeaveRequest[] = [
 
 // Overtime (lembur). rate = baseSalary / 20 / 8; amount = rate × hours.
 export const overtimeRequests: OvertimeRequest[] = [
-  { id: "o1", employeeId: "e01", date: "2026-06-10", startTime: "17:00", endTime: "20:00", hours: 3, reason: "Kejar target produksi batch ekspor", ratePerHour: 22_500, amount: 67_500, status: "pending", paid: false, requestedAt: "2026-06-10T20:05:00+08:00" },
-  { id: "o2", employeeId: "e04", date: "2026-06-08", startTime: "16:00", endTime: "19:00", hours: 3, reason: "Panen tambahan sebelum hujan", ratePerHour: 20_000, amount: 60_000, status: "approved", approver: "Komang Adi", paid: true, paidAt: "2026-06-09T10:00:00+08:00", requestedAt: "2026-06-08T19:10:00+08:00" },
-  { id: "o3", employeeId: "e10", date: "2026-06-11", startTime: "17:00", endTime: "21:00", hours: 4, reason: "QC pesanan mendadak", ratePerHour: 26_250, amount: 105_000, status: "approved", approver: "Kadek Wirawan", paid: false, requestedAt: "2026-06-11T21:05:00+08:00" },
-  { id: "o4", employeeId: "e06", date: "2026-06-09", startTime: "18:00", endTime: "20:00", hours: 2, reason: "Closing penjualan akhir bulan", ratePerHour: 28_125, amount: 56_250, status: "pending", paid: false, requestedAt: "2026-06-09T20:02:00+08:00" },
+  { id: "o1", employeeId: "e01", date: "2026-06-10", startTime: "17:00", endTime: "20:00", hours: 3, reason: "Kejar target produksi batch ekspor", ratePerHour: 22_500, amount: 67_500, status: "pending", requestedAt: "2026-06-10T20:05:00+08:00" },
+  { id: "o2", employeeId: "e04", date: "2026-06-08", startTime: "16:00", endTime: "19:00", hours: 3, reason: "Panen tambahan sebelum hujan", ratePerHour: 20_000, amount: 60_000, status: "approved", approver: "Komang Adi", requestedAt: "2026-06-08T19:10:00+08:00" },
+  { id: "o3", employeeId: "e10", date: "2026-06-11", startTime: "17:00", endTime: "21:00", hours: 4, reason: "QC pesanan mendadak", ratePerHour: 26_250, amount: 105_000, status: "approved", approver: "Kadek Wirawan", requestedAt: "2026-06-11T21:05:00+08:00" },
+  { id: "o4", employeeId: "e06", date: "2026-06-09", startTime: "18:00", endTime: "20:00", hours: 2, reason: "Closing penjualan akhir bulan", ratePerHour: 28_125, amount: 56_250, status: "pending", requestedAt: "2026-06-09T20:02:00+08:00" },
 ];
 
 export const dayOffInLieu: DayOffInLieu[] = [
