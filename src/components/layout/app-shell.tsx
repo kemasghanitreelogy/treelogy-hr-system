@@ -19,13 +19,24 @@ export interface ShellUser {
   permissions: string[];
 }
 
-function NavLinks({ items, locale, onNavigate }: { items: NavItem[]; locale: Locale; onNavigate?: () => void }) {
+function NavLinks({
+  items,
+  locale,
+  counts = {},
+  onNavigate,
+}: {
+  items: NavItem[];
+  locale: Locale;
+  counts?: Record<string, number>;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   return (
     <nav className="flex flex-col gap-1">
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(item.href + "/");
         const Icon = item.icon;
+        const count = counts[item.href] ?? 0;
         return (
           <Link
             key={item.href}
@@ -42,7 +53,15 @@ function NavLinks({ items, locale, onNavigate }: { items: NavItem[]; locale: Loc
             )}
           >
             <Icon className={cn("h-[18px] w-[18px] shrink-0", active ? "text-lime" : "text-forest-100/60 group-hover:text-lime")} />
-            {navLabel(item, locale)}
+            <span className="flex-1">{navLabel(item, locale)}</span>
+            {count > 0 && (
+              <span
+                className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-bold text-bark"
+                aria-label={`${count} perlu aksi`}
+              >
+                {count > 99 ? "99+" : count}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -54,12 +73,14 @@ function SidebarInner({
   items,
   user,
   locale,
+  counts,
   onLogout,
   onNavigate,
 }: {
   items: NavItem[];
   user: ShellUser;
   locale: Locale;
+  counts?: Record<string, number>;
   onLogout: () => void;
   onNavigate?: () => void;
 }) {
@@ -73,7 +94,7 @@ function SidebarInner({
         <p className="px-3 pb-2 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-forest-100/40">
           {dict.menu}
         </p>
-        <NavLinks items={items} locale={locale} onNavigate={onNavigate} />
+        <NavLinks items={items} locale={locale} counts={counts} onNavigate={onNavigate} />
       </div>
       <div className="border-t border-forest-700/50 p-3">
         <div className="flex items-center gap-3 rounded-xl px-2 py-2">
@@ -99,11 +120,14 @@ export function AppShell({
   children,
   user,
   unreadCount = 0,
+  actionCounts = {},
   locale = "id",
 }: {
   children: React.ReactNode;
   user: ShellUser;
   unreadCount?: number;
+  /** Jumlah "perlu aksi" per href menu (badge nav). */
+  actionCounts?: Record<string, number>;
   locale?: Locale;
 }) {
   const dict = shellDict(locale);
@@ -159,7 +183,7 @@ export function AppShell({
     <div className="min-h-screen lg:grid lg:grid-cols-[16rem_1fr]">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen lg:block">
-        <SidebarInner items={items} user={user} locale={locale} onLogout={requestLogout} />
+        <SidebarInner items={items} user={user} locale={locale} counts={actionCounts} onLogout={requestLogout} />
       </aside>
 
       {/* Mobile drawer */}
@@ -177,7 +201,7 @@ export function AppShell({
             >
               <X className="h-5 w-5" />
             </button>
-            <SidebarInner items={items} user={user} locale={locale} onLogout={requestLogout} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarInner items={items} user={user} locale={locale} counts={actionCounts} onLogout={requestLogout} onNavigate={() => setDrawerOpen(false)} />
           </div>
         </div>
       )}
@@ -265,6 +289,7 @@ export function AppShell({
           {bottomItems.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
               const Icon = item.icon;
+              const count = actionCounts[item.href] ?? 0;
               return (
                 <Link
                   key={item.href}
@@ -279,10 +304,15 @@ export function AppShell({
                   {/* Pil di belakang ikon menandai halaman aktif dengan jelas */}
                   <span
                     className={cn(
-                      "flex h-7 w-12 items-center justify-center rounded-full transition-colors",
+                      "relative flex h-7 w-12 items-center justify-center rounded-full transition-colors",
                       active && "bg-forest-100",
                     )}
                   >
+                    {count > 0 && (
+                      <span className="absolute right-1.5 top-0 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-gold px-1 text-[9px] font-bold text-bark ring-2 ring-cream">
+                        {count > 9 ? "9+" : count}
+                      </span>
+                    )}
                     <Icon className={cn("h-5 w-5", active && "text-forest-700")} />
                   </span>
                   {navLabel(item, locale).split(" ")[0]}

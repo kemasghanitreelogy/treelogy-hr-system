@@ -361,6 +361,45 @@ export async function getNotifications(): Promise<AppNotification[]> {
   }
 }
 
+/**
+ * Jumlah item "perlu aksi" per modul untuk pengguna ini (pending yang bisa
+ * ia setujui). Dipakai untuk badge di menu navigasi. Karyawan biasa → nol.
+ */
+export async function getActionCounts(
+  user: { permissions: string[]; employeeId: string | null } | null,
+): Promise<{ leave: number; overtime: number; attendance: number }> {
+  const none = { leave: 0, overtime: 0, attendance: 0 };
+  if (!user) return none;
+  const perms = new Set(user.permissions);
+  const canApproveAll = perms.has("employees.manage");
+  const canApproveLeave = canApproveAll || perms.has("leave.approve");
+  const canManageAttendance = canApproveAll || perms.has("attendance.manage");
+  if (!canApproveLeave && !canManageAttendance) return none;
+
+  const [employees, leave, overtime, approvals] = await Promise.all([
+    getEmployees(),
+    canApproveLeave ? getLeaveRequests() : Promise.resolve([]),
+    canApproveLeave ? getOvertimeRequests() : Promise.resolve([]),
+    canManageAttendance ? getClockApprovals() : Promise.resolve([]),
+  ]);
+  const me = user.employeeId ? employees.find((e) => e.id === user.employeeId) : undefined;
+  const team = me?.team;
+  const teamOf = new Map(employees.map((e) => [e.id, e.team]));
+  // HR/admin: semua; manajer: hanya divisinya & bukan dirinya sendiri.
+  const canDecide = (employeeId: string) => {
+    if (canApproveAll) return true;
+    if (!team) return false;
+    if (employeeId === user.employeeId) return false;
+    return teamOf.get(employeeId) === team;
+  };
+
+  return {
+    leave: leave.filter((r) => r.status === "pending" && canDecide(r.employeeId)).length,
+    overtime: overtime.filter((r) => r.status === "pending" && canDecide(r.employeeId)).length,
+    attendance: approvals.filter((a) => a.status === "pending").length,
+  };
+}
+
 export async function getUnreadNotifCount(): Promise<number> {
   if (!isSupabaseConfigured) return 0;
   try {
