@@ -1,5 +1,5 @@
 import { EmployeesView } from "@/components/employees/employees-view";
-import { getEmployees, getRoles, getSystemUsers } from "@/lib/data";
+import { getAllContracts, getEmployees, getRoles, getSystemUsers } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -18,11 +18,12 @@ const STR: Record<Locale, { description: string }> = {
 };
 
 export default async function EmployeesPage() {
-  const [employees, user, users, locale] = await Promise.all([
+  const [employees, user, users, locale, contracts] = await Promise.all([
     getEmployees(),
     getSessionUser(),
     getSystemUsers(),
     getLocale(),
+    getAllContracts(),
   ]);
   const t = STR[locale];
   const canManage = can(user, "employees.manage");
@@ -39,6 +40,7 @@ export default async function EmployeesPage() {
         canAssignRoles={canAssignRoles}
         roles={roles}
         roleByEmployee={roleByEmployee}
+        contracts={contracts}
       />
     </div>
   );

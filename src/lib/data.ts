@@ -4,6 +4,8 @@ import {
   attendance as seedAttendance,
   clockApprovals as seedClockApprovals,
   dayOffInLieu as seedDayOff,
+  employeeContracts as seedContracts,
+  holidays as seedHolidays,
   employees as seedEmployees,
   kpis as seedKpis,
   leaveBalances as seedBalances,
@@ -23,6 +25,8 @@ import type {
   AttendanceSettings,
   ClockApprovalRequest,
   DayOffInLieu,
+  EmployeeContract,
+  Holiday,
   Employee,
   Kpi,
   AppNotification,
@@ -87,6 +91,7 @@ export const mapEmployee = (r: Row): Employee => ({
   baseSalary: n(r.base_salary),
   allowance: n(r.allowance),
   ptkp: r.ptkp as Employee["ptkp"],
+  religion: (r.religion as Employee["religion"]) ?? null,
   npwp: (r.npwp as string) ?? null,
   bpjsKes: Boolean(r.bpjs_kes),
   bpjsTk: Boolean(r.bpjs_tk),
@@ -98,6 +103,24 @@ export const mapEmployee = (r: Row): Employee => ({
   workDays: Array.isArray(r.work_days) ? (r.work_days as number[]).map(Number) : [1, 2, 3, 4, 5],
   scheduleTemplateId: (r.schedule_template_id as string) ?? null,
   managerId: (r.manager_id as string) ?? null,
+});
+
+export const mapHoliday = (r: Row): Holiday => ({
+  id: String(r.id),
+  date: String(r.date),
+  name: String(r.name),
+  type: r.type as Holiday["type"],
+  religion: (r.religion as Holiday["religion"]) ?? null,
+});
+
+export const mapContract = (r: Row): EmployeeContract => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  type: r.type as EmployeeContract["type"],
+  startDate: String(r.start_date),
+  endDate: (r.end_date as string) ?? null,
+  status: r.status as EmployeeContract["status"],
+  note: (r.note as string) ?? null,
 });
 
 export const mapScheduleTemplate = (r: Row): ScheduleTemplate => ({
@@ -245,6 +268,30 @@ export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmplo
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
 export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
 export const getScheduleTemplates = () => fetchTable("schedule_templates", mapScheduleTemplate, seedScheduleTemplates);
+
+export async function getHolidays(): Promise<Holiday[]> {
+  const rows = await fetchTable("holidays", mapHoliday, seedHolidays);
+  return rows.slice().sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Semua kontrak (HR via RLS) untuk ditampilkan per karyawan di halaman Karyawan. */
+export const getAllContracts = () => fetchTable("employee_contracts", mapContract, seedContracts);
+
+/** Kontrak kerja satu karyawan (riwayat), terbaru dulu. */
+export async function getContracts(employeeId: string): Promise<EmployeeContract[]> {
+  if (!isSupabaseConfigured) {
+    return seedContracts.filter((c) => c.employeeId === employeeId).sort((a, b) => b.startDate.localeCompare(a.startDate));
+  }
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase.from("employee_contracts").select("*").eq("employee_id", employeeId);
+    if (error || !data) return [];
+    return data.map(mapContract).sort((a, b) => b.startDate.localeCompare(a.startDate));
+  } catch {
+    return [];
+  }
+}
 
 /** Absensi sejak `fromDate` (YYYY-MM-DD) saja — payload jauh lebih kecil dari getAttendance(). */
 export async function getAttendanceSince(fromDate: string): Promise<AttendanceRecord[]> {

@@ -70,18 +70,27 @@ export async function POST(req: Request) {
     team?: string | null;
     work_days?: number[] | null;
     base_salary?: number | null;
+    religion?: string | null;
   } | null = null;
   if (profile?.employee_id) {
     const { data } = await supabase
       .from("employees")
-      .select("name, work_start, work_end, team, work_days, base_salary")
+      .select("name, work_start, work_end, team, work_days, base_salary, religion")
       .eq("id", profile.employee_id)
       .maybeSingle();
     emp = data;
   }
-  // Hari libur = hari ini bukan hari kerja menurut jadwal karyawan.
+  // Hari libur = bukan hari kerja menurut jadwal, ATAU hari libur (nasional /
+  // keagamaan sesuai agama karyawan).
   const workDays = Array.isArray(emp?.work_days) ? emp!.work_days!.map(Number) : [1, 2, 3, 4, 5];
-  const isOffDay = !workDays.includes(witaDow(new Date()));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let isOffDay = !workDays.includes(witaDow(new Date()));
+  if (!isOffDay) {
+    const { data: hol } = await supabase.from("holidays").select("type, religion").eq("date", todayStr);
+    if ((hol ?? []).some((h) => h.type === "public" || (h.type === "religious" && h.religion === emp?.religion))) {
+      isOffDay = true;
+    }
+  }
 
   // Global toggles.
   const { data: s } = await supabase

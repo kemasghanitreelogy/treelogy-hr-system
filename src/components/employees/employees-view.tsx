@@ -2,8 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, UserX, Wallet } from "lucide-react";
-import type { Employee, Team } from "@/lib/types";
+import type { Employee, EmployeeContract, Religion, Team } from "@/lib/types";
+import { ContractsCard } from "./contracts-card";
 import type { Locale } from "@/lib/i18n";
+
+const RELIGIONS: Religion[] = ["islam", "kristen", "katolik", "hindu", "buddha", "konghucu"];
+const RELIGION_LABEL: Record<Locale, Record<Religion, string>> = {
+  id: { islam: "Islam", kristen: "Kristen", katolik: "Katolik", hindu: "Hindu", buddha: "Buddha", konghucu: "Konghucu" },
+  en: { islam: "Islam", kristen: "Christian", katolik: "Catholic", hindu: "Hindu", buddha: "Buddhist", konghucu: "Confucian" },
+};
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
 import { PTKP_OPTIONS } from "@/lib/payroll";
@@ -68,6 +75,7 @@ const ID_STR = {
   baseSalary: "Gaji pokok",
   allowance: "Tunjangan",
   ptkpStatus: "Status PTKP",
+  religion: "Agama",
   npwp: "NPWP",
   bpjsKes: "BPJS Kesehatan",
   bpjsTk: "BPJS Ketenagakerjaan",
@@ -156,6 +164,7 @@ const STR: Record<Locale, typeof ID_STR> = {
     baseSalary: "Base salary",
     allowance: "Allowance",
     ptkpStatus: "PTKP status",
+    religion: "Religion",
     npwp: "NPWP",
     bpjsKes: "BPJS Kesehatan",
     bpjsTk: "BPJS Ketenagakerjaan",
@@ -205,12 +214,14 @@ export function EmployeesView({
   canAssignRoles = false,
   roles = [],
   roleByEmployee = {},
+  contracts = [],
 }: {
   initial: Employee[];
   canManage?: boolean;
   canAssignRoles?: boolean;
   roles?: RoleLite[];
   roleByEmployee?: Record<string, string>;
+  contracts?: EmployeeContract[];
 }) {
   const [list, setList] = useState<Employee[]>(initial);
   const [q, setQ] = useState("");
@@ -454,6 +465,7 @@ export function EmployeesView({
             canAssignRoles={canAssignRoles}
             roles={roles}
             currentRoleId={roleMap[selected.id]}
+            contracts={contracts.filter((c) => c.employeeId === selected.id)}
             onRoleAssigned={(empId, roleId) => {
               setRoleMap((prev) => ({ ...prev, [empId]: roleId }));
               toast.success(t.roleUpdated);
@@ -522,6 +534,7 @@ function EmployeeDetail({
   canAssignRoles,
   roles,
   currentRoleId,
+  contracts,
   onRoleAssigned,
 }: {
   emp: Employee;
@@ -530,6 +543,7 @@ function EmployeeDetail({
   canAssignRoles: boolean;
   roles: RoleLite[];
   currentRoleId?: string;
+  contracts: EmployeeContract[];
   onRoleAssigned: (employeeId: string, roleId: string) => void;
 }) {
   const locale = useLocale();
@@ -562,6 +576,8 @@ function EmployeeDetail({
 
       <WorkHoursCard emp={emp} canManage={canManage} onHours={onHours} />
 
+      <ContractsCard employeeId={emp.id} contracts={contracts} canManage={canManage} />
+
       <div className="rounded-2xl border border-line bg-panel p-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
           <Wallet className="h-4 w-4 text-forest-600" /> {t.compensationTax}
@@ -570,6 +586,7 @@ function EmployeeDetail({
           <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
           <Stat label={t.allowance} value={rupiah(emp.allowance)} />
           <Stat label={t.ptkpStatus} value={emp.ptkp} />
+          <Stat label={t.religion} value={emp.religion ? RELIGION_LABEL[locale][emp.religion] : "—"} />
           <Stat label={t.npwp} value={emp.npwp ?? "—"} />
           <Stat label={t.bpjsKes} value={emp.bpjsKes ? t.activeLabel : "—"} />
           <Stat label={t.bpjsTk} value={emp.bpjsTk ? t.activeLabel : "—"} />
@@ -784,6 +801,7 @@ function EmployeeForm({
     baseSalary: String(initial?.baseSalary ?? "3500000"),
     allowance: String(initial?.allowance ?? "500000"),
     ptkp: initial?.ptkp ?? "TK/0",
+    religion: (initial?.religion ?? "") as Religion | "",
     bankName: initial?.bankName ?? "BCA",
     bankAccount: initial?.bankAccount ?? "",
     workStart: initial?.workStart ?? "08:00",
@@ -812,6 +830,7 @@ function EmployeeForm({
         baseSalary: Number(form.baseSalary) || 0,
         allowance: Number(form.allowance) || 0,
         ptkp: form.ptkp,
+        religion: form.religion || null,
         bankName: form.bankName,
         bankAccount: form.bankAccount,
         workStart: form.workStart,
@@ -877,13 +896,23 @@ function EmployeeForm({
           <Input type="time" value={form.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
         </Field>
       </div>
-      <Field label={t.ptkpStatus} hint={t.ptkpHint}>
-        <Select value={form.ptkp} onChange={(e) => set("ptkp", e.target.value as Employee["ptkp"])}>
-          {PTKP_OPTIONS.map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </Select>
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t.ptkpStatus} hint={t.ptkpHint}>
+          <Select value={form.ptkp} onChange={(e) => set("ptkp", e.target.value as Employee["ptkp"])}>
+            {PTKP_OPTIONS.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t.religion}>
+          <Select value={form.religion} onChange={(e) => set("religion", e.target.value as Religion)}>
+            <option value="">—</option>
+            {RELIGIONS.map((rg) => (
+              <option key={rg} value={rg}>{RELIGION_LABEL[locale][rg]}</option>
+            ))}
+          </Select>
+        </Field>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.bank}>
           <Select value={form.bankName} onChange={(e) => set("bankName", e.target.value)}>

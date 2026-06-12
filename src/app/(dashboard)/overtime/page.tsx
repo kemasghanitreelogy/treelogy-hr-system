@@ -52,7 +52,6 @@ export default async function OvertimePage() {
         canRequestForOthers={can(user, "leave.approve")}
         canApproveAll={canApproveAll}
         approverTeam={approverTeam}
-        canMarkPaid={can(user, "payroll.process")}
         selfRatePerHour={me ? Math.round(me.baseSalary / (20 * 8)) : 0}
       />
     </div>

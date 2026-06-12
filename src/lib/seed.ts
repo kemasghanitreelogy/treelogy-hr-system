@@ -3,6 +3,8 @@ import type {
   ClockApprovalRequest,
   DayOffInLieu,
   Employee,
+  EmployeeContract,
+  Holiday,
   Kpi,
   LeaveBalance,
   LeaveRequest,
@@ -124,6 +126,21 @@ export const employees: Employee[] = employeesRaw.map((e) => ({
   ...e,
   workDays: e.team === "office" ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6],
 }));
+
+// Contoh hari libur (nasional + keagamaan).
+export const holidays: Holiday[] = [
+  { id: "h1", date: "2026-06-01", name: "Hari Lahir Pancasila", type: "public" },
+  { id: "h2", date: "2026-03-19", name: "Hari Suci Nyepi", type: "religious", religion: "hindu" },
+  { id: "h3", date: "2026-12-25", name: "Hari Raya Natal", type: "religious", religion: "kristen" },
+  { id: "h4", date: "2026-08-17", name: "Hari Kemerdekaan RI", type: "public" },
+];
+
+// Contoh kontrak kerja per karyawan.
+export const employeeContracts: EmployeeContract[] = [
+  { id: "c1", employeeId: "e01", type: "probation", startDate: "2022-03-01", endDate: "2022-06-01", status: "ended", note: "Masa percobaan 3 bulan" },
+  { id: "c2", employeeId: "e01", type: "pkwt", startDate: "2022-06-01", endDate: "2024-06-01", status: "ended", note: "Kontrak 2 tahun" },
+  { id: "c3", employeeId: "e01", type: "pkwtt", startDate: "2024-06-01", endDate: null, status: "active", note: "Karyawan tetap" },
+];
 
 // Contoh template jadwal.
 export const scheduleTemplates: ScheduleTemplate[] = [

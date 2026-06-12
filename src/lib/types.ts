@@ -2,6 +2,7 @@ export type Team = "factory" | "farm" | "office";
 export type EmployeeStatus = "active" | "inactive";
 export type Role = "admin" | "hr" | "manager" | "employee";
 export type PTKP = "TK/0" | "TK/1" | "TK/2" | "TK/3" | "K/0" | "K/1" | "K/2" | "K/3";
+export type Religion = "islam" | "kristen" | "katolik" | "hindu" | "buddha" | "konghucu";
 
 export interface Employee {
   id: string;
@@ -17,6 +18,7 @@ export interface Employee {
   baseSalary: number; // monthly gross base
   allowance: number; // fixed monthly allowances
   ptkp: PTKP;
+  religion?: Religion | null;
   npwp?: string | null;
   bpjsKes: boolean;
   bpjsTk: boolean;
@@ -31,6 +33,26 @@ export interface Employee {
   scheduleTemplateId?: string | null;
   /** Direct supervisor (employee id); null = top of their division. Drives the org tree. */
   managerId?: string | null;
+}
+
+/** Hari libur: 'public' = semua off; 'religious' = hanya karyawan seagama off. */
+export interface Holiday {
+  id: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+  type: "public" | "religious";
+  religion?: Religion | null; // diisi saat type='religious'
+}
+
+/** Satu kontrak kerja dalam riwayat karyawan. */
+export interface EmployeeContract {
+  id: string;
+  employeeId: string;
+  type: "probation" | "pkwt" | "pkwtt" | "magang" | "harian";
+  startDate: string;
+  endDate?: string | null; // null = berkelanjutan
+  status: "active" | "ended";
+  note?: string | null;
 }
 
 /** Pola jadwal kerja yang bisa diterapkan ke banyak karyawan sekaligus. */

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
+import { Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
 import type { Employee, OvertimeRequest, RequestStatus, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { compressImageFile } from "@/lib/image";
@@ -28,18 +28,14 @@ const STR: Record<
     connectionError: string;
     approvedToast: string;
     rejectedToast: string;
-    markedPaidToast: string;
     needApproval: (n: number) => string;
-    unpaidTotal: (amount: string) => string;
     requestOvertime: string;
     emptyRequests: string;
     hours: (n: number) => string;
     viewProof: string;
     approve: string;
     reject: string;
-    paid: string;
-    markPaid: string;
-    unpaid: string;
+    viaPayroll: string;
     sheetTitle: string;
     sheetDesc: string;
     requestSent: string;
@@ -85,18 +81,14 @@ const STR: Record<
     connectionError: "Koneksi bermasalah. Coba lagi.",
     approvedToast: "Lembur disetujui ✓",
     rejectedToast: "Lembur ditolak ✓",
-    markedPaidToast: "Ditandai sudah dibayar ✓",
     needApproval: (n: number) => `${n} perlu persetujuan`,
-    unpaidTotal: (amount: string) => `Belum dibayar: ${amount}`,
     requestOvertime: "Ajukan Lembur",
     emptyRequests: "Belum ada pengajuan lembur.",
     hours: (n: number) => `${n} jam`,
     viewProof: "Lihat bukti",
     approve: "Setujui",
     reject: "Tolak",
-    paid: "Dibayar",
-    markPaid: "Tandai dibayar",
-    unpaid: "Belum dibayar",
+    viaPayroll: "Lewat payroll",
     sheetTitle: "Ajukan Lembur",
     sheetDesc: "Buat pengajuan lembur baru",
     requestSent: "Pengajuan lembur terkirim ✓",
@@ -141,18 +133,14 @@ const STR: Record<
     connectionError: "Connection problem. Please try again.",
     approvedToast: "Overtime approved ✓",
     rejectedToast: "Overtime rejected ✓",
-    markedPaidToast: "Marked as paid ✓",
     needApproval: (n: number) => `${n} awaiting approval`,
-    unpaidTotal: (amount: string) => `Unpaid: ${amount}`,
     requestOvertime: "Request Overtime",
     emptyRequests: "No overtime requests yet.",
     hours: (n: number) => `${n} hour${n === 1 ? "" : "s"}`,
     viewProof: "View proof",
     approve: "Approve",
     reject: "Reject",
-    paid: "Paid",
-    markPaid: "Mark as paid",
-    unpaid: "Unpaid",
+    viaPayroll: "Via payroll",
     sheetTitle: "Request Overtime",
     sheetDesc: "Create a new overtime request",
     requestSent: "Overtime request submitted ✓",
@@ -202,7 +190,6 @@ export function OvertimeView({
   canRequestForOthers = true,
   canApproveAll = false,
   approverTeam = null,
-  canMarkPaid = false,
   selfRatePerHour = 0,
 }: {
   requests: OvertimeRequest[];
@@ -212,8 +199,6 @@ export function OvertimeView({
   canRequestForOthers?: boolean;
   canApproveAll?: boolean;
   approverTeam?: Team | null;
-  /** Payroll/HR may mark an approved request as paid. */
-  canMarkPaid?: boolean;
   /** Hourly rate of the logged-in user (own salary only) for the live estimate. */
   selfRatePerHour?: number;
 }) {
@@ -277,15 +262,7 @@ export function OvertimeView({
     if (ok) toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
   }
 
-  async function markPaid(id: string) {
-    const ok = await patch(id, { paid: true }, { paid: true });
-    if (ok) toast.success(t.markedPaidToast);
-  }
-
   const pending = list.filter((r) => r.status === "pending" && canDecide(r)).length;
-  const unpaidTotal = list
-    .filter((r) => r.status === "approved" && !r.paid)
-    .reduce((s, r) => s + r.amount, 0);
 
   return (
     <div className="space-y-4">
@@ -294,11 +271,6 @@ export function OvertimeView({
           {pending > 0 && (
             <Badge tone="gold" className="shrink-0 whitespace-nowrap">
               {t.needApproval(pending)}
-            </Badge>
-          )}
-          {unpaidTotal > 0 && (
-            <Badge tone="clay" className="shrink-0 whitespace-nowrap">
-              {t.unpaidTotal(rupiah(unpaidTotal))}
             </Badge>
           )}
         </div>
@@ -363,27 +335,11 @@ export function OvertimeView({
                   <RequestBadge status={r.status} />
                 )}
 
-                {r.status === "approved" &&
-                  (r.paid ? (
-                    <Badge tone="matcha" className="whitespace-nowrap">
-                      <BadgeCheck className="h-3.5 w-3.5" /> {t.paid}
-                    </Badge>
-                  ) : canMarkPaid ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={busyId === r.id}
-                      onClick={() => markPaid(r.id)}
-                      className="whitespace-nowrap"
-                    >
-                      {busyId === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-                      {t.markPaid}
-                    </Button>
-                  ) : (
-                    <Badge tone="gold" className="whitespace-nowrap">
-                      {t.unpaid}
-                    </Badge>
-                  ))}
+                {r.status === "approved" && (
+                  <Badge tone="sky" className="whitespace-nowrap">
+                    <Wallet className="h-3.5 w-3.5" /> {t.viaPayroll}
+                  </Badge>
+                )}
               </div>
             </div>
           );
@@ -422,10 +378,8 @@ export function OvertimeView({
               t={t}
               locale={locale}
               canDecide={canDecide(live)}
-              canMarkPaid={canMarkPaid}
               busy={busyId === live.id}
               onDecide={(status) => decide(live.id, status)}
-              onMarkPaid={() => markPaid(live.id)}
             />
           );
         })()}
@@ -441,20 +395,16 @@ function OvertimeDetail({
   t,
   locale,
   canDecide,
-  canMarkPaid,
   busy,
   onDecide,
-  onMarkPaid,
 }: {
   request: OvertimeRequest;
   emp?: Emp;
   t: (typeof STR)["id"];
   locale: Locale;
   canDecide: boolean;
-  canMarkPaid: boolean;
   busy: boolean;
   onDecide: (status: RequestStatus) => void;
-  onMarkPaid: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -487,11 +437,7 @@ function OvertimeDetail({
         )}
         {r.status === "approved" && (
           <OtInfo label={t.paymentLabel}>
-            {r.paid ? (
-              <Badge tone="matcha"><BadgeCheck className="h-3.5 w-3.5" /> {t.paid}</Badge>
-            ) : (
-              <Badge tone="gold">{t.unpaid}</Badge>
-            )}
+            <Badge tone="sky"><Wallet className="h-3.5 w-3.5" /> {t.viaPayroll}</Badge>
           </OtInfo>
         )}
       </div>
@@ -505,23 +451,14 @@ function OvertimeDetail({
         {r.proofPath ? <OtProofPreview path={r.proofPath} t={t} /> : <p className="text-sm text-faint">{t.noProof}</p>}
       </div>
 
-      {(r.status === "pending" && canDecide) || (r.status === "approved" && !r.paid && canMarkPaid) ? (
+      {r.status === "pending" && canDecide ? (
         <div className="flex gap-2 border-t border-line pt-4">
-          {r.status === "pending" && canDecide && (
-            <>
-              <Button className="flex-1" disabled={busy} onClick={() => onDecide("approved")}>
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t.approve}
-              </Button>
-              <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onDecide("rejected")}>
-                <X className="h-4 w-4" /> {t.reject}
-              </Button>
-            </>
-          )}
-          {r.status === "approved" && !r.paid && canMarkPaid && (
-            <Button variant="secondary" className="flex-1" disabled={busy} onClick={onMarkPaid}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />} {t.markPaid}
-            </Button>
-          )}
+          <Button className="flex-1" disabled={busy} onClick={() => onDecide("approved")}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t.approve}
+          </Button>
+          <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onDecide("rejected")}>
+            <X className="h-4 w-4" /> {t.reject}
+          </Button>
         </div>
       ) : null}
 

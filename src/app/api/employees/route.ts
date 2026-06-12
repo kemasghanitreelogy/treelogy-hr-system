@@ -55,6 +55,7 @@ interface Payload {
   baseSalary?: number;
   allowance?: number;
   ptkp?: string;
+  religion?: string | null;
   npwp?: string | null;
   bankName?: string;
   bankAccount?: string;
@@ -78,6 +79,7 @@ function toRow(p: Payload): Record<string, unknown> {
   if (p.baseSalary !== undefined) row.base_salary = Number(p.baseSalary) || 0;
   if (p.allowance !== undefined) row.allowance = Number(p.allowance) || 0;
   if (p.ptkp !== undefined) row.ptkp = p.ptkp;
+  if (p.religion !== undefined) row.religion = p.religion || null;
   if (p.npwp !== undefined) row.npwp = p.npwp || null;
   if (p.bankName !== undefined) row.bank_name = p.bankName || null;
   if (p.bankAccount !== undefined) row.bank_account = p.bankAccount || null;

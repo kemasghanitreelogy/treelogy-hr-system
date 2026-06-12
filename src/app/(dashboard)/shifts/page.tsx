@@ -1,5 +1,6 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
-import { getEmployees, getLeaveBalances, getScheduleTemplates, getTabunganEntries } from "@/lib/data";
+import { HolidaysCard } from "@/components/shifts/holidays-card";
+import { getEmployees, getHolidays, getLeaveBalances, getScheduleTemplates, getTabunganEntries } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -16,12 +17,13 @@ const STR: Record<Locale, { intro: string }> = {
 };
 
 export default async function ShiftsPage() {
-  const [templates, entries, balances, employeesAll, user] = await Promise.all([
+  const [templates, entries, balances, employeesAll, user, holidays] = await Promise.all([
     getScheduleTemplates(),
     getTabunganEntries(),
     getLeaveBalances(),
     getEmployees(),
     getSessionUser(),
+    getHolidays(),
   ]);
   const locale = await getLocale();
   const t = STR[locale];
@@ -73,6 +75,7 @@ export default async function ShiftsPage() {
         canManageShifts={canManageShifts}
         selfBalance={selfBalance}
       />
+      {canManageShifts && <HolidaysCard holidays={holidays} />}
     </div>
   );
 }
