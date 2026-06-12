@@ -147,6 +147,12 @@ export interface ClockApprovalRequest {
   status: RequestStatus;
   approver?: string | null;
   decidedAt?: string | null;
+  /** 'out_of_area' = clock di luar geofence; 'off_day' = kerja di hari libur. */
+  kind: "out_of_area" | "off_day";
+  /** Untuk off_day: 'swap' (→tabungan) / 'overtime' (→lembur). */
+  offDayChoice?: "swap" | "overtime" | null;
+  /** Jam pulang yang dikirim selagi pengajuan off_day masih menunggu. */
+  clockOutAt?: string | null;
 }
 
 export type NotifTone = "approved" | "rejected" | "paid" | "pending";

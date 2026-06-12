@@ -183,8 +183,10 @@ export const dayOffInLieu: DayOffInLieu[] = [
 
 // Clock di luar area yang menunggu konfirmasi HR (demo).
 export const clockApprovals: ClockApprovalRequest[] = [
-  { id: "ca1", employeeId: "e06", date: TODAY, direction: "in", requestedAt: `${TODAY}T08:12:00+08:00`, lat: -8.67, lng: 115.21, distanceM: 1850, note: "Kunjungan ke supplier dulu pagi ini, langsung dari rumah.", status: "pending" },
-  { id: "ca2", employeeId: "e04", date: TODAY, direction: "out", requestedAt: `${TODAY}T17:40:00+08:00`, lat: -8.52, lng: 115.18, distanceM: 920, note: null, status: "pending" },
+  { id: "ca1", employeeId: "e06", date: TODAY, direction: "in", requestedAt: `${TODAY}T08:12:00+08:00`, lat: -8.67, lng: 115.21, distanceM: 1850, note: "Kunjungan ke supplier dulu pagi ini, langsung dari rumah.", status: "pending", kind: "out_of_area" },
+  { id: "ca2", employeeId: "e04", date: TODAY, direction: "out", requestedAt: `${TODAY}T17:40:00+08:00`, lat: -8.52, lng: 115.18, distanceM: 920, note: null, status: "pending", kind: "out_of_area" },
+  { id: "ca3", employeeId: "e01", date: TODAY, direction: "in", requestedAt: `${TODAY}T07:05:00+08:00`, note: "Bantu produksi pesanan ekspor.", status: "pending", kind: "off_day", offDayChoice: "overtime", clockOutAt: `${TODAY}T12:10:00+08:00` },
+  { id: "ca4", employeeId: "e05", date: TODAY, direction: "in", requestedAt: `${TODAY}T06:30:00+08:00`, note: null, status: "pending", kind: "off_day", offDayChoice: "swap" },
 ];
 
 // Tabungan libur ledger — deposits (kerja hari libur) and withdrawals (ambil libur).

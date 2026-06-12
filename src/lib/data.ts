@@ -304,6 +304,9 @@ export const mapClockApproval = (r: Row): ClockApprovalRequest => ({
   status: r.status as ClockApprovalRequest["status"],
   approver: (r.approver as string) ?? null,
   decidedAt: (r.decided_at as string) ?? null,
+  kind: (r.kind as ClockApprovalRequest["kind"]) ?? "out_of_area",
+  offDayChoice: (r.off_day_choice as ClockApprovalRequest["offDayChoice"]) ?? null,
+  clockOutAt: (r.clock_out_at as string) ?? null,
 });
 
 /** Pengajuan clock di luar area, terbaru dulu (RLS: HR semua, karyawan miliknya). */

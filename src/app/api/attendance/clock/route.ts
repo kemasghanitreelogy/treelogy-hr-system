@@ -22,9 +22,6 @@ function witaHHMM(when: Date): string {
   }).format(when);
 }
 
-// Tarif lembur per jam = gaji pokok / 20 hari / 8 jam (sama dengan modul Lembur).
-const OVERTIME_DIVISOR = 20 * 8;
-
 interface Body {
   direction: "in" | "out";
   lat?: number;
@@ -175,74 +172,79 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, pending: true, distance });
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+  const nowIso = new Date().toISOString();
+
+  // HARI LIBUR → TAHAN: jangan tulis absensi. Jadikan pengajuan konfirmasi HR
+  // dengan pilihan tukar-libur/lembur. Absensi + tabungan/lembur dicatat saat
+  // HR menyetujui di halaman Attendance.
+  if (isOffDay && profile?.employee_id) {
+    if (direction === "in") {
+      const choice = body.offDayChoice === "overtime" ? "overtime" : "swap";
+      const { error } = await supabase.from("clock_approval_requests").insert({
+        employee_id: profile.employee_id,
+        date: today,
+        direction: "in",
+        kind: "off_day",
+        off_day_choice: choice,
+        requested_at: nowIso,
+        lat: body.lat ?? null,
+        lng: body.lng ?? null,
+        distance_m: distance == null ? null : Math.round(distance),
+        photo_path: photoPath,
+        note: body.note?.trim() || null,
+      });
+      if (error && error.code !== "23505") {
+        return NextResponse.json({ error: "request_failed" }, { status: 403 });
+      }
+      if (!error && emp?.team) {
+        await notifyApprovers(profile.employee_id, String(emp.team), {
+          type: "attendance",
+          title: `${emp.name ?? "Karyawan"} kerja di hari libur`,
+          body: `${formatDate(today)} · ${choice === "swap" ? "tukar libur" : "lembur"} · perlu konfirmasi Anda`,
+          href: "/attendance",
+        });
+      }
+    } else {
+      // Clock-out di hari libur → lengkapi jam pulang pada pengajuan yang menunggu
+      // (dipakai HR untuk menghitung durasi lembur saat menyetujui).
+      await supabase
+        .from("clock_approval_requests")
+        .update({ clock_out_at: nowIso })
+        .eq("employee_id", profile.employee_id)
+        .eq("date", today)
+        .eq("kind", "off_day")
+        .eq("status", "pending");
+    }
+    return NextResponse.json({ ok: true, pending: true, offDay: true });
+  }
+
   let recorded = false;
   if (profile?.employee_id) {
-    const today = new Date().toISOString().slice(0, 10);
-    const nowIso = new Date().toISOString();
     if (direction === "in") {
-      // Pada hari libur tidak ada jadwal → tidak ada hitungan telat (status hadir).
-      // Pada hari kerja, telat = selisih jam masuk vs jadwal mulai (WITA).
+      // Telat = selisih jam masuk vs jadwal mulai (WITA).
       const workStart = (emp?.work_start as string) ?? "08:00";
       const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
       const [sh, sm] = workStart.split(":").map(Number);
-      const lateMinutes = isOffDay ? 0 : Math.max(0, ch * 60 + cm - (sh * 60 + sm));
-      const choice = isOffDay && (body.offDayChoice === "swap" || body.offDayChoice === "overtime")
-        ? body.offDayChoice
-        : null;
+      const lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
 
-      const { data: att, error } = await supabase
-        .from("attendance")
-        .upsert(
-          {
-            employee_id: profile.employee_id,
-            date: today,
-            clock_in: nowIso,
-            status: lateMinutes > 0 ? "late" : "present",
-            late_minutes: lateMinutes,
-            off_day_choice: choice,
-            source: "mobile",
-            clock_in_lat: body.lat ?? null,
-            clock_in_lng: body.lng ?? null,
-            clock_in_distance_m: distance,
-            clock_in_photo: photoPath,
-          },
-          { onConflict: "employee_id,date" },
-        )
-        .select("id")
-        .maybeSingle();
-      recorded = !error;
-
-      // Hari libur + pilih TUKAR LIBUR → setoran tabungan pending (konfirmasi HR).
-      // Pilih LEMBUR → dicatat di off_day_choice, request lembur dibuat saat clock-out.
-      if (recorded && choice === "swap") {
-        const { error: depErr } = await supabase.from("tabungan_libur_entries").insert({
+      const { error } = await supabase.from("attendance").upsert(
+        {
           employee_id: profile.employee_id,
-          kind: "deposit",
-          days: 1,
-          event_date: today,
-          reason: "Kerja di hari libur — tukar jadi tabungan (konfirmasi HR)",
-          source: "attendance",
-          source_id: att?.id ?? null,
-          status: "pending",
-        });
-        if (!depErr && emp?.team) {
-          await notifyApprovers(profile.employee_id, String(emp.team), {
-            type: "tabungan",
-            title: "Kerja di hari libur — konfirmasi tabungan",
-            body: `${formatDate(today)} · konfirmasi untuk kreditkan 1 hari tabungan libur`,
-            href: "/shifts",
-          });
-        }
-      }
+          date: today,
+          clock_in: nowIso,
+          status: lateMinutes > 0 ? "late" : "present",
+          late_minutes: lateMinutes,
+          source: "mobile",
+          clock_in_lat: body.lat ?? null,
+          clock_in_lng: body.lng ?? null,
+          clock_in_distance_m: distance,
+          clock_in_photo: photoPath,
+        },
+        { onConflict: "employee_id,date" },
+      );
+      recorded = !error;
     } else {
-      // Baca dulu baris hari ini untuk tahu jam masuk & pilihan hari libur.
-      const { data: row } = await supabase
-        .from("attendance")
-        .select("clock_in, off_day_choice")
-        .eq("employee_id", profile.employee_id)
-        .eq("date", today)
-        .maybeSingle();
-
       // Menit lembur (informasi absensi) = selisih pulang vs jadwal selesai (WITA).
       const workEnd = (emp?.work_end as string) ?? "17:00";
       const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
@@ -262,48 +264,6 @@ export async function POST(req: Request) {
         .eq("employee_id", profile.employee_id)
         .eq("date", today);
       recorded = !error;
-
-      // Hari libur + pilih LEMBUR → buat pengajuan lembur dari seluruh durasi kerja.
-      if (recorded && row?.off_day_choice === "overtime" && row.clock_in) {
-        const start = witaHHMM(new Date(String(row.clock_in)));
-        const end = witaHHMM(new Date(nowIso));
-        const [a, b] = start.split(":").map(Number);
-        const [c, d] = end.split(":").map(Number);
-        const mins = c * 60 + d - (a * 60 + b);
-        if (mins > 0) {
-          // Hindari duplikat jika clock-out terjadi dua kali.
-          const { data: existing } = await supabase
-            .from("overtime_requests")
-            .select("id")
-            .eq("employee_id", profile.employee_id)
-            .eq("date", today)
-            .maybeSingle();
-          if (!existing) {
-            const hours = Math.round((mins / 60) * 100) / 100;
-            const ratePerHour = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
-            await supabase.from("overtime_requests").insert({
-              employee_id: profile.employee_id,
-              date: today,
-              start_time: start,
-              end_time: end,
-              hours,
-              reason: "Kerja di hari libur (otomatis dari absensi)",
-              rate_per_hour: ratePerHour,
-              amount: Math.round(ratePerHour * hours),
-              status: "pending",
-              paid: false,
-            });
-            if (emp?.team) {
-              await notifyApprovers(profile.employee_id, String(emp.team), {
-                type: "overtime",
-                title: `${emp.name ?? "Karyawan"} lembur di hari libur`,
-                body: `${formatDate(today)} · ${hours} jam · perlu persetujuan Anda`,
-                href: "/overtime",
-              });
-            }
-          }
-        }
-      }
     }
   }
 

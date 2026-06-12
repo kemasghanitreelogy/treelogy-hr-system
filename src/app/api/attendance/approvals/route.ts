@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapClockApproval } from "@/lib/data";
+import { adjustTabungan } from "@/lib/balance";
 import { pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 import type { RequestStatus } from "@/lib/types";
@@ -8,16 +9,21 @@ import type { RequestStatus } from "@/lib/types";
 export const runtime = "nodejs";
 
 const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
+const OVERTIME_DIVISOR = 20 * 8; // gaji pokok / 20 hari / 8 jam
 
-/** Jam:menit WITA (Asia/Makassar) dari sebuah timestamp. */
-function witaMinutes(iso: string): number {
-  const hm = new Intl.DateTimeFormat("en-GB", {
+/** HH:MM WITA (Asia/Makassar) dari sebuah timestamp. */
+function witaHHMM(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Makassar",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(new Date(iso));
-  const [h, m] = hm.split(":").map(Number);
+}
+
+/** Menit sejak tengah malam WITA. */
+function witaMinutes(iso: string): number {
+  const [h, m] = witaHHMM(iso).split(":").map(Number);
   return h * 60 + m;
 }
 
@@ -75,11 +81,76 @@ export async function PATCH(req: Request) {
     const requestedAt = String(prev.requested_at);
     const { data: emp } = await supabase!
       .from("employees")
-      .select("work_start, work_end")
+      .select("work_start, work_end, base_salary")
       .eq("id", employeeId)
       .maybeSingle();
 
-    if (prev.direction === "in") {
+    if (prev.kind === "off_day") {
+      // Tulis absensi hari libur (hadir, tanpa telat) + jam pulang bila ada.
+      const clockOutAt = prev.clock_out_at ? String(prev.clock_out_at) : null;
+      const { error: attErr } = await supabase!.from("attendance").upsert(
+        {
+          employee_id: employeeId,
+          date,
+          clock_in: requestedAt,
+          clock_out: clockOutAt,
+          status: "present",
+          late_minutes: 0,
+          off_day_choice: prev.off_day_choice,
+          source: "mobile",
+          clock_in_lat: prev.lat ?? null,
+          clock_in_lng: prev.lng ?? null,
+          clock_in_distance_m: prev.distance_m ?? null,
+          clock_in_photo: prev.photo_path ?? null,
+        },
+        { onConflict: "employee_id,date" },
+      );
+      if (attErr) return NextResponse.json({ error: "attendance_write_failed" }, { status: 500 });
+
+      if (prev.off_day_choice === "swap") {
+        // Tukar libur → kreditkan 1 hari ke tabungan libur (langsung disetujui).
+        const { error: depErr } = await supabase!.from("tabungan_libur_entries").insert({
+          employee_id: employeeId,
+          kind: "deposit",
+          days: 1,
+          event_date: date,
+          reason: "Kerja di hari libur — tukar jadi tabungan libur",
+          source: "attendance",
+          status: "approved",
+          approver: body.approver?.trim() || null,
+          decided_at: new Date().toISOString(),
+        });
+        if (!depErr) await adjustTabungan(employeeId, 1);
+      } else if (prev.off_day_choice === "overtime" && clockOutAt) {
+        // Lembur → catat ke data lembur (disetujui, tinggal pembayaran).
+        const mins = witaMinutes(clockOutAt) - witaMinutes(requestedAt);
+        if (mins > 0) {
+          const { data: existing } = await supabase!
+            .from("overtime_requests")
+            .select("id")
+            .eq("employee_id", employeeId)
+            .eq("date", date)
+            .maybeSingle();
+          if (!existing) {
+            const hours = Math.round((mins / 60) * 100) / 100;
+            const rate = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
+            await supabase!.from("overtime_requests").insert({
+              employee_id: employeeId,
+              date,
+              start_time: witaHHMM(requestedAt),
+              end_time: witaHHMM(clockOutAt),
+              hours,
+              reason: "Kerja di hari libur (disetujui HR)",
+              rate_per_hour: rate,
+              amount: Math.round(rate * hours),
+              status: "approved",
+              approver: body.approver?.trim() || null,
+              paid: false,
+            });
+          }
+        }
+      }
+    } else if (prev.direction === "in") {
       const [sh, sm] = String(emp?.work_start ?? "08:00").split(":").map(Number);
       const lateMinutes = Math.max(0, witaMinutes(requestedAt) - (sh * 60 + sm));
       const { error: attErr } = await supabase!.from("attendance").upsert(
@@ -134,12 +205,17 @@ export async function PATCH(req: Request) {
 
   // Kabari karyawan.
   if (body.status === "approved" || body.status === "rejected") {
+    const verb = body.status === "approved" ? "disetujui" : "ditolak";
+    const title =
+      data.kind === "off_day"
+        ? `Kerja di hari libur ${verb}`
+        : `Clock-${data.direction} di luar area ${verb}`;
     await pushNotifications([
       {
         employeeId: String(data.employee_id),
         type: "attendance",
         tone: body.status,
-        title: `Clock-${data.direction} di luar area ${body.status === "approved" ? "disetujui" : "ditolak"}`,
+        title,
         body: `${formatDate(String(data.date))}${data.approver ? ` · oleh ${data.approver}` : ""}`,
         href: "/attendance",
       },

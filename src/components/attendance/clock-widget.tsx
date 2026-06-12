@@ -76,6 +76,7 @@ const STR: Record<
     offDayOtDesc: string;
     swapSent: string;
     overtimeSent: string;
+    offDayPending: string;
   }
 > = {
   id: {
@@ -124,6 +125,7 @@ const STR: Record<
     offDayOtDesc: "Seluruh jam kerja hari ini dicatat sebagai lembur (dibuat saat Anda clock-out).",
     swapSent: "Tercatat — diajukan jadi tabungan libur ✓",
     overtimeSent: "Tercatat sebagai lembur — selesaikan dengan clock-out ✓",
+    offDayPending: "Kerja di hari libur diajukan — menunggu konfirmasi HR ✓",
   },
   en: {
     loading: "Loading…",
@@ -171,6 +173,7 @@ const STR: Record<
     offDayOtDesc: "Your whole day's work is recorded as overtime (created when you clock out).",
     swapSent: "Recorded — submitted as leave savings ✓",
     overtimeSent: "Recorded as overtime — finish by clocking out ✓",
+    offDayPending: "Holiday work submitted — awaiting HR confirmation ✓",
   },
 };
 
@@ -376,14 +379,22 @@ export function ClockWidget({
         setOorMode(false);
         return;
       }
-      // Pengajuan luar area terkirim — absensi MENUNGGU konfirmasi HR.
+      // Pengajuan MENUNGGU konfirmasi HR (luar area / kerja hari libur).
       if (data.pending) {
         setOorMode(false);
         setOorNote("");
-        setNotice({
-          tone: "ok",
-          text: t.pendingSent(pendingDir),
-        });
+        if (data.offDay) {
+          // Off-day ditahan: izinkan tetap clock-out agar durasi lembur terhitung.
+          if (pendingDir === "in") {
+            setClockInAt(new Date());
+            setPhase("in");
+          } else {
+            setPhase("out");
+          }
+          setNotice({ tone: "ok", text: t.offDayPending });
+        } else {
+          setNotice({ tone: "ok", text: t.pendingSent(pendingDir) });
+        }
         router.refresh();
         return;
       }

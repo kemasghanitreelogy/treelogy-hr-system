@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LogIn, LogOut, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LogIn, LogOut, PartyPopper, X } from "lucide-react";
 import type { AttendanceRecord, AttendanceStatus, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
 import { formatDistance } from "@/lib/geo";
 import { Avatar } from "@/components/ui/avatar";
-import { AttendanceBadge } from "@/components/ui/badge";
+import { AttendanceBadge, Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
@@ -51,6 +51,9 @@ const STR: Record<
     approvalsTitle: string;
     approvalsDesc: string;
     fromSite: (distance: string) => string;
+    offDayWork: string;
+    swapChoice: string;
+    overtimeChoice: string;
     approve: string;
     reject: string;
     emptyTitle: string;
@@ -96,9 +99,12 @@ const STR: Record<
     approvedOk: "Absensi dikonfirmasi ✓",
     rejectedOk: "Pengajuan ditolak ✓",
     connectionProblem: "Koneksi bermasalah. Coba lagi.",
-    approvalsTitle: "Clock di Luar Area — Perlu Konfirmasi",
-    approvalsDesc: "Karyawan absen di luar radius kantor. Setujui untuk merekam absensinya.",
+    approvalsTitle: "Perlu Konfirmasi HR",
+    approvalsDesc: "Clock di luar area atau kerja di hari libur. Setujui untuk mencatat absensinya.",
     fromSite: (distance) => `${distance} dari lokasi`,
+    offDayWork: "Kerja hari libur",
+    swapChoice: "Tukar libur",
+    overtimeChoice: "Lembur",
     approve: "Setujui",
     reject: "Tolak",
     emptyTitle: "Tidak ada data absensi",
@@ -143,9 +149,12 @@ const STR: Record<
     approvedOk: "Attendance confirmed ✓",
     rejectedOk: "Request rejected ✓",
     connectionProblem: "Connection problem. Try again.",
-    approvalsTitle: "Out-of-Area Clock — Needs Confirmation",
-    approvalsDesc: "Employees clocked outside the office radius. Approve to record their attendance.",
+    approvalsTitle: "Needs HR Confirmation",
+    approvalsDesc: "Out-of-area clock-ins or holiday work. Approve to record attendance.",
     fromSite: (distance) => `${distance} from the site`,
+    offDayWork: "Holiday work",
+    swapChoice: "Day-off swap",
+    overtimeChoice: "Overtime",
     approve: "Approve",
     reject: "Reject",
     emptyTitle: "No attendance data",
@@ -571,6 +580,7 @@ function ClockApprovalsCard({
         {list.map((a) => {
           const emp = empMap.get(a.employeeId);
           const isIn = a.direction === "in";
+          const isOffDay = a.kind === "off_day";
           return (
             <div key={a.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center">
               <div className="flex items-center gap-3 sm:w-52">
@@ -582,13 +592,26 @@ function ClockApprovalsCard({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                  <span className={cn("inline-flex items-center gap-1.5 font-medium", isIn ? "text-forest-700" : "text-[#8c3c1f]")}>
-                    {isIn ? <LogIn className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
-                    Clock-{a.direction}
+                  {isOffDay ? (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-[#8a6512]">
+                      <PartyPopper className="h-4 w-4" /> {t.offDayWork}
+                    </span>
+                  ) : (
+                    <span className={cn("inline-flex items-center gap-1.5 font-medium", isIn ? "text-forest-700" : "text-[#8c3c1f]")}>
+                      {isIn ? <LogIn className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
+                      Clock-{a.direction}
+                    </span>
+                  )}
+                  <span className="text-ink">
+                    {formatDate(a.date, "short", locale)} · {formatTime(a.requestedAt)}
+                    {isOffDay && a.clockOutAt ? `–${formatTime(a.clockOutAt)}` : ""}
                   </span>
-                  <span className="text-ink">{formatDate(a.date, "short", locale)} · {formatTime(a.requestedAt)}</span>
-                  {a.distanceM != null && (
-                    <span className="text-[#8c3c1f]">{t.fromSite(formatDistance(a.distanceM))}</span>
+                  {isOffDay ? (
+                    <Badge tone={a.offDayChoice === "overtime" ? "sky" : "matcha"}>
+                      {a.offDayChoice === "overtime" ? t.overtimeChoice : t.swapChoice}
+                    </Badge>
+                  ) : (
+                    a.distanceM != null && <span className="text-[#8c3c1f]">{t.fromSite(formatDistance(a.distanceM))}</span>
                   )}
                 </div>
                 {a.note && (
