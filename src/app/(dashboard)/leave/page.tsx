@@ -21,10 +21,13 @@ export default async function LeavePage() {
   const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
   const canApproveAll = can(user, "employees.manage");
   const approverTeam = !canApproveAll && can(user, "leave.approve") ? me?.team ?? null : null;
+  const isApprover = canApproveAll || approverTeam != null;
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Kelola cuti tahunan, sakit, dan tabungan libur (terutama untuk tim sales &amp; pabrik).
+        {isApprover
+          ? "Kelola cuti tahunan, sakit, dan tabungan libur karyawan."
+          : "Ajukan cuti/izin dan pantau saldo serta tabungan libur Anda."}
       </p>
       <LeaveView
         requests={requests}

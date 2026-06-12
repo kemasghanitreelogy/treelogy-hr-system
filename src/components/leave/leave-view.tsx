@@ -187,7 +187,7 @@ export function LeaveView({
           })}
         </div>
       ) : (
-        <BalancesView balances={balances} tabungan={tabungan} employees={employees} />
+        <BalancesView balances={balances} tabungan={tabungan} employees={employees} showEmployee={showEmployee} />
       )}
 
       <Sheet open={adding} onClose={() => setAdding(false)} title="Ajukan Cuti / Izin" description="Buat permintaan baru">
@@ -207,10 +207,13 @@ function BalancesView({
   balances,
   tabungan,
   employees,
+  showEmployee = true,
 }: {
   balances: LeaveBalance[];
   tabungan: TabunganEntry[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  /** false = tampilan mandiri karyawan: tanpa framing org-wide & tanpa identitas per baris. */
+  showEmployee?: boolean;
 }) {
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const totalSaved = balances.reduce((s, b) => s + b.tabunganLibur, 0);
@@ -233,7 +236,9 @@ function BalancesView({
             <PiggyBank className="h-6 w-6 text-lime" />
           </span>
           <div>
-            <p className="text-sm text-forest-100/70">Total Tabungan Libur (semua karyawan)</p>
+            <p className="text-sm text-forest-100/70">
+              {showEmployee ? "Total Tabungan Libur (semua karyawan)" : "Tabungan Libur Anda"}
+            </p>
             <p className="font-display text-3xl font-bold">{totalSaved} hari</p>
           </div>
         </CardContent>
@@ -241,7 +246,7 @@ function BalancesView({
 
       <Card className="overflow-hidden">
         <CardHeader>
-          <CardTitle>Saldo Cuti per Karyawan</CardTitle>
+          <CardTitle>{showEmployee ? "Saldo Cuti per Karyawan" : "Saldo Cuti Saya"}</CardTitle>
         </CardHeader>
         <div className="divide-y divide-line">
           {balances.map((b) => {
@@ -250,19 +255,21 @@ function BalancesView({
             const remaining = b.annualQuota - b.annualUsed;
             return (
               <div key={b.employeeId} className="px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <Avatar name={emp.name} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-ink">{emp.name}</p>
-                    <p className="truncate text-xs text-faint">{emp.position}</p>
+                {showEmployee && (
+                  <div className="flex items-center gap-3">
+                    <Avatar name={emp.name} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-ink">{emp.name}</p>
+                      <p className="truncate text-xs text-faint">{emp.position}</p>
+                    </div>
+                    {b.tabunganLibur > 0 && (
+                      <Badge tone="matcha">
+                        <PiggyBank className="h-3.5 w-3.5" /> {b.tabunganLibur} hari
+                      </Badge>
+                    )}
                   </div>
-                  {b.tabunganLibur > 0 && (
-                    <Badge tone="matcha">
-                      <PiggyBank className="h-3.5 w-3.5" /> {b.tabunganLibur} hari
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                )}
+                <div className={cn("grid gap-3 sm:grid-cols-3", showEmployee && "mt-3")}>
                   <div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted">Cuti tahunan</span>
