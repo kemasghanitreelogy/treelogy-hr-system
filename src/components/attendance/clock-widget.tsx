@@ -18,10 +18,133 @@ import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
 import { CameraCapture } from "./camera-capture";
 
 type Phase = "out" | "in";
 type Flow = "idle" | "locating" | "camera" | "submitting";
+
+const STR: Record<
+  Locale,
+  {
+    loading: string;
+    gpsInaccurate: (accuracy: number) => string;
+    locationRequiredLong: string;
+    outOfRange: (distance: string, max: number) => string;
+    locationRequired: string;
+    photoRequired: string;
+    recordFailed: string;
+    pendingSent: (dir: "in" | "out") => string;
+    clockInOk: string;
+    clockOutOk: string;
+    connectionProblem: string;
+    status: string;
+    working: string;
+    notClockedIn: string;
+    clockedInAt: string;
+    workDuration: string;
+    hm: (h: number, m: number) => string;
+    geoChip: (distance: string, label: string, accuracy: number) => string;
+    locationRule: (radius: number) => string;
+    photoRule: string;
+    checkingLocation: string;
+    processing: string;
+    clockOut: string;
+    clockInNow: string;
+    verifyNote: string;
+    cameraTitle: (dir: "in" | "out") => string;
+    oorTitle: string;
+    oorBodyStart: string;
+    oorBodyMid: (location: string, max: number) => string;
+    oorBodyNeeds: string;
+    oorHrConfirm: string;
+    oorBodyEnd: string;
+    oorNoteLabel: string;
+    oorNotePlaceholder: string;
+    cancel: string;
+    sendToHr: string;
+  }
+> = {
+  id: {
+    loading: "Memuat…",
+    gpsInaccurate: (accuracy) =>
+      `Sinyal GPS kurang akurat (±${accuracy} m). Pindah ke area terbuka lalu coba lagi.`,
+    locationRequiredLong: "Lokasi wajib aktif. Izinkan akses lokasi di browser/HP Anda.",
+    outOfRange: (distance, max) => `Di luar jangkauan (${distance} / maks ${max} m).`,
+    locationRequired: "Lokasi wajib aktif.",
+    photoRequired: "Foto wajah wajib diambil.",
+    recordFailed: "Gagal merekam absensi. Coba lagi.",
+    pendingSent: (dir) => `Pengajuan clock-${dir} di luar area terkirim — menunggu konfirmasi HR ✓`,
+    clockInOk: "Clock-in berhasil terekam ✓",
+    clockOutOk: "Clock-out berhasil terekam ✓",
+    connectionProblem: "Koneksi bermasalah. Coba lagi.",
+    status: "Status",
+    working: "Sedang Bekerja",
+    notClockedIn: "Belum Clock-In",
+    clockedInAt: "Masuk pukul",
+    workDuration: "Durasi kerja",
+    hm: (h, m) => `${h}j ${m}m`,
+    geoChip: (distance, label, accuracy) => `${distance} dari ${label} · ±${accuracy} m`,
+    locationRule: (radius) => `Wajib lokasi (≤ ${radius} m)`,
+    photoRule: "Wajib foto wajah",
+    checkingLocation: "Memeriksa lokasi…",
+    processing: "Memproses…",
+    clockOut: "Clock Out",
+    clockInNow: "Clock In Sekarang",
+    verifyNote: "Absensi memverifikasi lokasi & foto wajah Anda.",
+    cameraTitle: (dir) => `Verifikasi Wajah · Clock ${dir === "in" ? "In" : "Out"}`,
+    oorTitle: "Anda di luar area kantor",
+    oorBodyStart: "Posisi Anda",
+    oorBodyMid: (location, max) => ` dari ${location} (maksimal ${max} m). Clock-`,
+    oorBodyNeeds: " perlu ",
+    oorHrConfirm: "konfirmasi HR",
+    oorBodyEnd: " terlebih dahulu — absensi tercatat setelah disetujui.",
+    oorNoteLabel: "Catatan untuk HR (opsional)",
+    oorNotePlaceholder: "cth. Kunjungan ke supplier / tugas luar kantor…",
+    cancel: "Batal",
+    sendToHr: "Kirim ke HR",
+  },
+  en: {
+    loading: "Loading…",
+    gpsInaccurate: (accuracy) =>
+      `GPS signal is inaccurate (±${accuracy} m). Move to an open area and try again.`,
+    locationRequiredLong: "Location must be enabled. Allow location access in your browser/phone.",
+    outOfRange: (distance, max) => `Out of range (${distance} / max ${max} m).`,
+    locationRequired: "Location must be enabled.",
+    photoRequired: "A face photo is required.",
+    recordFailed: "Failed to record attendance. Try again.",
+    pendingSent: (dir) => `Out-of-area clock-${dir} request sent — awaiting HR confirmation ✓`,
+    clockInOk: "Clock-in recorded ✓",
+    clockOutOk: "Clock-out recorded ✓",
+    connectionProblem: "Connection problem. Try again.",
+    status: "Status",
+    working: "Currently Working",
+    notClockedIn: "Not Clocked In",
+    clockedInAt: "Clocked in at",
+    workDuration: "Work duration",
+    hm: (h, m) => `${h}h ${m}m`,
+    geoChip: (distance, label, accuracy) => `${distance} from ${label} · ±${accuracy} m`,
+    locationRule: (radius) => `Location required (≤ ${radius} m)`,
+    photoRule: "Face photo required",
+    checkingLocation: "Checking location…",
+    processing: "Processing…",
+    clockOut: "Clock Out",
+    clockInNow: "Clock In Now",
+    verifyNote: "Attendance verifies your location & face photo.",
+    cameraTitle: (dir) => `Face Verification · Clock ${dir === "in" ? "In" : "Out"}`,
+    oorTitle: "You are outside the office area",
+    oorBodyStart: "You are",
+    oorBodyMid: (location, max) => ` from ${location} (max ${max} m). Clock-`,
+    oorBodyNeeds: " needs ",
+    oorHrConfirm: "HR confirmation",
+    oorBodyEnd: " first — attendance is recorded once approved.",
+    oorNoteLabel: "Note for HR (optional)",
+    oorNotePlaceholder: "e.g. Supplier visit / off-site assignment…",
+    cancel: "Cancel",
+    sendToHr: "Send to HR",
+  },
+};
 
 /**
  * Get the most accurate GPS fix we can within a short window. The first fix a
@@ -71,6 +194,8 @@ export function ClockWidget({
   requirePhoto: boolean;
   shiftLabel?: string;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [now, setNow] = useState<Date | null>(null);
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("out");
@@ -91,11 +216,12 @@ export function ClockWidget({
     return () => clearInterval(t);
   }, []);
 
+  const intlLocale = locale === "en" ? "en-GB" : "id-ID";
   const time = now
-    ? now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+    ? now.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
     : "--:--:--";
   const dateStr = now
-    ? now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    ? now.toLocaleDateString(intlLocale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
     : "";
 
   async function start() {
@@ -120,7 +246,7 @@ export function ClockWidget({
           if (couldBeInside) {
             setNotice({
               tone: "error",
-              text: `Sinyal GPS kurang akurat (±${Math.round(accuracy)} m). Pindah ke area terbuka lalu coba lagi.`,
+              text: t.gpsInaccurate(Math.round(accuracy)),
             });
             return;
           }
@@ -131,7 +257,7 @@ export function ClockWidget({
         }
       } catch {
         setFlow("idle");
-        setNotice({ tone: "error", text: "Lokasi wajib aktif. Izinkan akses lokasi di browser/HP Anda." });
+        setNotice({ tone: "error", text: t.locationRequiredLong });
         return;
       }
     }
@@ -179,13 +305,13 @@ export function ClockWidget({
       const data = await res.json();
       if (!res.ok) {
         if (data.error === "out_of_range") {
-          setNotice({ tone: "error", text: `Di luar jangkauan (${formatDistance(data.distance)} / maks ${data.maxRadius} m).` });
+          setNotice({ tone: "error", text: t.outOfRange(formatDistance(data.distance), data.maxRadius) });
         } else if (data.error === "location_required") {
-          setNotice({ tone: "error", text: "Lokasi wajib aktif." });
+          setNotice({ tone: "error", text: t.locationRequired });
         } else if (data.error === "photo_required") {
-          setNotice({ tone: "error", text: "Foto wajah wajib diambil." });
+          setNotice({ tone: "error", text: t.photoRequired });
         } else {
-          setNotice({ tone: "error", text: "Gagal merekam absensi. Coba lagi." });
+          setNotice({ tone: "error", text: t.recordFailed });
         }
         setFlow("idle");
         setOorMode(false);
@@ -197,7 +323,7 @@ export function ClockWidget({
         setOorNote("");
         setNotice({
           tone: "ok",
-          text: `Pengajuan clock-${pendingDir} di luar area terkirim — menunggu konfirmasi HR ✓`,
+          text: t.pendingSent(pendingDir),
         });
         router.refresh();
         return;
@@ -205,16 +331,16 @@ export function ClockWidget({
       if (pendingDir === "in") {
         setClockInAt(new Date());
         setPhase("in");
-        setNotice({ tone: "ok", text: "Clock-in berhasil terekam ✓" });
+        setNotice({ tone: "ok", text: t.clockInOk });
       } else {
         setPhase("out");
-        setNotice({ tone: "ok", text: "Clock-out berhasil terekam ✓" });
+        setNotice({ tone: "ok", text: t.clockOutOk });
       }
       // Sinkronkan ulang data server di latar belakang (riwayat absensi, dashboard)
       // tanpa memblokir UI — cache router diinvalidasi lalu di-prefetch ulang.
       router.refresh();
     } catch {
-      setNotice({ tone: "error", text: "Koneksi bermasalah. Coba lagi." });
+      setNotice({ tone: "error", text: t.connectionProblem });
     } finally {
       setFlow("idle");
     }
@@ -234,7 +360,7 @@ export function ClockWidget({
           <div className="relative">
             <div className="flex items-center gap-2 text-forest-100/70">
               <Clock className="h-4 w-4" />
-              <span className="text-sm">{dateStr || "Memuat…"}</span>
+              <span className="text-sm">{dateStr || t.loading}</span>
             </div>
             <p className="mt-2 font-display text-5xl font-bold tabular-nums tracking-tight">{time}</p>
             <p className="mt-1 text-sm text-forest-100/70">WITA</p>
@@ -252,16 +378,16 @@ export function ClockWidget({
         <div className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <p className="text-sm text-muted">Status</p>
+              <p className="text-sm text-muted">{t.status}</p>
               <p className={cn("font-display text-lg font-semibold", phase === "in" ? "text-forest-600" : "text-faint")}>
-                {phase === "in" ? "Sedang Bekerja" : "Belum Clock-In"}
+                {phase === "in" ? t.working : t.notClockedIn}
               </p>
             </div>
             {phase === "in" && clockInAt && (
               <div className="text-right">
-                <p className="text-sm text-muted">Masuk pukul</p>
+                <p className="text-sm text-muted">{t.clockedInAt}</p>
                 <p className="font-display text-lg font-semibold text-ink">
-                  {clockInAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false })}
+                  {clockInAt.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", hour12: false })}
                 </p>
               </div>
             )}
@@ -269,7 +395,7 @@ export function ClockWidget({
 
           {phase === "in" && (
             <div className="mb-4 rounded-xl bg-[#e9f0d8] px-4 py-2.5 text-sm text-forest-700">
-              Durasi kerja: <span className="font-semibold">{Math.floor(worked / 60)}j {worked % 60}m</span>
+              {t.workDuration}: <span className="font-semibold">{t.hm(Math.floor(worked / 60), worked % 60)}</span>
             </div>
           )}
 
@@ -279,13 +405,13 @@ export function ClockWidget({
               <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1", geo ? "bg-[#e9f0d8] text-forest-700" : "bg-sand text-muted")}>
                 <MapPin className="h-3 w-3" />
                 {geo
-                  ? `${formatDistance(geo.distance)} dari ${geofence.label} · ±${Math.round(geo.accuracy)} m`
-                  : `Wajib lokasi (≤ ${geofence.radiusM} m)`}
+                  ? t.geoChip(formatDistance(geo.distance), geofence.label, Math.round(geo.accuracy))
+                  : t.locationRule(geofence.radiusM)}
               </span>
             )}
             {requirePhoto && (
               <span className="inline-flex items-center gap-1 rounded-full bg-sand px-2.5 py-1 text-muted">
-                <Fingerprint className="h-3 w-3" /> Wajib foto wajah
+                <Fingerprint className="h-3 w-3" /> {t.photoRule}
               </span>
             )}
           </div>
@@ -312,27 +438,27 @@ export function ClockWidget({
             {busy ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                {flow === "locating" ? "Memeriksa lokasi…" : "Memproses…"}
+                {flow === "locating" ? t.checkingLocation : t.processing}
               </>
             ) : phase === "in" ? (
               <>
-                <LogOut className="h-5 w-5" /> Clock Out
+                <LogOut className="h-5 w-5" /> {t.clockOut}
               </>
             ) : (
               <>
-                <LogIn className="h-5 w-5" /> Clock In Sekarang
+                <LogIn className="h-5 w-5" /> {t.clockInNow}
               </>
             )}
           </Button>
           <p className="mt-2.5 text-center text-xs text-faint">
-            Absensi memverifikasi lokasi &amp; foto wajah Anda.
+            {t.verifyNote}
           </p>
         </div>
       </div>
 
       <CameraCapture
         open={flow === "camera"}
-        title={`Verifikasi Wajah · Clock ${pendingDir === "in" ? "In" : "Out"}`}
+        title={t.cameraTitle(pendingDir)}
         onCapture={onCapture}
         onCancel={() => {
           setFlow("idle");
@@ -381,6 +507,8 @@ function OutOfRangeModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   useEffect(() => {
@@ -398,7 +526,7 @@ function OutOfRangeModal({
       <div
         role="alertdialog"
         aria-modal="true"
-        aria-label="Anda di luar area kantor"
+        aria-label={t.oorTitle}
         className="relative w-full rounded-t-3xl bg-panel p-5 shadow-pop sm:max-w-md sm:rounded-3xl"
       >
         <div className="flex items-start gap-3">
@@ -406,21 +534,24 @@ function OutOfRangeModal({
             <AlertTriangle className="h-5 w-5" />
           </span>
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold text-ink">Anda di luar area kantor</h2>
+            <h2 className="font-display text-lg font-semibold text-ink">{t.oorTitle}</h2>
             <p className="mt-1 text-sm text-muted">
-              Posisi Anda <span className="font-semibold text-[#8c3c1f]">{formatDistance(distance)}</span> dari{" "}
-              {locationLabel} (maksimal {maxRadius} m). Clock-{direction} perlu{" "}
-              <span className="font-semibold">konfirmasi HR</span> terlebih dahulu — absensi tercatat setelah disetujui.
+              {t.oorBodyStart} <span className="font-semibold text-[#8c3c1f]">{formatDistance(distance)}</span>
+              {t.oorBodyMid(locationLabel, maxRadius)}
+              {direction}
+              {t.oorBodyNeeds}
+              <span className="font-semibold">{t.oorHrConfirm}</span>
+              {t.oorBodyEnd}
             </p>
           </div>
         </div>
 
         <div className="mt-4">
-          <Field label="Catatan untuk HR (opsional)">
+          <Field label={t.oorNoteLabel}>
             <Textarea
               value={note}
               onChange={(e) => onNoteChange(e.target.value)}
-              placeholder="cth. Kunjungan ke supplier / tugas luar kantor…"
+              placeholder={t.oorNotePlaceholder}
               rows={3}
             />
           </Field>
@@ -428,10 +559,10 @@ function OutOfRangeModal({
 
         <div className="mt-4 flex gap-2">
           <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
-            Batal
+            {t.cancel}
           </Button>
           <Button type="button" variant="danger" className="flex-1" onClick={onConfirm}>
-            Kirim ke HR
+            {t.sendToHr}
           </Button>
         </div>
       </div>

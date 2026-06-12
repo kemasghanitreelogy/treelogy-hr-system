@@ -5,9 +5,28 @@ import { PayslipDetail } from "@/components/payroll/payslip-detail";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildPayslip, getAttendanceForEmployee, getEmployees } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
+import { getLocale } from "@/lib/locale-server";
 import { monthLabel } from "@/lib/utils";
+import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Detail Slip Gaji — Treelogy HR" };
+
+const STR: Record<
+  Locale,
+  {
+    backToPayroll: string;
+    intro: (month: string) => string;
+  }
+> = {
+  id: {
+    backToPayroll: "Kembali ke Payroll",
+    intro: (month) => `Slip gaji ${month}. Lembur dibayar terpisah lewat menu Lembur.`,
+  },
+  en: {
+    backToPayroll: "Back to Payroll",
+    intro: (month) => `Payslip for ${month}. Overtime is paid separately via the Overtime menu.`,
+  },
+};
 
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -20,6 +39,8 @@ export default async function PayslipPage({
   if (!PERIOD_RE.test(period)) notFound();
 
   const user = await getSessionUser();
+  const locale = await getLocale();
+  const t = STR[locale];
   const isOps = can(user, "payroll.process") || can(user, "employees.manage");
   // Karyawan biasa hanya boleh membuka slip miliknya sendiri.
   if (!isOps && user?.employeeId !== employeeId) notFound();
@@ -39,10 +60,10 @@ export default async function PayslipPage({
         href="/payroll"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink"
       >
-        <ArrowLeft className="h-4 w-4" /> Kembali ke Payroll
+        <ArrowLeft className="h-4 w-4" /> {t.backToPayroll}
       </Link>
       <p className="text-sm text-muted">
-        Slip gaji {monthLabel(period)}. Lembur dibayar terpisah lewat menu Lembur.
+        {t.intro(monthLabel(period, locale))}
       </p>
       <Card>
         <CardContent>

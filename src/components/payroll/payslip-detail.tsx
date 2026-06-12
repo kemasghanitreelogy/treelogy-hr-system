@@ -4,16 +4,124 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Eye, FileDown, Loader2, Printer, X } from "lucide-react";
 import type { Employee, Payslip } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 import { jkkRate } from "@/lib/payroll";
 import { monthLabel, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useLocale } from "@/components/layout/locale-context";
 import { downloadPayslipPdf, payslipPdfPreviewUrl } from "./payslip-pdf";
+
+const STR: Record<
+  Locale,
+  {
+    pdfDownloaded: string;
+    pdfFailed: string;
+    previewFailed: string;
+    previewPdf: string;
+    download: string;
+    print: string;
+    payslip: string;
+    netPay: string;
+    attendance: (present: number, working: number) => string;
+    earnings: string;
+    baseSalary: string;
+    fixedAllowance: string;
+    gross: string;
+    overtimeNote: string;
+    bpjsDeductions: string;
+    bpjsKes1: string;
+    jht2: string;
+    jp1: string;
+    bpjsEmployeeTotal: string;
+    taxDeductions: string;
+    pph21: (ptkp: string) => string;
+    employerPaid: string;
+    bpjsKes4: string;
+    jht37: string;
+    jp2: string;
+    jkk: (pct: string) => string;
+    jkm: string;
+    takeHome: string;
+    transferTo: (bank: string, account: string) => string;
+    closePreview: string;
+    previewFallback: string;
+  }
+> = {
+  id: {
+    pdfDownloaded: "Slip gaji PDF terunduh ✓",
+    pdfFailed: "Gagal membuat PDF. Coba lagi.",
+    previewFailed: "Gagal membuat pratinjau PDF. Coba lagi.",
+    previewPdf: "Pratinjau PDF",
+    download: "Unduh",
+    print: "Cetak",
+    payslip: "Slip Gaji",
+    netPay: "Gaji bersih",
+    attendance: (present, working) => `${present} hari hadir dari ${working} hari kerja`,
+    earnings: "Pendapatan",
+    baseSalary: "Gaji pokok",
+    fixedAllowance: "Tunjangan tetap",
+    gross: "Bruto",
+    overtimeNote: "Lembur dibayar terpisah lewat menu Lembur — tidak termasuk slip ini.",
+    bpjsDeductions: "Potongan — BPJS (karyawan)",
+    bpjsKes1: "BPJS Kesehatan (1%)",
+    jht2: "JHT (2%)",
+    jp1: "Jaminan Pensiun (1%)",
+    bpjsEmployeeTotal: "Total BPJS karyawan",
+    taxDeductions: "Potongan — Pajak",
+    pph21: (ptkp) => `PPh 21 (TER ${ptkp})`,
+    employerPaid: "Ditanggung perusahaan (info)",
+    bpjsKes4: "BPJS Kesehatan (4%)",
+    jht37: "JHT (3.7%)",
+    jp2: "Jaminan Pensiun (2%)",
+    jkk: (pct) => `JKK (${pct}%)`,
+    jkm: "JKM (0.3%)",
+    takeHome: "Take-home pay",
+    transferTo: (bank, account) => `Transfer ke ${bank} · ${account}`,
+    closePreview: "Tutup pratinjau",
+    previewFallback: "Jika pratinjau tidak tampil di browser HP Anda, gunakan tombol Unduh.",
+  },
+  en: {
+    pdfDownloaded: "Payslip PDF downloaded ✓",
+    pdfFailed: "Failed to generate PDF. Please try again.",
+    previewFailed: "Failed to generate PDF preview. Please try again.",
+    previewPdf: "Preview PDF",
+    download: "Download",
+    print: "Print",
+    payslip: "Payslip",
+    netPay: "Net pay",
+    attendance: (present, working) => `${present} days present of ${working} working days`,
+    earnings: "Earnings",
+    baseSalary: "Base salary",
+    fixedAllowance: "Fixed allowance",
+    gross: "Gross",
+    overtimeNote: "Overtime is paid separately via the Overtime menu — not included in this payslip.",
+    bpjsDeductions: "Deductions — BPJS (employee)",
+    bpjsKes1: "BPJS Kesehatan (1%)",
+    jht2: "JHT (2%)",
+    jp1: "Pension (JP) (1%)",
+    bpjsEmployeeTotal: "Total employee BPJS",
+    taxDeductions: "Deductions — Tax",
+    pph21: (ptkp) => `PPh 21 (TER ${ptkp})`,
+    employerPaid: "Employer-paid (info)",
+    bpjsKes4: "BPJS Kesehatan (4%)",
+    jht37: "JHT (3.7%)",
+    jp2: "Pension (JP) (2%)",
+    jkk: (pct) => `JKK (${pct}%)`,
+    jkm: "JKM (0.3%)",
+    takeHome: "Take-home pay",
+    transferTo: (bank, account) => `Transfer to ${bank} · ${account}`,
+    closePreview: "Close preview",
+    previewFallback: "If the preview does not appear in your mobile browser, use the Download button.",
+  },
+};
 
 export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
   const b = slip.bpjs;
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
   const [downloading, setDownloading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -21,10 +129,10 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
   async function downloadPdf() {
     setDownloading(true);
     try {
-      await downloadPayslipPdf(slip, emp);
-      toast.success("Slip gaji PDF terunduh ✓");
+      await downloadPayslipPdf(slip, emp, locale);
+      toast.success(t.pdfDownloaded);
     } catch {
-      toast.error("Gagal membuat PDF. Coba lagi.");
+      toast.error(t.pdfFailed);
     } finally {
       setDownloading(false);
     }
@@ -33,9 +141,9 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
   async function openPreview() {
     setPreviewing(true);
     try {
-      setPreviewUrl(await payslipPdfPreviewUrl(slip, emp));
+      setPreviewUrl(await payslipPdfPreviewUrl(slip, emp, locale));
     } catch {
-      toast.error("Gagal membuat pratinjau PDF. Coba lagi.");
+      toast.error(t.previewFailed);
     } finally {
       setPreviewing(false);
     }
@@ -59,13 +167,13 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
         <div className="flex shrink-0 items-center gap-2">
           <Button size="sm" onClick={openPreview} disabled={previewing}>
             {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-            Pratinjau PDF
+            {t.previewPdf}
           </Button>
           <Button variant="outline" size="sm" onClick={downloadPdf} disabled={downloading}>
             {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-            Unduh
+            {t.download}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()} aria-label="Cetak">
+          <Button variant="outline" size="sm" onClick={() => window.print()} aria-label={t.print}>
             <Printer className="h-4 w-4" />
           </Button>
         </div>
@@ -73,52 +181,52 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
 
       <PdfPreviewOverlay
         url={previewUrl}
-        title={`Slip Gaji · ${emp.name} · ${monthLabel(slip.period)}`}
+        title={`${t.payslip} · ${emp.name} · ${monthLabel(slip.period, locale)}`}
         onDownload={downloadPdf}
         onClose={closePreview}
       />
 
       <div className="rounded-2xl bg-bark p-4 text-cream">
-        <p className="text-sm text-forest-100/70">Gaji bersih · {monthLabel(slip.period)}</p>
+        <p className="text-sm text-forest-100/70">{t.netPay} · {monthLabel(slip.period, locale)}</p>
         <p className="font-display text-3xl font-bold">{rupiah(slip.netPay)}</p>
         <p className="mt-1 text-xs text-forest-100/60">
-          {slip.presentDays} hari hadir dari {slip.workingDays} hari kerja
+          {t.attendance(slip.presentDays, slip.workingDays)}
         </p>
       </div>
 
-      <Section title="Pendapatan">
-        <Line label="Gaji pokok" value={rupiah(slip.baseSalary)} />
-        <Line label="Tunjangan tetap" value={rupiah(slip.allowance)} />
-        <Line label="Bruto" value={rupiah(slip.grossPay)} strong />
-        <p className="pt-1 text-xs text-faint">Lembur dibayar terpisah lewat menu Lembur — tidak termasuk slip ini.</p>
+      <Section title={t.earnings}>
+        <Line label={t.baseSalary} value={rupiah(slip.baseSalary)} />
+        <Line label={t.fixedAllowance} value={rupiah(slip.allowance)} />
+        <Line label={t.gross} value={rupiah(slip.grossPay)} strong />
+        <p className="pt-1 text-xs text-faint">{t.overtimeNote}</p>
       </Section>
 
-      <Section title="Potongan — BPJS (karyawan)">
-        <Line label="BPJS Kesehatan (1%)" value={`- ${rupiah(b.kesEmployee)}`} />
-        <Line label="JHT (2%)" value={`- ${rupiah(b.jhtEmployee)}`} />
-        <Line label="Jaminan Pensiun (1%)" value={`- ${rupiah(b.jpEmployee)}`} />
-        <Line label="Total BPJS karyawan" value={`- ${rupiah(slip.bpjsEmployeeTotal)}`} strong />
+      <Section title={t.bpjsDeductions}>
+        <Line label={t.bpjsKes1} value={`- ${rupiah(b.kesEmployee)}`} />
+        <Line label={t.jht2} value={`- ${rupiah(b.jhtEmployee)}`} />
+        <Line label={t.jp1} value={`- ${rupiah(b.jpEmployee)}`} />
+        <Line label={t.bpjsEmployeeTotal} value={`- ${rupiah(slip.bpjsEmployeeTotal)}`} strong />
       </Section>
 
-      <Section title="Potongan — Pajak">
-        <Line label={`PPh 21 (TER ${emp.ptkp})`} value={`- ${rupiah(slip.pph21)}`} />
+      <Section title={t.taxDeductions}>
+        <Line label={t.pph21(emp.ptkp)} value={`- ${rupiah(slip.pph21)}`} />
       </Section>
 
-      <Section title="Ditanggung perusahaan (info)">
-        <Line label="BPJS Kesehatan (4%)" value={rupiah(b.kesEmployer)} muted />
-        <Line label="JHT (3.7%)" value={rupiah(b.jhtEmployer)} muted />
-        <Line label="Jaminan Pensiun (2%)" value={rupiah(b.jpEmployer)} muted />
-        <Line label={`JKK (${(jkkRate(emp.team) * 100).toFixed(2)}%)`} value={rupiah(b.jkk)} muted />
-        <Line label="JKM (0.3%)" value={rupiah(b.jkm)} muted />
+      <Section title={t.employerPaid}>
+        <Line label={t.bpjsKes4} value={rupiah(b.kesEmployer)} muted />
+        <Line label={t.jht37} value={rupiah(b.jhtEmployer)} muted />
+        <Line label={t.jp2} value={rupiah(b.jpEmployer)} muted />
+        <Line label={t.jkk((jkkRate(emp.team) * 100).toFixed(2))} value={rupiah(b.jkk)} muted />
+        <Line label={t.jkm} value={rupiah(b.jkm)} muted />
       </Section>
 
       <div className="flex items-center justify-between rounded-2xl border-2 border-forest-200 bg-[#e9f0d8] px-4 py-3">
-        <span className="font-semibold text-forest-700">Take-home pay</span>
+        <span className="font-semibold text-forest-700">{t.takeHome}</span>
         <span className="font-display text-xl font-bold text-forest-700">{rupiah(slip.netPay)}</span>
       </div>
 
       <p className="text-center text-xs text-faint">
-        Transfer ke {emp.bankName} · {emp.bankAccount}
+        {t.transferTo(emp.bankName, emp.bankAccount)}
       </p>
     </div>
   );
@@ -140,6 +248,8 @@ function PdfPreviewOverlay({
   onDownload: () => void;
   onClose: () => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -172,19 +282,19 @@ function PdfPreviewOverlay({
           <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{title}</p>
           <Button variant="outline" size="sm" onClick={onDownload}>
             <FileDown className="h-4 w-4" />
-            <span className="hidden sm:inline">Unduh</span>
+            <span className="hidden sm:inline">{t.download}</span>
           </Button>
           <button
             onClick={onClose}
             className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-sand"
-            aria-label="Tutup pratinjau"
+            aria-label={t.closePreview}
           >
             <X className="h-5 w-5" />
           </button>
         </div>
         <iframe src={url} title={title} className="w-full flex-1 border-0 bg-white" />
         <p className="border-t border-line bg-panel px-4 py-2 text-center text-[11px] text-faint sm:hidden">
-          Jika pratinjau tidak tampil di browser HP Anda, gunakan tombol Unduh.
+          {t.previewFallback}
         </p>
       </div>
     </div>,

@@ -1,8 +1,19 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
 import { getEmployees, getLeaveBalances, getShiftAssignments, getShifts, getTabunganEntries } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
+import { getLocale } from "@/lib/locale-server";
+import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Shift & Jadwal — Treelogy HR" };
+
+const STR: Record<Locale, { intro: string }> = {
+  id: {
+    intro: "Atur shift untuk tim pabrik & kebun, dan kelola tabungan libur (kerja hari libur & pencairannya).",
+  },
+  en: {
+    intro: "Manage shifts for the factory & farm teams, and manage leave savings (working on days off & withdrawals).",
+  },
+};
 
 export default async function ShiftsPage() {
   const [shifts, assignments, entries, balances, employeesAll, user] = await Promise.all([
@@ -13,6 +24,8 @@ export default async function ShiftsPage() {
     getEmployees(),
     getSessionUser(),
   ]);
+  const locale = await getLocale();
+  const t = STR[locale];
   const employees = employeesAll.map((e) => ({
     id: e.id,
     name: e.name,
@@ -44,7 +57,7 @@ export default async function ShiftsPage() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Atur shift untuk tim pabrik &amp; kebun, dan kelola tabungan libur (kerja hari libur &amp; pencairannya).
+        {t.intro}
       </p>
       <ShiftsView
         shifts={shifts}

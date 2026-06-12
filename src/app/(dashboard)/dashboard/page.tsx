@@ -31,12 +31,128 @@ import {
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
+import { getLocale } from "@/lib/locale-server";
+import type { Locale } from "@/lib/i18n";
 
-const LEAVE_LABEL: Record<string, string> = {
-  annual: "Cuti tahunan", sick: "Sakit", unpaid: "Tanpa gaji", "tukar-libur": "Tukar libur",
+const LEAVE_LABEL: Record<Locale, Record<string, string>> = {
+  id: {
+    annual: "Cuti tahunan", sick: "Sakit", unpaid: "Tanpa gaji", "tukar-libur": "Tukar libur",
+  },
+  en: {
+    annual: "Annual leave", sick: "Sick leave", unpaid: "Unpaid leave", "tukar-libur": "Day-off swap",
+  },
+};
+
+const STR: Record<Locale, {
+  scheduleLabel: (start: string, end: string) => string;
+  welcome: (name: string) => string;
+  summary: string;
+  needsActionTitle: (n: number) => string;
+  needsActionSub: string;
+  presentToday: string;
+  attendanceRate: (rate: number) => string;
+  activeEmployees: string;
+  ofTotal: (total: number) => string;
+  overtimeMonth: string;
+  hoursValue: (h: number) => string;
+  overtimeSub: string;
+  payrollNet: string;
+  payrollSub: string;
+  qaLeave: string;
+  qaPayroll: string;
+  qaAttendance: string;
+  qaEmployees: string;
+  todayAttendance: string;
+  viewAll: string;
+  clockInAt: (time: string) => string;
+  overtimeShort: (h: number) => string;
+  noAttendance: string;
+  needsApproval: string;
+  noPending: string;
+  pendingMeta: (label: string, days: number, date: string) => string;
+  manageApprovals: string;
+  trendTitle: string;
+  trendSub: string;
+  legendPresent: string;
+  legendLate: string;
+  legendAbsent: string;
+  teamComposition: string;
+}> = {
+  id: {
+    scheduleLabel: (start, end) => `Jam kerja · ${start}–${end}`,
+    welcome: (name) => `Selamat datang kembali, ${name} 🌿`,
+    summary: "Ringkasan SDM Treelogy hari ini.",
+    needsActionTitle: (n) => `${n} permintaan menunggu persetujuan Anda`,
+    needsActionSub: "Cuti, izin, dan tukar libur perlu ditinjau.",
+    presentToday: "Hadir hari ini",
+    attendanceRate: (rate) => `Kehadiran ${rate}%`,
+    activeEmployees: "Karyawan aktif",
+    ofTotal: (total) => `dari ${total} total`,
+    overtimeMonth: "Lembur bulan ini",
+    hoursValue: (h) => `${h} jam`,
+    overtimeSub: "Dibayar terpisah dari gaji",
+    payrollNet: "Payroll bersih (Jun)",
+    payrollSub: "Periode berjalan",
+    qaLeave: "Approval Cuti",
+    qaPayroll: "Proses Payroll",
+    qaAttendance: "Absensi",
+    qaEmployees: "Karyawan",
+    todayAttendance: "Absensi Hari Ini",
+    viewAll: "Lihat semua",
+    clockInAt: (time) => `Masuk ${time}`,
+    overtimeShort: (h) => `Lembur ${h}j`,
+    noAttendance: "Belum ada absensi hari ini.",
+    needsApproval: "Perlu Persetujuan",
+    noPending: "Tidak ada permintaan tertunda.",
+    pendingMeta: (label, days, date) => `${label} · ${days} hari · mulai ${date}`,
+    manageApprovals: "Kelola persetujuan",
+    trendTitle: "Tren Kehadiran",
+    trendSub: "14 hari terakhir",
+    legendPresent: "Hadir",
+    legendLate: "Terlambat",
+    legendAbsent: "Alpa",
+    teamComposition: "Komposisi Tim",
+  },
+  en: {
+    scheduleLabel: (start, end) => `Work hours · ${start}–${end}`,
+    welcome: (name) => `Welcome back, ${name} 🌿`,
+    summary: "Today's Treelogy HR overview.",
+    needsActionTitle: (n) => `${n} request${n === 1 ? "" : "s"} awaiting your approval`,
+    needsActionSub: "Leave, permits, and day-off swaps need review.",
+    presentToday: "Present today",
+    attendanceRate: (rate) => `Attendance ${rate}%`,
+    activeEmployees: "Active employees",
+    ofTotal: (total) => `of ${total} total`,
+    overtimeMonth: "Overtime this month",
+    hoursValue: (h) => `${h} hrs`,
+    overtimeSub: "Paid separately from payroll",
+    payrollNet: "Net payroll (Jun)",
+    payrollSub: "Current period",
+    qaLeave: "Leave Approvals",
+    qaPayroll: "Run Payroll",
+    qaAttendance: "Attendance",
+    qaEmployees: "Employees",
+    todayAttendance: "Today's Attendance",
+    viewAll: "View all",
+    clockInAt: (time) => `In ${time}`,
+    overtimeShort: (h) => `Overtime ${h}h`,
+    noAttendance: "No attendance records yet today.",
+    needsApproval: "Needs Approval",
+    noPending: "No pending requests.",
+    pendingMeta: (label, days, date) => `${label} · ${days} day${days === 1 ? "" : "s"} · starts ${date}`,
+    manageApprovals: "Manage approvals",
+    trendTitle: "Attendance Trend",
+    trendSub: "Last 14 days",
+    legendPresent: "Present",
+    legendLate: "Late",
+    legendAbsent: "Absent",
+    teamComposition: "Team Composition",
+  },
 };
 
 export default async function DashboardPage() {
+  const locale = await getLocale();
+  const t = STR[locale];
   const user = await getSessionUser();
   const firstName = (user?.name ?? "Tim").split(" ")[0];
 
@@ -50,7 +166,7 @@ export default async function DashboardPage() {
     ]);
     const recap = computeRecap(attendance, user.employeeId ?? "", CURRENT_PERIOD);
     const balance = balances.find((b) => b.employeeId === user.employeeId);
-    const scheduleLabel = `Jam kerja · ${me?.workStart ?? "08:00"}–${me?.workEnd ?? "17:00"}`;
+    const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
     return (
       <SelfDashboard
@@ -62,6 +178,7 @@ export default async function DashboardPage() {
         balance={balance}
         canPayroll={can(user, "payroll.view")}
         scheduleLabel={scheduleLabel}
+        locale={locale}
       />
     );
   }
@@ -73,11 +190,11 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-5 fade-up">
       <div className="flex flex-col gap-1">
-        <p className="text-sm text-muted">{formatDate(TODAY, "long")}</p>
+        <p className="text-sm text-muted">{formatDate(TODAY, "long", locale)}</p>
         <h2 className="font-display text-xl font-bold text-ink sm:text-2xl">
-          Selamat datang kembali, {firstName} 🌿
+          {t.welcome(firstName)}
         </h2>
-        <p className="text-sm text-muted">Ringkasan SDM Treelogy hari ini.</p>
+        <p className="text-sm text-muted">{t.summary}</p>
       </div>
 
       {/* Needs-action banner (Zeigarnik: surface unfinished tasks first) */}
@@ -90,8 +207,8 @@ export default async function DashboardPage() {
             <TrendingUp className="h-5 w-5" />
           </span>
           <div className="flex-1">
-            <p className="text-sm font-semibold text-[#7a5a10]">{needsAction} permintaan menunggu persetujuan Anda</p>
-            <p className="text-xs text-[#8a6512]/80">Cuti, izin, dan tukar libur perlu ditinjau.</p>
+            <p className="text-sm font-semibold text-[#7a5a10]">{t.needsActionTitle(needsAction)}</p>
+            <p className="text-xs text-[#8a6512]/80">{t.needsActionSub}</p>
           </div>
           <ArrowRight className="h-5 w-5 text-[#8a6512]" />
         </Link>
@@ -99,26 +216,26 @@ export default async function DashboardPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatCard label="Hadir hari ini" value={`${stats.presentToday}/${stats.activeEmployees}`} sub={`Kehadiran ${stats.attendanceRate}%`} icon={UserCheck} tone="matcha" trend={{ value: `${stats.attendanceRate}%`, up: stats.attendanceRate >= 85 }} />
-        <StatCard label="Karyawan aktif" value={String(stats.activeEmployees)} sub={`dari ${stats.totalEmployees} total`} icon={Users} tone="forest" />
-        <StatCard label="Lembur bulan ini" value={`${stats.overtimeHoursMonth} jam`} sub="Dibayar terpisah dari gaji" icon={Clock} tone="gold" />
-        <StatCard label="Payroll bersih (Jun)" value={rupiah(stats.payrollNetMonth, { compact: true })} sub="Periode berjalan" icon={Wallet} tone="olive" />
+        <StatCard label={t.presentToday} value={`${stats.presentToday}/${stats.activeEmployees}`} sub={t.attendanceRate(stats.attendanceRate)} icon={UserCheck} tone="matcha" trend={{ value: `${stats.attendanceRate}%`, up: stats.attendanceRate >= 85 }} />
+        <StatCard label={t.activeEmployees} value={String(stats.activeEmployees)} sub={t.ofTotal(stats.totalEmployees)} icon={Users} tone="forest" />
+        <StatCard label={t.overtimeMonth} value={t.hoursValue(stats.overtimeHoursMonth)} sub={t.overtimeSub} icon={Clock} tone="gold" />
+        <StatCard label={t.payrollNet} value={rupiah(stats.payrollNetMonth, { compact: true })} sub={t.payrollSub} icon={Wallet} tone="olive" />
       </div>
 
       {/* Quick actions (recognition over recall; shortest path to top tasks) */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {can(user, "leave.approve") && <QuickAction href="/leave" icon={CalendarDays} label="Approval Cuti" badge={needsAction || undefined} />}
-        {can(user, "payroll.process") && <QuickAction href="/payroll" icon={Wallet} label="Proses Payroll" />}
-        {can(user, "attendance.view") && <QuickAction href="/attendance" icon={CalendarClock} label="Absensi" />}
-        {can(user, "employees.manage") && <QuickAction href="/employees" icon={UserPlus} label="Karyawan" />}
+        {can(user, "leave.approve") && <QuickAction href="/leave" icon={CalendarDays} label={t.qaLeave} badge={needsAction || undefined} />}
+        {can(user, "payroll.process") && <QuickAction href="/payroll" icon={Wallet} label={t.qaPayroll} />}
+        {can(user, "attendance.view") && <QuickAction href="/attendance" icon={CalendarClock} label={t.qaAttendance} />}
+        {can(user, "employees.manage") && <QuickAction href="/employees" icon={UserPlus} label={t.qaEmployees} />}
       </div>
 
       {/* Actionable: today's attendance + approvals (before analytics) */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Absensi Hari Ini</CardTitle>
-            <Link href="/attendance" className="text-sm font-medium text-forest-600 hover:underline">Lihat semua</Link>
+            <CardTitle>{t.todayAttendance}</CardTitle>
+            <Link href="/attendance" className="text-sm font-medium text-forest-600 hover:underline">{t.viewAll}</Link>
           </CardHeader>
           <CardContent className="p-0">
             <ul className="divide-y divide-line">
@@ -130,34 +247,34 @@ export default async function DashboardPage() {
                     <p className="truncate text-xs text-faint">{emp.position} · <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span></p>
                   </div>
                   <div className="hidden text-right text-xs text-muted sm:block">
-                    <p>Masuk {r.clockIn ? r.clockIn.slice(11, 16) : "—"}</p>
-                    {r.overtimeMinutes > 0 && <p className="text-[#8a6512]">Lembur {Math.round((r.overtimeMinutes / 60) * 10) / 10}j</p>}
+                    <p>{t.clockInAt(r.clockIn ? r.clockIn.slice(11, 16) : "—")}</p>
+                    {r.overtimeMinutes > 0 && <p className="text-[#8a6512]">{t.overtimeShort(Math.round((r.overtimeMinutes / 60) * 10) / 10)}</p>}
                   </div>
                   <AttendanceBadge status={r.status} />
                 </li>
               ))}
-              {today.length === 0 && <li className="px-5 py-6 text-sm text-faint">Belum ada absensi hari ini.</li>}
+              {today.length === 0 && <li className="px-5 py-6 text-sm text-faint">{t.noAttendance}</li>}
             </ul>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Perlu Persetujuan</CardTitle>
+            <CardTitle>{t.needsApproval}</CardTitle>
             <Badge tone="gold">{needsAction}</Badge>
           </CardHeader>
           <CardContent className="space-y-3">
-            {pending.length === 0 && <p className="text-sm text-faint">Tidak ada permintaan tertunda.</p>}
+            {pending.length === 0 && <p className="text-sm text-faint">{t.noPending}</p>}
             {pending.map(({ request: l, employee: emp }) => (
               <div key={l.id} className="rounded-xl border border-line bg-cream/40 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span className="truncate text-sm font-medium text-ink">{emp?.name ?? "—"}</span>
                   <RequestBadge status={l.status} />
                 </div>
-                <p className="mt-1 text-xs text-muted">{LEAVE_LABEL[l.type]} · {l.days} hari · mulai {formatDate(l.startDate)}</p>
+                <p className="mt-1 text-xs text-muted">{t.pendingMeta(LEAVE_LABEL[locale][l.type], l.days, formatDate(l.startDate, "short", locale))}</p>
               </div>
             ))}
-            <Link href="/leave" className="block rounded-xl bg-forest-600 py-2.5 text-center text-sm font-medium text-cream transition-colors hover:bg-forest-700">Kelola persetujuan</Link>
+            <Link href="/leave" className="block rounded-xl bg-forest-600 py-2.5 text-center text-sm font-medium text-cream transition-colors hover:bg-forest-700">{t.manageApprovals}</Link>
           </CardContent>
         </Card>
       </div>
@@ -167,19 +284,19 @@ export default async function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <div>
-              <CardTitle>Tren Kehadiran</CardTitle>
-              <p className="mt-0.5 text-sm text-muted">14 hari terakhir</p>
+              <CardTitle>{t.trendTitle}</CardTitle>
+              <p className="mt-0.5 text-sm text-muted">{t.trendSub}</p>
             </div>
             <div className="hidden items-center gap-3 text-xs text-muted sm:flex">
-              <Legend color="#3d5a2e" label="Hadir" />
-              <Legend color="#e0a82e" label="Terlambat" />
-              <Legend color="#c2603f" label="Alpa" />
+              <Legend color="#3d5a2e" label={t.legendPresent} />
+              <Legend color="#e0a82e" label={t.legendLate} />
+              <Legend color="#c2603f" label={t.legendAbsent} />
             </div>
           </CardHeader>
           <CardContent><AttendanceTrendChart data={trend} /></CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Komposisi Tim</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{t.teamComposition}</CardTitle></CardHeader>
           <CardContent><TeamDonut data={stats.byTeam} /></CardContent>
         </Card>
       </div>

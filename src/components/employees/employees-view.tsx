@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, UserX, Wallet } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
 import { PTKP_OPTIONS } from "@/lib/payroll";
@@ -14,9 +15,187 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
+import { useLocale } from "@/components/layout/locale-context";
 
 type StatusFilter = "all" | "active" | "inactive";
 type RoleLite = { id: string; name: string; color: string };
+
+const ID_STR = {
+  // toasts & errors
+  deactivated: (name: string) => `${name} dinonaktifkan ✓`,
+  reactivated: (name: string) => `${name} diaktifkan kembali ✓`,
+  statusFailed: "Gagal memperbarui status. Pastikan Anda HR/admin.",
+  connection: "Koneksi bermasalah. Coba lagi.",
+  added: (name: string) => `${name} ditambahkan ✓`,
+  changesSaved: "Perubahan tersimpan ✓",
+  roleUpdated: "Peran sistem diperbarui ✓",
+  // controls
+  searchPlaceholder: "Cari nama, NIK, posisi…",
+  searchAria: "Cari karyawan",
+  addEmployee: "Tambah Karyawan",
+  // filters
+  filterAll: (n: number) => `Semua (${n})`,
+  filterActive: (n: number) => `Aktif (${n})`,
+  filterInactive: (n: number) => `Nonaktif (${n})`,
+  allTeams: "Semua tim",
+  // table
+  thEmployee: "Karyawan",
+  thTeam: "Tim",
+  thPosition: "Posisi",
+  thJoined: "Bergabung",
+  thBaseSalary: "Gaji pokok",
+  thStatus: "Status",
+  // detail drawer footer
+  deactivate: "Nonaktifkan",
+  activate: "Aktifkan",
+  editData: "Edit data",
+  // add / edit sheets
+  addTitle: "Tambah Karyawan",
+  addDescription: "Daftarkan karyawan baru ke database",
+  editTitle: "Edit Karyawan",
+  // confirm deactivate
+  employeeFallback: "karyawan",
+  confirmDeactivateTitle: (name: string) => `Nonaktifkan ${name}?`,
+  confirmDeactivateMessage:
+    "Karyawan tidak akan muncul di absensi & payroll aktif. Anda bisa mengaktifkannya kembali kapan saja.",
+  confirmDeactivateLabel: "Ya, nonaktifkan",
+  // detail
+  email: "Email",
+  phone: "Telepon",
+  joined: "Bergabung",
+  ended: "Berakhir",
+  compensationTax: "Kompensasi & Pajak",
+  baseSalary: "Gaji pokok",
+  allowance: "Tunjangan",
+  ptkpStatus: "Status PTKP",
+  npwp: "NPWP",
+  bpjsKes: "BPJS Kesehatan",
+  bpjsTk: "BPJS Ketenagakerjaan",
+  activeLabel: "Aktif",
+  salaryAccount: "Rekening Gaji",
+  // role card
+  systemRole: "Peran Sistem",
+  systemRoleHint: "Menentukan hak akses karyawan di aplikasi ini.",
+  noAccountOption: "— Belum ada akun —",
+  noAccountError: "Karyawan ini belum punya akun login.",
+  roleSaveFailed: "Gagal menyimpan peran. Pastikan Anda HR/admin.",
+  // work hours card
+  workHours: "Jam Kerja",
+  workHoursHintBase: "Patokan telat saat clock-in (waktu WITA).",
+  workHoursHintManage: "Atur jam masuk & keluar.",
+  workHoursHintReadonly: "Hanya HR yang dapat mengubah.",
+  clockIn: "Jam masuk",
+  clockOut: "Jam keluar",
+  saveWorkHours: "Simpan jam kerja",
+  workHoursFailed: "Gagal menyimpan jam kerja. Pastikan Anda HR/admin.",
+  workHoursSaved: (name: string) => `Jam kerja ${name} tersimpan ✓`,
+  // empty state
+  emptyTitle: "Tidak ada karyawan",
+  emptyHint: "Coba ubah filter atau kata kunci pencarian.",
+  // form
+  fullName: "Nama lengkap",
+  fullNamePlaceholder: "cth. Wayan Putra",
+  team: "Tim",
+  position: "Posisi",
+  positionPlaceholder: "cth. Operator",
+  phonePlaceholder: "0812-…",
+  emailPlaceholder: "nama@treelogy.com",
+  baseSalaryRp: "Gaji pokok (Rp)",
+  allowanceRp: "Tunjangan (Rp)",
+  clockInHint: "Patokan telat (WITA)",
+  ptkpHint: "Menentukan kategori tarif PPh 21 (TER)",
+  bank: "Bank",
+  bankAccount: "No. rekening",
+  cancel: "Batal",
+  saveChanges: "Simpan perubahan",
+  save: "Simpan",
+  saveEditFailed: "Gagal menyimpan perubahan. Pastikan Anda HR/admin.",
+  saveCreateFailed: "Gagal menambah karyawan. Pastikan Anda HR/admin.",
+};
+
+const STR: Record<Locale, typeof ID_STR> = {
+  id: ID_STR,
+  en: {
+    deactivated: (name: string) => `${name} deactivated ✓`,
+    reactivated: (name: string) => `${name} reactivated ✓`,
+    statusFailed: "Failed to update status. Make sure you are HR/admin.",
+    connection: "Connection problem. Please try again.",
+    added: (name: string) => `${name} added ✓`,
+    changesSaved: "Changes saved ✓",
+    roleUpdated: "System role updated ✓",
+    searchPlaceholder: "Search name, NIK, position…",
+    searchAria: "Search employees",
+    addEmployee: "Add Employee",
+    filterAll: (n: number) => `All (${n})`,
+    filterActive: (n: number) => `Active (${n})`,
+    filterInactive: (n: number) => `Inactive (${n})`,
+    allTeams: "All teams",
+    thEmployee: "Employee",
+    thTeam: "Team",
+    thPosition: "Position",
+    thJoined: "Joined",
+    thBaseSalary: "Base salary",
+    thStatus: "Status",
+    deactivate: "Deactivate",
+    activate: "Activate",
+    editData: "Edit details",
+    addTitle: "Add Employee",
+    addDescription: "Register a new employee in the database",
+    editTitle: "Edit Employee",
+    employeeFallback: "employee",
+    confirmDeactivateTitle: (name: string) => `Deactivate ${name}?`,
+    confirmDeactivateMessage:
+      "The employee will no longer appear in active attendance & payroll. You can reactivate them at any time.",
+    confirmDeactivateLabel: "Yes, deactivate",
+    email: "Email",
+    phone: "Phone",
+    joined: "Joined",
+    ended: "Ended",
+    compensationTax: "Compensation & Tax",
+    baseSalary: "Base salary",
+    allowance: "Allowance",
+    ptkpStatus: "PTKP status",
+    npwp: "NPWP",
+    bpjsKes: "BPJS Kesehatan",
+    bpjsTk: "BPJS Ketenagakerjaan",
+    activeLabel: "Active",
+    salaryAccount: "Salary Account",
+    systemRole: "System Role",
+    systemRoleHint: "Determines the employee's access rights in this app.",
+    noAccountOption: "— No account yet —",
+    noAccountError: "This employee does not have a login account yet.",
+    roleSaveFailed: "Failed to save the role. Make sure you are HR/admin.",
+    workHours: "Work Hours",
+    workHoursHintBase: "Late benchmark at clock-in (WITA time).",
+    workHoursHintManage: "Set the clock-in & clock-out times.",
+    workHoursHintReadonly: "Only HR can change this.",
+    clockIn: "Clock-in time",
+    clockOut: "Clock-out time",
+    saveWorkHours: "Save work hours",
+    workHoursFailed: "Failed to save work hours. Make sure you are HR/admin.",
+    workHoursSaved: (name: string) => `Work hours for ${name} saved ✓`,
+    emptyTitle: "No employees",
+    emptyHint: "Try changing the filters or search keywords.",
+    fullName: "Full name",
+    fullNamePlaceholder: "e.g. Wayan Putra",
+    team: "Team",
+    position: "Position",
+    positionPlaceholder: "e.g. Operator",
+    phonePlaceholder: "0812-…",
+    emailPlaceholder: "name@treelogy.com",
+    baseSalaryRp: "Base salary (Rp)",
+    allowanceRp: "Allowance (Rp)",
+    clockInHint: "Late benchmark (WITA)",
+    ptkpHint: "Determines the PPh 21 (TER) rate category",
+    bank: "Bank",
+    bankAccount: "Account number",
+    cancel: "Cancel",
+    saveChanges: "Save changes",
+    save: "Save",
+    saveEditFailed: "Failed to save changes. Make sure you are HR/admin.",
+    saveCreateFailed: "Failed to add the employee. Make sure you are HR/admin.",
+  },
+};
 
 export function EmployeesView({
   initial,
@@ -42,6 +221,8 @@ export function EmployeesView({
   const [roleMap, setRoleMap] = useState<Record<string, string>>(roleByEmployee);
   const [confirmDeactivate, setConfirmDeactivate] = useState<Employee | null>(null);
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
 
   const filtered = useMemo(() => {
     return list.filter((e) => {
@@ -78,14 +259,14 @@ export function EmployeesView({
         setSelected((s) => (s && s.id === emp.id ? data.employee : s));
         toast.success(
           next === "inactive"
-            ? `${emp.name} dinonaktifkan ✓`
-            : `${emp.name} diaktifkan kembali ✓`,
+            ? t.deactivated(emp.name)
+            : t.reactivated(emp.name),
         );
       } else {
-        toast.error("Gagal memperbarui status. Pastikan Anda HR/admin.");
+        toast.error(t.statusFailed);
       }
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connection);
     } finally {
       setTogglingId(null);
       setConfirmDeactivate(null);
@@ -97,7 +278,7 @@ export function EmployeesView({
     setAdding(false);
     setEditing(null);
     setSelected(emp);
-    toast.success(mode === "create" ? `${emp.name} ditambahkan ✓` : "Perubahan tersimpan ✓");
+    toast.success(mode === "create" ? t.added(emp.name) : t.changesSaved);
   }
 
   function applyHours(id: string, workStart: string, workEnd: string) {
@@ -114,34 +295,34 @@ export function EmployeesView({
           <Input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Cari nama, NIK, posisi…"
+            placeholder={t.searchPlaceholder}
             className="pl-9"
-            aria-label="Cari karyawan"
+            aria-label={t.searchAria}
           />
         </div>
         <Button onClick={() => setAdding(true)} className="shrink-0">
-          <Plus className="h-4 w-4" /> Tambah Karyawan
+          <Plus className="h-4 w-4" /> {t.addEmployee}
         </Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <FilterChip active={status === "all"} onClick={() => setStatus("all")}>
-          Semua ({counts.all})
+          {t.filterAll(counts.all)}
         </FilterChip>
         <FilterChip active={status === "active"} onClick={() => setStatus("active")}>
-          Aktif ({counts.active})
+          {t.filterActive(counts.active)}
         </FilterChip>
         <FilterChip active={status === "inactive"} onClick={() => setStatus("inactive")}>
-          Nonaktif ({counts.inactive})
+          {t.filterInactive(counts.inactive)}
         </FilterChip>
         <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
         <FilterChip active={team === "all"} onClick={() => setTeam("all")}>
-          Semua tim
+          {t.allTeams}
         </FilterChip>
-        {TEAMS.map((t) => (
-          <FilterChip key={t} active={team === t} onClick={() => setTeam(t)}>
-            {TEAM_META[t].label}
+        {TEAMS.map((tm) => (
+          <FilterChip key={tm} active={team === tm} onClick={() => setTeam(tm)}>
+            {TEAM_META[tm].label}
           </FilterChip>
         ))}
       </div>
@@ -152,12 +333,12 @@ export function EmployeesView({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
-                <th className="px-5 py-3">Karyawan</th>
-                <th className="px-5 py-3">Tim</th>
-                <th className="px-5 py-3">Posisi</th>
-                <th className="px-5 py-3">Bergabung</th>
-                <th className="px-5 py-3 text-right">Gaji pokok</th>
-                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">{t.thEmployee}</th>
+                <th className="px-5 py-3">{t.thTeam}</th>
+                <th className="px-5 py-3">{t.thPosition}</th>
+                <th className="px-5 py-3">{t.thJoined}</th>
+                <th className="px-5 py-3 text-right">{t.thBaseSalary}</th>
+                <th className="px-5 py-3">{t.thStatus}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -182,7 +363,7 @@ export function EmployeesView({
                     </span>
                   </td>
                   <td className="px-5 py-3 text-muted">{e.position}</td>
-                  <td className="px-5 py-3 text-muted">{formatDate(e.joinDate)}</td>
+                  <td className="px-5 py-3 text-muted">{formatDate(e.joinDate, "short", locale)}</td>
                   <td className="px-5 py-3 text-right font-medium text-ink">{rupiah(e.baseSalary)}</td>
                   <td className="px-5 py-3">
                     <EmployeeStatusBadge status={e.status} />
@@ -243,9 +424,9 @@ export function EmployeesView({
                 {togglingId === selected.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : selected.status === "active" ? (
-                  "Nonaktifkan"
+                  t.deactivate
                 ) : (
-                  "Aktifkan"
+                  t.activate
                 )}
               </Button>
               <Button
@@ -257,7 +438,7 @@ export function EmployeesView({
                   setEditing(cur);
                 }}
               >
-                Edit data
+                {t.editData}
               </Button>
             </div>
           )
@@ -273,14 +454,14 @@ export function EmployeesView({
             currentRoleId={roleMap[selected.id]}
             onRoleAssigned={(empId, roleId) => {
               setRoleMap((prev) => ({ ...prev, [empId]: roleId }));
-              toast.success("Peran sistem diperbarui ✓");
+              toast.success(t.roleUpdated);
             }}
           />
         )}
       </Sheet>
 
       {/* Add form */}
-      <Sheet open={adding} onClose={() => setAdding(false)} title="Tambah Karyawan" description="Daftarkan karyawan baru ke database">
+      <Sheet open={adding} onClose={() => setAdding(false)} title={t.addTitle} description={t.addDescription}>
         <EmployeeForm onSaved={(e) => onSaved(e, "create")} onCancel={() => setAdding(false)} />
       </Sheet>
 
@@ -288,7 +469,7 @@ export function EmployeesView({
       <Sheet
         open={!!editing}
         onClose={() => setEditing(null)}
-        title="Edit Karyawan"
+        title={t.editTitle}
         description={editing ? `${editing.nik} · ${editing.name}` : ""}
       >
         {editing && <EmployeeForm initial={editing} onSaved={(e) => onSaved(e, "edit")} onCancel={() => setEditing(null)} />}
@@ -299,9 +480,9 @@ export function EmployeesView({
         open={!!confirmDeactivate}
         tone="danger"
         icon={<UserX className="h-6 w-6" />}
-        title={`Nonaktifkan ${confirmDeactivate?.name ?? "karyawan"}?`}
-        message="Karyawan tidak akan muncul di absensi & payroll aktif. Anda bisa mengaktifkannya kembali kapan saja."
-        confirmLabel="Ya, nonaktifkan"
+        title={t.confirmDeactivateTitle(confirmDeactivate?.name ?? t.employeeFallback)}
+        message={t.confirmDeactivateMessage}
+        confirmLabel={t.confirmDeactivateLabel}
         busy={!!confirmDeactivate && togglingId === confirmDeactivate.id}
         onConfirm={() => confirmDeactivate && toggleStatus(confirmDeactivate)}
         onCancel={() => setConfirmDeactivate(null)}
@@ -349,6 +530,8 @@ function EmployeeDetail({
   currentRoleId?: string;
   onRoleAssigned: (employeeId: string, roleId: string) => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-4">
@@ -365,10 +548,10 @@ function EmployeeDetail({
       </div>
 
       <div className="space-y-2.5">
-        <DetailRow icon={<Mail className="h-4 w-4" />} label="Email" value={emp.email} />
-        <DetailRow icon={<Phone className="h-4 w-4" />} label="Telepon" value={emp.phone} />
-        <DetailRow icon={<Building2 className="h-4 w-4" />} label="Bergabung" value={formatDate(emp.joinDate, "long")} />
-        {emp.endDate && <DetailRow icon={<Building2 className="h-4 w-4" />} label="Berakhir" value={formatDate(emp.endDate, "long")} />}
+        <DetailRow icon={<Mail className="h-4 w-4" />} label={t.email} value={emp.email} />
+        <DetailRow icon={<Phone className="h-4 w-4" />} label={t.phone} value={emp.phone} />
+        <DetailRow icon={<Building2 className="h-4 w-4" />} label={t.joined} value={formatDate(emp.joinDate, "long", locale)} />
+        {emp.endDate && <DetailRow icon={<Building2 className="h-4 w-4" />} label={t.ended} value={formatDate(emp.endDate, "long", locale)} />}
       </div>
 
       {canAssignRoles && roles.length > 0 && (
@@ -379,20 +562,20 @@ function EmployeeDetail({
 
       <div className="rounded-2xl border border-line bg-panel p-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <Wallet className="h-4 w-4 text-forest-600" /> Kompensasi & Pajak
+          <Wallet className="h-4 w-4 text-forest-600" /> {t.compensationTax}
         </h3>
         <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
-          <Stat label="Gaji pokok" value={rupiah(emp.baseSalary)} />
-          <Stat label="Tunjangan" value={rupiah(emp.allowance)} />
-          <Stat label="Status PTKP" value={emp.ptkp} />
-          <Stat label="NPWP" value={emp.npwp ?? "—"} />
-          <Stat label="BPJS Kesehatan" value={emp.bpjsKes ? "Aktif" : "—"} />
-          <Stat label="BPJS Ketenagakerjaan" value={emp.bpjsTk ? "Aktif" : "—"} />
+          <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
+          <Stat label={t.allowance} value={rupiah(emp.allowance)} />
+          <Stat label={t.ptkpStatus} value={emp.ptkp} />
+          <Stat label={t.npwp} value={emp.npwp ?? "—"} />
+          <Stat label={t.bpjsKes} value={emp.bpjsKes ? t.activeLabel : "—"} />
+          <Stat label={t.bpjsTk} value={emp.bpjsTk ? t.activeLabel : "—"} />
         </dl>
       </div>
 
       <div className="rounded-2xl border border-line bg-panel p-4">
-        <h3 className="text-sm font-semibold text-ink">Rekening Gaji</h3>
+        <h3 className="text-sm font-semibold text-ink">{t.salaryAccount}</h3>
         <p className="mt-2 text-sm text-muted">
           {emp.bankName} · <span className="font-medium text-ink">{emp.bankAccount}</span>
         </p>
@@ -415,6 +598,8 @@ function RoleCard({
   const [roleId, setRoleId] = useState(currentRoleId ?? "");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const locale = useLocale();
+  const t = STR[locale];
 
   async function assign(next: string) {
     if (!next || next === roleId) return;
@@ -435,15 +620,15 @@ function RoleCard({
           ok: false,
           text:
             data.error === "no_account"
-              ? "Karyawan ini belum punya akun login."
-              : "Gagal menyimpan peran. Pastikan Anda HR/admin.",
+              ? t.noAccountError
+              : t.roleSaveFailed,
         });
         return;
       }
       onAssigned(emp.id, next); // success toast is raised by the parent
     } catch {
       setRoleId(prev);
-      setMsg({ ok: false, text: "Koneksi bermasalah. Coba lagi." });
+      setMsg({ ok: false, text: t.connection });
     } finally {
       setSaving(false);
     }
@@ -454,13 +639,13 @@ function RoleCard({
   return (
     <div className="rounded-2xl border border-line bg-panel p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
-        <ShieldCheck className="h-4 w-4 text-forest-600" /> Peran Sistem
+        <ShieldCheck className="h-4 w-4 text-forest-600" /> {t.systemRole}
       </h3>
-      <p className="mt-1 text-xs text-muted">Menentukan hak akses karyawan di aplikasi ini.</p>
+      <p className="mt-1 text-xs text-muted">{t.systemRoleHint}</p>
       <div className="mt-3 flex items-center gap-2">
         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: activeRole?.color ?? "#cbd5c0" }} />
         <Select value={roleId} onChange={(e) => assign(e.target.value)} disabled={saving} className="flex-1">
-          {!currentRoleId && <option value="">— Belum ada akun —</option>}
+          {!currentRoleId && <option value="">{t.noAccountOption}</option>}
           {roles.map((r) => (
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}
@@ -487,6 +672,8 @@ function WorkHoursCard({
   const [end, setEnd] = useState(emp.workEnd ?? "17:00");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
 
   const dirty = start !== (emp.workStart ?? "08:00") || end !== (emp.workEnd ?? "17:00");
 
@@ -499,13 +686,13 @@ function WorkHoursCard({
         body: JSON.stringify({ id: emp.id, workStart: start, workEnd: end }),
       });
       if (!res.ok) {
-        toast.error("Gagal menyimpan jam kerja. Pastikan Anda HR/admin.");
+        toast.error(t.workHoursFailed);
         return;
       }
       onHours(emp.id, start, end);
-      toast.success(`Jam kerja ${emp.name} tersimpan ✓`);
+      toast.success(t.workHoursSaved(emp.name));
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connection);
     } finally {
       setSaving(false);
     }
@@ -514,25 +701,25 @@ function WorkHoursCard({
   return (
     <div className="rounded-2xl border border-line bg-panel p-4">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
-        <Clock className="h-4 w-4 text-forest-600" /> Jam Kerja
+        <Clock className="h-4 w-4 text-forest-600" /> {t.workHours}
       </h3>
       <p className="mt-1 text-xs text-muted">
-        Patokan telat saat clock-in (waktu WITA). {canManage ? "Atur jam masuk & keluar." : "Hanya HR yang dapat mengubah."}
+        {t.workHoursHintBase} {canManage ? t.workHoursHintManage : t.workHoursHintReadonly}
       </p>
 
       {canManage ? (
         <>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <Field label="Jam masuk">
+            <Field label={t.clockIn}>
               <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
             </Field>
-            <Field label="Jam keluar">
+            <Field label={t.clockOut}>
               <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
             </Field>
           </div>
           <Button className="mt-3 w-full" onClick={save} disabled={saving || !dirty}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-            Simpan jam kerja
+            {t.saveWorkHours}
           </Button>
         </>
       ) : (
@@ -566,10 +753,12 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function EmptyRow() {
+  const locale = useLocale();
+  const t = STR[locale];
   return (
     <div className="flex flex-col items-center justify-center gap-1 py-12 text-center">
-      <p className="text-sm font-medium text-ink">Tidak ada karyawan</p>
-      <p className="text-sm text-faint">Coba ubah filter atau kata kunci pencarian.</p>
+      <p className="text-sm font-medium text-ink">{t.emptyTitle}</p>
+      <p className="text-sm text-faint">{t.emptyHint}</p>
     </div>
   );
 }
@@ -600,6 +789,8 @@ function EmployeeForm({
   });
   const [saving, setSaving] = useState(false);
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -631,16 +822,12 @@ function EmployeeForm({
       });
       const data = await res.json();
       if (!res.ok || !data.employee) {
-        toast.error(
-          isEdit
-            ? "Gagal menyimpan perubahan. Pastikan Anda HR/admin."
-            : "Gagal menambah karyawan. Pastikan Anda HR/admin.",
-        );
+        toast.error(isEdit ? t.saveEditFailed : t.saveCreateFailed);
         return;
       }
       onSaved(data.employee as Employee);
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connection);
     } finally {
       setSaving(false);
     }
@@ -648,46 +835,46 @@ function EmployeeForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Nama lengkap" htmlFor="f-name">
-        <Input id="f-name" required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="cth. Wayan Putra" />
+      <Field label={t.fullName} htmlFor="f-name">
+        <Input id="f-name" required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder={t.fullNamePlaceholder} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Tim">
+        <Field label={t.team}>
           <Select value={form.team} onChange={(e) => set("team", e.target.value as Team)}>
-            {TEAMS.map((t) => (
-              <option key={t} value={t}>{TEAM_META[t].label}</option>
+            {TEAMS.map((tm) => (
+              <option key={tm} value={tm}>{TEAM_META[tm].label}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Posisi">
-          <Input value={form.position} onChange={(e) => set("position", e.target.value)} placeholder="cth. Operator" />
+        <Field label={t.position}>
+          <Input value={form.position} onChange={(e) => set("position", e.target.value)} placeholder={t.positionPlaceholder} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Email">
-          <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="nama@treelogy.com" />
+        <Field label={t.email}>
+          <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t.emailPlaceholder} />
         </Field>
-        <Field label="Telepon">
-          <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="0812-…" />
+        <Field label={t.phone}>
+          <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t.phonePlaceholder} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Gaji pokok (Rp)">
+        <Field label={t.baseSalaryRp}>
           <Input type="number" value={form.baseSalary} onChange={(e) => set("baseSalary", e.target.value)} />
         </Field>
-        <Field label="Tunjangan (Rp)">
+        <Field label={t.allowanceRp}>
           <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Jam masuk" hint="Patokan telat (WITA)">
+        <Field label={t.clockIn} hint={t.clockInHint}>
           <Input type="time" value={form.workStart} onChange={(e) => set("workStart", e.target.value)} />
         </Field>
-        <Field label="Jam keluar">
+        <Field label={t.clockOut}>
           <Input type="time" value={form.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
         </Field>
       </div>
-      <Field label="Status PTKP" hint="Menentukan kategori tarif PPh 21 (TER)">
+      <Field label={t.ptkpStatus} hint={t.ptkpHint}>
         <Select value={form.ptkp} onChange={(e) => set("ptkp", e.target.value as Employee["ptkp"])}>
           {PTKP_OPTIONS.map((p) => (
             <option key={p} value={p}>{p}</option>
@@ -695,25 +882,25 @@ function EmployeeForm({
         </Select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Bank">
+        <Field label={t.bank}>
           <Select value={form.bankName} onChange={(e) => set("bankName", e.target.value)}>
             {["BCA", "Mandiri", "BRI", "BNI"].map((b) => (
               <option key={b} value={b}>{b}</option>
             ))}
           </Select>
         </Field>
-        <Field label="No. rekening">
+        <Field label={t.bankAccount}>
           <Input value={form.bankAccount} onChange={(e) => set("bankAccount", e.target.value)} />
         </Field>
       </div>
 
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>
-          Batal
+          {t.cancel}
         </Button>
         <Button type="submit" className="flex-1" disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isEdit ? "Simpan perubahan" : "Simpan"}
+          {isEdit ? t.saveChanges : t.save}
         </Button>
       </div>
     </form>

@@ -3,6 +3,90 @@ import type { Employee } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
+import type { Locale } from "@/lib/i18n";
+
+const STR: Record<Locale, {
+  active: string;
+  inactive: string;
+  notLinked: string;
+  employment: string;
+  nik: string;
+  position: string;
+  division: string;
+  directManager: string;
+  divisionHead: string;
+  joinDate: string;
+  location: string;
+  workHours: string;
+  status: string;
+  contact: string;
+  email: string;
+  phone: string;
+  compensation: string;
+  baseSalary: string;
+  allowance: string;
+  bpjsYes: string;
+  bpjsNo: string;
+  bankAccountSection: string;
+  bank: string;
+  accountNumber: string;
+  footer: string;
+}> = {
+  id: {
+    active: "Aktif",
+    inactive: "Nonaktif",
+    notLinked: "Akun ini belum tertaut ke data karyawan. Hubungi HR untuk menautkan di menu Peran & Akses.",
+    employment: "Kepegawaian",
+    nik: "NIK",
+    position: "Jabatan",
+    division: "Divisi",
+    directManager: "Atasan langsung",
+    divisionHead: "— (kepala divisi)",
+    joinDate: "Tanggal bergabung",
+    location: "Lokasi",
+    workHours: "Jam kerja",
+    status: "Status",
+    contact: "Kontak",
+    email: "Email",
+    phone: "Telepon",
+    compensation: "Kompensasi",
+    baseSalary: "Gaji pokok",
+    allowance: "Tunjangan",
+    bpjsYes: "Aktif",
+    bpjsNo: "Tidak",
+    bankAccountSection: "Rekening Bank",
+    bank: "Bank",
+    accountNumber: "Nomor rekening",
+    footer: "Perubahan data dilakukan oleh HR di menu Karyawan.",
+  },
+  en: {
+    active: "Active",
+    inactive: "Inactive",
+    notLinked: "This account is not linked to an employee record yet. Contact HR to link it in the Roles & Access menu.",
+    employment: "Employment",
+    nik: "Employee ID (NIK)",
+    position: "Position",
+    division: "Division",
+    directManager: "Direct manager",
+    divisionHead: "— (division head)",
+    joinDate: "Join date",
+    location: "Location",
+    workHours: "Work hours",
+    status: "Status",
+    contact: "Contact",
+    email: "Email",
+    phone: "Phone",
+    compensation: "Compensation",
+    baseSalary: "Base salary",
+    allowance: "Allowance",
+    bpjsYes: "Active",
+    bpjsNo: "No",
+    bankAccountSection: "Bank Account",
+    bank: "Bank",
+    accountNumber: "Account number",
+    footer: "Data changes are made by HR in the Employees menu.",
+  },
+};
 
 function Info({ label, value }: { label: string; value?: string | number | null }) {
   const v = value === 0 ? "0" : value;
@@ -40,13 +124,16 @@ export function ProfileView({
   roleName,
   fallbackName,
   fallbackEmail,
+  locale = "id",
 }: {
   emp?: Employee;
   manager?: Employee;
   roleName: string;
   fallbackName: string;
   fallbackEmail: string;
+  locale?: Locale;
 }) {
+  const t = STR[locale];
   const name = emp?.name ?? fallbackName;
   const team = emp ? TEAM_META[emp.team] : null;
 
@@ -73,7 +160,7 @@ export function ProfileView({
                     emp.status === "active" ? "bg-forest-700 text-lime" : "bg-clay-soft text-clay",
                   )}
                 >
-                  {emp.status === "active" ? "Aktif" : "Nonaktif"}
+                  {emp.status === "active" ? t.active : t.inactive}
                 </span>
               )}
             </div>
@@ -83,7 +170,7 @@ export function ProfileView({
 
       {!emp ? (
         <div className="card px-5 py-8 text-center text-sm text-faint">
-          Akun ini belum tertaut ke data karyawan. Hubungi HR untuk menautkan di menu Peran &amp; Akses.
+          {t.notLinked}
         </div>
       ) : (
         <>

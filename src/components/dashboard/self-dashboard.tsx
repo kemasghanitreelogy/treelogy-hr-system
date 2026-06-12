@@ -6,6 +6,45 @@ import { Progress } from "@/components/ui/progress";
 import { minutesToHM } from "@/lib/utils";
 import type { AttendanceRecap } from "@/lib/data";
 import type { LeaveBalance, TeamGeofence } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
+
+const STR: Record<Locale, {
+  greeting: (name: string) => string;
+  reminder: string;
+  presentDays: string;
+  overtimeMonth: string;
+  holidaySavings: string;
+  annualLeaveLeft: string;
+  days: (n: number, quota: number) => string;
+  requestLeave: string;
+  myPayslip: string;
+  attendanceHistory: string;
+}> = {
+  id: {
+    greeting: (name) => `Halo, ${name} 🌿`,
+    reminder: "Jangan lupa absen ya. Semangat bekerja hari ini!",
+    presentDays: "Hari hadir bulan ini",
+    overtimeMonth: "Lembur bulan ini",
+    holidaySavings: "Tabungan libur (hari)",
+    annualLeaveLeft: "Sisa Cuti Tahunan",
+    days: (n, quota) => `${n}/${quota} hari`,
+    requestLeave: "Ajukan Cuti / Izin",
+    myPayslip: "Slip Gaji Saya",
+    attendanceHistory: "Riwayat Absensi",
+  },
+  en: {
+    greeting: (name) => `Hello, ${name} 🌿`,
+    reminder: "Don't forget to clock in. Have a great workday!",
+    presentDays: "Days present this month",
+    overtimeMonth: "Overtime this month",
+    holidaySavings: "Banked days off (days)",
+    annualLeaveLeft: "Annual Leave Remaining",
+    days: (n, quota) => `${n}/${quota} days`,
+    requestLeave: "Request Leave / Permit",
+    myPayslip: "My Payslip",
+    attendanceHistory: "Attendance History",
+  },
+};
 
 /**
  * Front-line worker home. Clock-in is the #1 daily action → top, in the thumb
@@ -21,6 +60,7 @@ export function SelfDashboard({
   balance,
   canPayroll,
   scheduleLabel,
+  locale = "id",
 }: {
   firstName: string;
   geofence: TeamGeofence;
@@ -30,13 +70,15 @@ export function SelfDashboard({
   balance?: LeaveBalance;
   canPayroll: boolean;
   scheduleLabel?: string;
+  locale?: Locale;
 }) {
+  const t = STR[locale];
   const annualLeft = balance ? balance.annualQuota - balance.annualUsed : 0;
   return (
     <div className="space-y-5 fade-up">
       <div>
-        <h2 className="font-display text-xl font-bold text-ink sm:text-2xl">Halo, {firstName} 🌿</h2>
-        <p className="text-sm text-muted">Jangan lupa absen ya. Semangat bekerja hari ini!</p>
+        <h2 className="font-display text-xl font-bold text-ink sm:text-2xl">{t.greeting(firstName)}</h2>
+        <p className="text-sm text-muted">{t.reminder}</p>
       </div>
 
       {/* #1 action — clock in */}
@@ -54,17 +96,17 @@ export function SelfDashboard({
         <Card className="p-4">
           <Clock className="h-5 w-5 text-forest-600" />
           <p className="mt-2 font-display text-2xl font-bold text-ink">{recap.presentDays}</p>
-          <p className="text-xs text-muted">Hari hadir bulan ini</p>
+          <p className="text-xs text-muted">{t.presentDays}</p>
         </Card>
         <Card className="p-4">
           <Clock className="h-5 w-5 text-[#8a6512]" />
-          <p className="mt-2 font-display text-2xl font-bold text-ink">{minutesToHM(recap.totalOvertimeMinutes)}</p>
-          <p className="text-xs text-muted">Lembur bulan ini</p>
+          <p className="mt-2 font-display text-2xl font-bold text-ink">{minutesToHM(recap.totalOvertimeMinutes, locale)}</p>
+          <p className="text-xs text-muted">{t.overtimeMonth}</p>
         </Card>
         <Card className="p-4">
           <PiggyBank className="h-5 w-5 text-matcha" />
           <p className="mt-2 font-display text-2xl font-bold text-ink">{balance?.tabunganLibur ?? 0}</p>
-          <p className="text-xs text-muted">Tabungan libur (hari)</p>
+          <p className="text-xs text-muted">{t.holidaySavings}</p>
         </Card>
       </div>
 
@@ -72,8 +114,8 @@ export function SelfDashboard({
       <Card>
         <CardContent>
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-ink">Sisa Cuti Tahunan</p>
-            <span className="text-sm text-muted">{annualLeft}/{balance?.annualQuota ?? 12} hari</span>
+            <p className="text-sm font-semibold text-ink">{t.annualLeaveLeft}</p>
+            <span className="text-sm text-muted">{t.days(annualLeft, balance?.annualQuota ?? 12)}</span>
           </div>
           <Progress value={balance?.annualUsed ?? 0} max={balance?.annualQuota ?? 12} className="mt-2" />
         </CardContent>
@@ -81,11 +123,11 @@ export function SelfDashboard({
 
       {/* Quick links — the worker's next-most actions */}
       <div className="grid grid-cols-2 gap-3">
-        <QuickLink href="/leave" icon={CalendarDays} label="Ajukan Cuti / Izin" tone="bg-sky-soft text-[#2c5775]" />
+        <QuickLink href="/leave" icon={CalendarDays} label={t.requestLeave} tone="bg-sky-soft text-[#2c5775]" />
         {canPayroll ? (
-          <QuickLink href="/payroll" icon={Wallet} label="Slip Gaji Saya" tone="bg-[#e9f0d8] text-forest-700" />
+          <QuickLink href="/payroll" icon={Wallet} label={t.myPayslip} tone="bg-[#e9f0d8] text-forest-700" />
         ) : (
-          <QuickLink href="/attendance" icon={Clock} label="Riwayat Absensi" tone="bg-gold-soft text-[#8a6512]" />
+          <QuickLink href="/attendance" icon={Clock} label={t.attendanceHistory} tone="bg-gold-soft text-[#8a6512]" />
         )}
       </div>
     </div>

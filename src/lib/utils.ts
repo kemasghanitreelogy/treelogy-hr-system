@@ -25,24 +25,35 @@ export function pct(value: number, digits = 0): string {
   return `${value.toLocaleString("id-ID", { maximumFractionDigits: digits })}%`;
 }
 
-const MONTHS_ID = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-];
+const MONTHS: Record<"id" | "en", string[]> = {
+  id: [
+    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+  ],
+  en: [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ],
+};
 
-export function formatDate(input: string | Date, style: "short" | "long" = "short"): string {
+export function formatDate(
+  input: string | Date,
+  style: "short" | "long" = "short",
+  locale: "id" | "en" = "id",
+): string {
   const d = typeof input === "string" ? new Date(input) : input;
   if (Number.isNaN(d.getTime())) return "—";
+  const months = MONTHS[locale];
   if (style === "long") {
-    return `${d.getDate()} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}`;
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
   }
-  return `${String(d.getDate()).padStart(2, "0")} ${MONTHS_ID[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, "0")} ${months[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
 }
 
-export function monthLabel(period: string): string {
+export function monthLabel(period: string, locale: "id" | "en" = "id"): string {
   // period = "2026-05"
   const [y, m] = period.split("-").map(Number);
-  return `${MONTHS_ID[m - 1]} ${y}`;
+  return `${MONTHS[locale][m - 1]} ${y}`;
 }
 
 /** `n` periode "YYYY-MM" mundur dari `from` (inklusif), terbaru dulu. */
@@ -70,12 +81,13 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
-export function minutesToHM(min: number): string {
+export function minutesToHM(min: number, locale: "id" | "en" = "id"): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
+  const hu = locale === "en" ? "h" : "j"; // jam vs hours
   if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}j`;
-  return `${h}j ${m}m`;
+  if (m === 0) return `${h}${hu}`;
+  return `${h}${hu} ${m}m`;
 }
 
 /** Deterministic colour for an avatar from a name. */

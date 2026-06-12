@@ -8,6 +8,52 @@ import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge } from "@/components/ui/badge";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
+
+const STR: Record<
+  Locale,
+  {
+    photoAlt: (label: string) => string;
+    distanceFromOffice: string;
+    viewOnMap: string;
+    close: string;
+    schedule: string;
+    lateBy: (min: number) => string;
+    onTime: string;
+    late: string;
+    overtime: string;
+    workDuration: string;
+    source: (source: string) => string;
+  }
+> = {
+  id: {
+    photoAlt: (label) => `Foto ${label}`,
+    distanceFromOffice: "Jarak dari kantor",
+    viewOnMap: "Lihat lokasi di peta →",
+    close: "Tutup",
+    schedule: "Jadwal",
+    lateBy: (min) => `Telat ${min} menit`,
+    onTime: "Tepat waktu",
+    late: "Telat",
+    overtime: "Lembur",
+    workDuration: "Durasi kerja",
+    source: (source) => `Sumber: ${source} · diverifikasi lokasi & foto wajah`,
+  },
+  en: {
+    photoAlt: (label) => `${label} photo`,
+    distanceFromOffice: "Distance from office",
+    viewOnMap: "View location on map →",
+    close: "Close",
+    schedule: "Schedule",
+    lateBy: (min) => `${min} minutes late`,
+    onTime: "On time",
+    late: "Late",
+    overtime: "Overtime",
+    workDuration: "Work duration",
+    source: (source) => `Source: ${source} · location & face photo verified`,
+  },
+};
 
 function workedMinutes(inIso?: string | null, outIso?: string | null): number | null {
   if (!inIso || !outIso) return null;
@@ -18,6 +64,8 @@ function workedMinutes(inIso?: string | null, outIso?: string | null): number | 
 }
 
 function Selfie({ path, label }: { path?: string | null; label: string }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [broken, setBroken] = useState(false);
   if (!path || broken) {
     return (
@@ -30,7 +78,7 @@ function Selfie({ path, label }: { path?: string | null; label: string }) {
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={`/api/attendance/photo?path=${encodeURIComponent(path)}`}
-      alt={`Foto ${label}`}
+      alt={t.photoAlt(label)}
       onError={() => setBroken(true)}
       className="aspect-square w-full rounded-xl object-cover"
     />
@@ -52,6 +100,8 @@ function Punch({
   lng?: number | null;
   photo?: string | null;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const label = dir === "in" ? "Clock In" : "Clock Out";
   const Icon = dir === "in" ? LogIn : LogOut;
   return (
@@ -76,7 +126,7 @@ function Punch({
       <div className="mt-3 space-y-1.5 text-sm">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-muted">
-            <MapPin className="h-4 w-4" /> Jarak dari kantor
+            <MapPin className="h-4 w-4" /> {t.distanceFromOffice}
           </span>
           <span className="font-medium tabular-nums text-ink">
             {distance != null ? `${distance} m` : "—"}
@@ -89,7 +139,7 @@ function Punch({
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs font-medium text-forest-700 hover:underline"
           >
-            Lihat lokasi di peta →
+            {t.viewOnMap}
           </a>
         )}
       </div>
@@ -116,6 +166,8 @@ export function AttendanceDetail({
   scheduleEnd?: string;
   onClose: () => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   // Portal to <body> so a transformed ancestor (e.g. the page's `fade-up`) can't
   // turn `position: fixed` into a containing block and push the dialog off-screen.
   const [mounted, setMounted] = useState(false);
@@ -163,7 +215,7 @@ export function AttendanceDetail({
           <button
             onClick={onClose}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-sand hover:text-ink"
-            aria-label="Tutup"
+            aria-label={t.close}
           >
             <X className="h-5 w-5" />
           </button>
@@ -171,7 +223,7 @@ export function AttendanceDetail({
 
         {/* Date + status */}
         <div className="mt-4 flex items-center justify-between rounded-xl bg-panel px-4 py-2.5">
-          <span className="text-sm font-medium text-ink">{formatDate(record.date, "long")}</span>
+          <span className="text-sm font-medium text-ink">{formatDate(record.date, "long", locale)}</span>
           <AttendanceBadge status={record.status} />
         </div>
 
@@ -183,10 +235,10 @@ export function AttendanceDetail({
           )}
         >
           <span className="flex items-center gap-1.5">
-            <Clock3 className="h-4 w-4" /> Jadwal {scheduleStart}–{scheduleEnd}
+            <Clock3 className="h-4 w-4" /> {t.schedule} {scheduleStart}–{scheduleEnd}
           </span>
           <span className="font-semibold tabular-nums">
-            {record.lateMinutes > 0 ? `Telat ${record.lateMinutes} menit` : "Tepat waktu"}
+            {record.lateMinutes > 0 ? t.lateBy(record.lateMinutes) : t.onTime}
           </span>
         </div>
 
@@ -212,12 +264,12 @@ export function AttendanceDetail({
 
         {/* Footer metrics */}
         <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-          <Metric label="Telat" value={record.lateMinutes ? `${record.lateMinutes}m` : "—"} />
-          <Metric label="Lembur" value={record.overtimeMinutes ? minutesToHM(record.overtimeMinutes) : "—"} />
-          <Metric label="Durasi kerja" value={worked != null ? minutesToHM(worked) : "—"} />
+          <Metric label={t.late} value={record.lateMinutes ? `${record.lateMinutes}m` : "—"} />
+          <Metric label={t.overtime} value={record.overtimeMinutes ? minutesToHM(record.overtimeMinutes, locale) : "—"} />
+          <Metric label={t.workDuration} value={worked != null ? minutesToHM(worked, locale) : "—"} />
         </div>
         <p className="mt-3 text-center text-xs text-faint">
-          Sumber: {record.source} · diverifikasi lokasi &amp; foto wajah
+          {t.source(record.source)}
         </p>
       </div>
     </div>,

@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { Crown, GripVertical, Loader2, Pencil, Plus, RotateCcw, Save, Users2 } from "lucide-react";
 import type { Employee, Team } from "@/lib/types";
+import type { Locale } from "@/lib/i18n";
 import { TEAM_META, TEAMS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -27,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
+import { useLocale } from "@/components/layout/locale-context";
 
 /** A working copy of an employee; `_new` marks a not-yet-persisted addition. */
 type Draft = Employee & { _new?: boolean };
@@ -42,6 +44,111 @@ const INDENT = 22; // px per hierarchy level — also the horizontal drag step
 const byName = (a: Draft, b: Draft) => a.name.localeCompare(b.name);
 const clone = (list: Draft[]): Draft[] => list.map((e) => ({ ...e }));
 
+const ID_STR = {
+  nikNew: "(baru)",
+  discarded: "Perubahan dibatalkan.",
+  savedCount: (n: number) => `${n} perubahan tersimpan ✓`,
+  saveFailed: "Sebagian perubahan gagal disimpan. Periksa dan coba lagi.",
+  statActive: "Karyawan aktif",
+  statDivisions: "Divisi",
+  statHeads: "Kepala divisi",
+  dragA: "Tahan lalu seret. Geser ",
+  dragRight: "ke kanan",
+  dragB: " untuk jadi bawahan, ",
+  dragLeft: "ke kiri",
+  dragC: " untuk naik level. Lepas di kartu divisi lain untuk pindah divisi.",
+  people: (n: number) => `${n} orang`,
+  add: "Tambah",
+  dropHere: "Lepas untuk pindah ke sini",
+  emptyDivision: "Belum ada karyawan di divisi ini.",
+  changesCount: (n: number) => `${n} perubahan`,
+  unsaved: " belum disimpan",
+  createdCount: (n: number) => ` · ${n} baru`,
+  movedCount: (n: number) => ` · ${n} pindah`,
+  discardAria: "Batalkan perubahan",
+  discard: "Batalkan",
+  saveWord: "Simpan",
+  saveAllSuffix: " Semua",
+  editSheetTitle: "Atur Posisi",
+  addSheetTitle: "Tambah Orang",
+  addSheetDescription: (division: string) => `Ke divisi ${division}`,
+  unnamed: "Tanpa nama",
+  head: "Kepala",
+  newBadge: "Baru",
+  setPositionAria: (name: string) => `Atur posisi ${name}`,
+  reports: (n: number) => ` · +${n} bawahan`,
+  division: "Divisi",
+  divisionHint: "Memindahkan ke divisi lain mengubah jalur persetujuan cutinya.",
+  directManager: "Atasan langsung",
+  managerHintEdit: "Kosongkan untuk menjadikannya kepala divisi.",
+  managerHintAdd: "Kosongkan untuk menambah sebagai kepala divisi.",
+  noManagerOption: "— Tidak ada (kepala divisi) —",
+  cancel: "Batal",
+  apply: "Terapkan",
+  nameRequired: "Nama wajib diisi.",
+  name: "Nama",
+  namePlaceholder: "cth. Nyoman Sari",
+  positionLabel: "Jabatan",
+  positionPlaceholder: "cth. Production Operator",
+  addNote:
+    "Karyawan dibuat dengan data dasar (gaji, NIK, bank) yang bisa dilengkapi nanti di halaman Karyawan. Tersimpan saat menekan “Simpan Semua”.",
+  addSubmit: "Tambahkan",
+};
+
+const STR: Record<Locale, typeof ID_STR> = {
+  id: ID_STR,
+  en: {
+    nikNew: "(new)",
+    discarded: "Changes discarded.",
+    savedCount: (n: number) => `${n} change${n === 1 ? "" : "s"} saved ✓`,
+    saveFailed: "Some changes failed to save. Please review and try again.",
+    statActive: "Active employees",
+    statDivisions: "Divisions",
+    statHeads: "Division heads",
+    dragA: "Hold and drag. Move ",
+    dragRight: "right",
+    dragB: " to make someone a report, ",
+    dragLeft: "left",
+    dragC: " to move up a level. Drop on another division card to move divisions.",
+    people: (n: number) => `${n} ${n === 1 ? "person" : "people"}`,
+    add: "Add",
+    dropHere: "Drop to move here",
+    emptyDivision: "No employees in this division yet.",
+    changesCount: (n: number) => `${n} change${n === 1 ? "" : "s"}`,
+    unsaved: " unsaved",
+    createdCount: (n: number) => ` · ${n} new`,
+    movedCount: (n: number) => ` · ${n} moved`,
+    discardAria: "Discard changes",
+    discard: "Discard",
+    saveWord: "Save",
+    saveAllSuffix: " All",
+    editSheetTitle: "Set Position",
+    addSheetTitle: "Add Person",
+    addSheetDescription: (division: string) => `To the ${division} division`,
+    unnamed: "Unnamed",
+    head: "Head",
+    newBadge: "New",
+    setPositionAria: (name: string) => `Set position for ${name}`,
+    reports: (n: number) => ` · +${n} report${n === 1 ? "" : "s"}`,
+    division: "Division",
+    divisionHint: "Moving to another division changes their leave approval path.",
+    directManager: "Direct manager",
+    managerHintEdit: "Leave empty to make them the division head.",
+    managerHintAdd: "Leave empty to add them as the division head.",
+    noManagerOption: "— None (division head) —",
+    cancel: "Cancel",
+    apply: "Apply",
+    nameRequired: "Name is required.",
+    name: "Name",
+    namePlaceholder: "e.g. Nyoman Sari",
+    positionLabel: "Position",
+    positionPlaceholder: "e.g. Production Operator",
+    addNote:
+      "Employees are created with basic data (salary, NIK, bank) that can be completed later on the Employees page. Saved when you press “Save All”.",
+    addSubmit: "Add",
+  },
+};
+
 export function OrgView({ initial, canManage = false }: { initial: Employee[]; canManage?: boolean }) {
   const [base, setBase] = useState<Draft[]>(initial);
   const [draft, setDraft] = useState<Draft[]>(() => clone(initial));
@@ -53,6 +160,8 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   const [offsetLeft, setOffsetLeft] = useState(0);
   const counter = useRef(0);
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -120,7 +229,7 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
     const node: Draft = {
       id: `new-${counter.current}`,
       _new: true,
-      nik: "(baru)",
+      nik: t.nikNew,
       name,
       email: "",
       phone: "",
@@ -208,7 +317,7 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
 
   function discard() {
     setDraft(clone(base));
-    toast.success("Perubahan dibatalkan.");
+    toast.success(t.discarded);
   }
 
   async function saveAll() {
@@ -256,17 +365,17 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       const saved = clone(work).map((e) => ({ ...e, _new: false }));
       setDraft(saved);
       setBase(clone(saved));
-      toast.success(`${changes.count} perubahan tersimpan ✓`);
+      toast.success(t.savedCount(changes.count));
     } catch {
       setDraft(work);
       setBase(Array.from(nextBase.values()).map((e) => ({ ...e })));
-      toast.error("Sebagian perubahan gagal disimpan. Periksa dan coba lagi.");
+      toast.error(t.saveFailed);
     } finally {
       setSaving(false);
     }
   }
 
-  const totalHeads = TEAMS.reduce((s, t) => s + rootsOf(t).length, 0);
+  const totalHeads = TEAMS.reduce((s, tm) => s + rootsOf(tm).length, 0);
   const overTeam = overId ? byId.get(overId)?.team : undefined;
 
   // NOTE: no `fade-up` on this root — its retained transform (animation-fill-mode:
@@ -275,17 +384,19 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   return (
     <div className={cn("space-y-4", canManage && changes.count > 0 && "pb-24")}>
       <div className="grid grid-cols-3 gap-3">
-        <Stat label="Karyawan aktif" value={draft.length} />
-        <Stat label="Divisi" value={TEAMS.length} />
-        <Stat label="Kepala divisi" value={totalHeads} />
+        <Stat label={t.statActive} value={draft.length} />
+        <Stat label={t.statDivisions} value={TEAMS.length} />
+        <Stat label={t.statHeads} value={totalHeads} />
       </div>
 
       {canManage && (
         <p className="text-xs leading-relaxed text-faint">
           <GripVertical className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
-          Tahan lalu seret. Geser <b className="font-semibold text-muted">ke kanan</b> untuk jadi bawahan,{" "}
-          <b className="font-semibold text-muted">ke kiri</b> untuk naik level. Lepas di kartu divisi lain untuk
-          pindah divisi.
+          {t.dragA}
+          <b className="font-semibold text-muted">{t.dragRight}</b>
+          {t.dragB}
+          <b className="font-semibold text-muted">{t.dragLeft}</b>
+          {t.dragC}
         </p>
       )}
 
@@ -318,18 +429,18 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
                 <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
                   <div className="flex items-center gap-2.5">
                     <span className={cn("rounded-lg px-2.5 py-1 text-xs font-semibold", meta.chip)}>{meta.label}</span>
-                    <span className="text-xs text-faint">{count} orang</span>
+                    <span className="text-xs text-faint">{t.people(count)}</span>
                   </div>
                   {canManage && (
                     <Button size="sm" variant="outline" onClick={() => setAdding(team)}>
-                      <Plus className="h-4 w-4" /> Tambah
+                      <Plus className="h-4 w-4" /> {t.add}
                     </Button>
                   )}
                 </header>
                 <div className="p-3">
                   {items.length === 0 ? (
                     <p className="px-2 py-6 text-center text-sm text-faint">
-                      {crossTarget ? "Lepas untuk pindah ke sini" : "Belum ada karyawan di divisi ini."}
+                      {crossTarget ? t.dropHere : t.emptyDivision}
                     </p>
                   ) : (
                     items.map((it) => (
@@ -359,11 +470,11 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
               <Save className="h-4 w-4" />
             </span>
             <p className="min-w-0 flex-1 text-sm leading-tight">
-              <span className="font-semibold text-ink">{changes.count} perubahan</span>
+              <span className="font-semibold text-ink">{t.changesCount(changes.count)}</span>
               <span className="hidden text-muted sm:inline">
-                {" belum disimpan"}
-                {changes.created.length > 0 && ` · ${changes.created.length} baru`}
-                {changes.moved.length > 0 && ` · ${changes.moved.length} pindah`}
+                {t.unsaved}
+                {changes.created.length > 0 && t.createdCount(changes.created.length)}
+                {changes.moved.length > 0 && t.movedCount(changes.moved.length)}
               </span>
             </p>
             <Button
@@ -371,20 +482,20 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
               size="sm"
               onClick={discard}
               disabled={saving}
-              aria-label="Batalkan perubahan"
+              aria-label={t.discardAria}
               className="shrink-0 whitespace-nowrap"
             >
-              <RotateCcw className="h-4 w-4" /> <span className="hidden sm:inline">Batalkan</span>
+              <RotateCcw className="h-4 w-4" /> <span className="hidden sm:inline">{t.discard}</span>
             </Button>
             <Button size="sm" onClick={saveAll} disabled={saving} className="shrink-0 whitespace-nowrap">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Simpan<span className="hidden sm:inline"> Semua</span>
+              {t.saveWord}<span className="hidden sm:inline">{t.saveAllSuffix}</span>
             </Button>
           </div>
         </div>
       )}
 
-      <Sheet open={!!editing} onClose={() => setEditing(null)} title="Atur Posisi" description={editing?.name ?? ""}>
+      <Sheet open={!!editing} onClose={() => setEditing(null)} title={t.editSheetTitle} description={editing?.name ?? ""}>
         {editing && (
           <PositionForm
             emp={editing}
@@ -399,8 +510,8 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       <Sheet
         open={!!adding}
         onClose={() => setAdding(null)}
-        title="Tambah Orang"
-        description={adding ? `Ke divisi ${TEAM_META[adding].label}` : ""}
+        title={t.addSheetTitle}
+        description={adding ? t.addSheetDescription(TEAM_META[adding].label) : ""}
       >
         {adding && <AddForm team={adding} all={draft} onCancel={() => setAdding(null)} onAdd={addPerson} />}
       </Sheet>
@@ -432,6 +543,8 @@ function Row({
   const isHead = depth === 0;
   const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: emp.id });
   const { setNodeRef: dropRef } = useDroppable({ id: emp.id });
+  const locale = useLocale();
+  const t = STR[locale];
   const setRef = useCallback(
     (el: HTMLElement | null) => {
       dragRef(el);
@@ -458,13 +571,13 @@ function Row({
         <Avatar name={emp.name || "?"} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-medium text-ink">{emp.name || "Tanpa nama"}</p>
+            <p className="truncate text-sm font-medium text-ink">{emp.name || t.unnamed}</p>
             {isHead && (
               <Badge tone="gold" className="gap-1">
-                <Crown className="h-3 w-3" /> Kepala
+                <Crown className="h-3 w-3" /> {t.head}
               </Badge>
             )}
-            {emp._new && <Badge tone="matcha">Baru</Badge>}
+            {emp._new && <Badge tone="matcha">{t.newBadge}</Badge>}
           </div>
           <p className="truncate text-xs text-faint">{emp.position}</p>
         </div>
@@ -473,7 +586,7 @@ function Row({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onEdit(emp)}
             className="shrink-0 rounded-lg p-1.5 text-faint transition-colors hover:bg-cream hover:text-ink"
-            aria-label={`Atur posisi ${emp.name}`}
+            aria-label={t.setPositionAria(emp.name)}
           >
             <Pencil className="h-4 w-4" />
           </button>
@@ -493,15 +606,17 @@ function Indicator({ depth }: { depth: number }) {
 }
 
 function OverlayCard({ emp, reports }: { emp: Draft; reports: number }) {
+  const locale = useLocale();
+  const t = STR[locale];
   return (
     <div className="flex cursor-grabbing items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 shadow-pop">
       <GripVertical className="h-4 w-4 shrink-0 text-faint" />
       <Avatar name={emp.name || "?"} size="sm" />
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink">{emp.name || "Tanpa nama"}</p>
+        <p className="truncate text-sm font-medium text-ink">{emp.name || t.unnamed}</p>
         <p className="truncate text-xs text-faint">
           {emp.position}
-          {reports > 0 && ` · +${reports} bawahan`}
+          {reports > 0 && t.reports(reports)}
         </p>
       </div>
     </div>
@@ -523,6 +638,8 @@ function PositionForm({
 }) {
   const [team, setTeam] = useState<Team>(emp.team);
   const [managerId, setManagerId] = useState<string>(emp.managerId ?? "");
+  const locale = useLocale();
+  const t = STR[locale];
   const options = useMemo(
     () => all.filter((e) => e.status === "active" && e.team === team && e.id !== emp.id && !banned.has(e.id)).sort(byName),
     [all, team, emp.id, banned],
@@ -540,22 +657,22 @@ function PositionForm({
       <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
         <Avatar name={emp.name || "?"} size="sm" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-ink">{emp.name || "Tanpa nama"}</p>
+          <p className="truncate text-sm font-medium text-ink">{emp.name || t.unnamed}</p>
           <p className="truncate text-xs text-faint">{emp.position}</p>
         </div>
       </div>
-      <Field label="Divisi" hint="Memindahkan ke divisi lain mengubah jalur persetujuan cutinya.">
+      <Field label={t.division} hint={t.divisionHint}>
         <Select value={team} onChange={(e) => setTeam(e.target.value as Team)}>
-          {TEAMS.map((t) => (
-            <option key={t} value={t}>
-              {TEAM_META[t].label}
+          {TEAMS.map((tm) => (
+            <option key={tm} value={tm}>
+              {TEAM_META[tm].label}
             </option>
           ))}
         </Select>
       </Field>
-      <Field label="Atasan langsung" hint="Kosongkan untuk menjadikannya kepala divisi.">
+      <Field label={t.directManager} hint={t.managerHintEdit}>
         <Select value={effective} onChange={(e) => setManagerId(e.target.value)}>
-          <option value="">— Tidak ada (kepala divisi) —</option>
+          <option value="">{t.noManagerOption}</option>
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name} — {o.position}
@@ -565,10 +682,10 @@ function PositionForm({
       </Field>
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
-          Batal
+          {t.cancel}
         </Button>
         <Button type="submit" className="flex-1">
-          Terapkan
+          {t.apply}
         </Button>
       </div>
     </form>
@@ -594,45 +711,46 @@ function AddForm({
   const [position, setPosition] = useState("");
   const [managerId, setManagerId] = useState<string>(candidates.find((c) => !c.managerId)?.id ?? "");
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         if (!name.trim()) {
-          toast.error("Nama wajib diisi.");
+          toast.error(t.nameRequired);
           return;
         }
         onAdd(team, name.trim(), position.trim(), managerId || null);
       }}
       className="space-y-4"
     >
-      <Field label="Nama">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="cth. Nyoman Sari" autoFocus />
+      <Field label={t.name}>
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t.namePlaceholder} autoFocus />
       </Field>
-      <Field label="Jabatan">
-        <Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="cth. Production Operator" />
+      <Field label={t.positionLabel}>
+        <Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder={t.positionPlaceholder} />
       </Field>
-      <Field label="Atasan langsung" hint="Kosongkan untuk menambah sebagai kepala divisi.">
+      <Field label={t.directManager} hint={t.managerHintAdd}>
         <Select value={managerId} onChange={(e) => setManagerId(e.target.value)}>
-          <option value="">— Tidak ada (kepala divisi) —</option>
+          <option value="">{t.noManagerOption}</option>
           {candidates.map((o) => (
             <option key={o.id} value={o.id}>
-              {o.name || "Tanpa nama"} — {o.position}
+              {o.name || t.unnamed} — {o.position}
             </option>
           ))}
         </Select>
       </Field>
       <p className="flex items-start gap-1.5 text-xs text-faint">
-        <Users2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Karyawan dibuat dengan data dasar (gaji, NIK, bank) yang
-        bisa dilengkapi nanti di halaman Karyawan. Tersimpan saat menekan “Simpan Semua”.
+        <Users2 className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {t.addNote}
       </p>
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
-          Batal
+          {t.cancel}
         </Button>
         <Button type="submit" className="flex-1">
-          <Plus className="h-4 w-4" /> Tambahkan
+          <Plus className="h-4 w-4" /> {t.addSubmit}
         </Button>
       </div>
     </form>

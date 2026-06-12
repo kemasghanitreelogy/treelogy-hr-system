@@ -13,7 +13,116 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
 import { AttendanceDetail } from "./attendance-detail";
+
+const STR: Record<
+  Locale,
+  {
+    myHistory: string;
+    myHistoryHint: string;
+    pickDate: string;
+    exportRecap: string;
+    present: string;
+    late: string;
+    leaveSick: string;
+    absent: string;
+    totalOvertime: string;
+    allTeams: string;
+    all: string;
+    onTime: string;
+    thEmployee: string;
+    thTeam: string;
+    thDate: string;
+    thIn: string;
+    thOut: string;
+    thLate: string;
+    thOvertime: string;
+    thDistance: string;
+    thStatus: string;
+    processFailed: string;
+    approvedOk: string;
+    rejectedOk: string;
+    connectionProblem: string;
+    approvalsTitle: string;
+    approvalsDesc: string;
+    fromSite: (distance: string) => string;
+    approve: string;
+    reject: string;
+    emptyTitle: string;
+    emptyHint: string;
+  }
+> = {
+  id: {
+    myHistory: "Riwayat absensi saya",
+    myHistoryHint: "Ketuk satu baris untuk melihat foto, jarak, dan detail jam.",
+    pickDate: "Pilih tanggal",
+    exportRecap: "Ekspor rekap",
+    present: "Hadir",
+    late: "Terlambat",
+    leaveSick: "Cuti/Sakit",
+    absent: "Alpa",
+    totalOvertime: "Total lembur",
+    allTeams: "Semua tim",
+    all: "Semua",
+    onTime: "Tepat waktu",
+    thEmployee: "Karyawan",
+    thTeam: "Tim",
+    thDate: "Tanggal",
+    thIn: "Masuk",
+    thOut: "Pulang",
+    thLate: "Telat",
+    thOvertime: "Lembur",
+    thDistance: "Jarak",
+    thStatus: "Status",
+    processFailed: "Gagal memproses. Pastikan Anda HR/admin.",
+    approvedOk: "Absensi dikonfirmasi ✓",
+    rejectedOk: "Pengajuan ditolak ✓",
+    connectionProblem: "Koneksi bermasalah. Coba lagi.",
+    approvalsTitle: "Clock di Luar Area — Perlu Konfirmasi",
+    approvalsDesc: "Karyawan absen di luar radius kantor. Setujui untuk merekam absensinya.",
+    fromSite: (distance) => `${distance} dari lokasi`,
+    approve: "Setujui",
+    reject: "Tolak",
+    emptyTitle: "Tidak ada data absensi",
+    emptyHint: "Pilih tanggal lain atau ubah filter tim / ketepatan waktu.",
+  },
+  en: {
+    myHistory: "My attendance history",
+    myHistoryHint: "Tap a row to see the photo, distance, and time details.",
+    pickDate: "Choose a date",
+    exportRecap: "Export summary",
+    present: "Present",
+    late: "Late",
+    leaveSick: "Leave/Sick",
+    absent: "Absent",
+    totalOvertime: "Total overtime",
+    allTeams: "All teams",
+    all: "All",
+    onTime: "On time",
+    thEmployee: "Employee",
+    thTeam: "Team",
+    thDate: "Date",
+    thIn: "In",
+    thOut: "Out",
+    thLate: "Late",
+    thOvertime: "Overtime",
+    thDistance: "Distance",
+    thStatus: "Status",
+    processFailed: "Failed to process. Make sure you are HR/admin.",
+    approvedOk: "Attendance confirmed ✓",
+    rejectedOk: "Request rejected ✓",
+    connectionProblem: "Connection problem. Try again.",
+    approvalsTitle: "Out-of-Area Clock — Needs Confirmation",
+    approvalsDesc: "Employees clocked outside the office radius. Approve to record their attendance.",
+    fromSite: (distance) => `${distance} from the site`,
+    approve: "Approve",
+    reject: "Reject",
+    emptyTitle: "No attendance data",
+    emptyHint: "Pick another date or change the team / punctuality filter.",
+  },
+};
 
 type EmpLite = Pick<Employee, "id" | "name" | "team" | "position" | "workStart" | "workEnd">;
 
@@ -40,6 +149,8 @@ export function AttendanceView({
   approvals?: ClockApprovalRequest[];
   currentUserName?: string;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [date, setDate] = useState(defaultDate);
   const [team, setTeam] = useState<"all" | Team>("all");
   // Filter ketepatan waktu: "ontime" = hadir tanpa telat, "late" = terlambat.
@@ -77,8 +188,8 @@ export function AttendanceView({
       {/* Heading (employee self-view) */}
       {!canReviewAll && (
         <div>
-          <h2 className="font-display text-lg font-semibold text-ink">Riwayat absensi saya</h2>
-          <p className="text-sm text-muted">Ketuk satu baris untuk melihat foto, jarak, dan detail jam.</p>
+          <h2 className="font-display text-lg font-semibold text-ink">{t.myHistory}</h2>
+          <p className="text-sm text-muted">{t.myHistoryHint}</p>
         </div>
       )}
 
@@ -93,12 +204,12 @@ export function AttendanceView({
             max={dates[dates.length - 1]}
             onChange={(e) => setDate(e.target.value)}
             className="pl-9"
-            aria-label="Pilih tanggal"
+            aria-label={t.pickDate}
           />
         </div>
         {canReviewAll && (
           <Button variant="outline" className="shrink-0">
-            <Download className="h-4 w-4" /> Ekspor rekap
+            <Download className="h-4 w-4" /> {t.exportRecap}
           </Button>
         )}
       </div>
@@ -111,11 +222,11 @@ export function AttendanceView({
       {/* Summary */}
       {canReviewAll && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <SummaryChip label="Hadir" value={summary.present} className="text-forest-600" />
-          <SummaryChip label="Terlambat" value={summary.late} className="text-[#8a6512]" />
-          <SummaryChip label="Cuti/Sakit" value={summary.leave} className="text-sky" />
-          <SummaryChip label="Alpa" value={summary.absent} className="text-clay" />
-          <SummaryChip label="Total lembur" value={minutesToHM(summary.ot)} className="text-olive" />
+          <SummaryChip label={t.present} value={summary.present} className="text-forest-600" />
+          <SummaryChip label={t.late} value={summary.late} className="text-[#8a6512]" />
+          <SummaryChip label={t.leaveSick} value={summary.leave} className="text-sky" />
+          <SummaryChip label={t.absent} value={summary.absent} className="text-clay" />
+          <SummaryChip label={t.totalOvertime} value={minutesToHM(summary.ot, locale)} className="text-olive" />
         </div>
       )}
 
@@ -123,7 +234,7 @@ export function AttendanceView({
       <div className="flex flex-wrap items-center gap-2">
         {canReviewAll && (
           <>
-            <Chip active={team === "all"} onClick={() => setTeam("all")}>Semua tim</Chip>
+            <Chip active={team === "all"} onClick={() => setTeam("all")}>{t.allTeams}</Chip>
             {TEAMS.map((t) => (
               <Chip key={t} active={team === t} onClick={() => setTeam(t)}>
                 {TEAM_META[t].label}
@@ -132,9 +243,9 @@ export function AttendanceView({
             <span className="mx-1 hidden h-5 w-px bg-line sm:block" aria-hidden />
           </>
         )}
-        <Chip active={punct === "all"} onClick={() => setPunct("all")}>Semua</Chip>
-        <Chip active={punct === "ontime"} onClick={() => setPunct("ontime")}>Tepat waktu</Chip>
-        <Chip active={punct === "late"} onClick={() => setPunct("late")}>Terlambat</Chip>
+        <Chip active={punct === "all"} onClick={() => setPunct("all")}>{t.all}</Chip>
+        <Chip active={punct === "ontime"} onClick={() => setPunct("ontime")}>{t.onTime}</Chip>
+        <Chip active={punct === "late"} onClick={() => setPunct("late")}>{t.late}</Chip>
       </div>
 
       {/* Desktop table */}
@@ -145,18 +256,18 @@ export function AttendanceView({
               <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
                 {canReviewAll ? (
                   <>
-                    <th className="px-5 py-3">Karyawan</th>
-                    <th className="px-5 py-3">Tim</th>
+                    <th className="px-5 py-3">{t.thEmployee}</th>
+                    <th className="px-5 py-3">{t.thTeam}</th>
                   </>
                 ) : (
-                  <th className="px-5 py-3">Tanggal</th>
+                  <th className="px-5 py-3">{t.thDate}</th>
                 )}
-                <th className="px-5 py-3">Masuk</th>
-                <th className="px-5 py-3">Pulang</th>
-                <th className="px-5 py-3">Telat</th>
-                <th className="px-5 py-3">Lembur</th>
-                <th className="px-5 py-3">Jarak</th>
-                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">{t.thIn}</th>
+                <th className="px-5 py-3">{t.thOut}</th>
+                <th className="px-5 py-3">{t.thLate}</th>
+                <th className="px-5 py-3">{t.thOvertime}</th>
+                <th className="px-5 py-3">{t.thDistance}</th>
+                <th className="px-5 py-3">{t.thStatus}</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -185,7 +296,7 @@ export function AttendanceView({
                       </td>
                     </>
                   ) : (
-                    <td className="px-5 py-3 font-medium text-ink">{formatDate(r.date)}</td>
+                    <td className="px-5 py-3 font-medium text-ink">{formatDate(r.date, "short", locale)}</td>
                   )}
                   <td className="px-5 py-3 tabular-nums text-muted">{formatTime(r.clockIn)}</td>
                   <td className="px-5 py-3 tabular-nums text-muted">{formatTime(r.clockOut)}</td>
@@ -193,7 +304,7 @@ export function AttendanceView({
                     {r.lateMinutes > 0 ? <span className="text-[#8a6512]">{r.lateMinutes}m</span> : <span className="text-faint">—</span>}
                   </td>
                   <td className="px-5 py-3 tabular-nums">
-                    {r.overtimeMinutes > 0 ? <span className="text-olive">{minutesToHM(r.overtimeMinutes)}</span> : <span className="text-faint">—</span>}
+                    {r.overtimeMinutes > 0 ? <span className="text-olive">{minutesToHM(r.overtimeMinutes, locale)}</span> : <span className="text-faint">—</span>}
                   </td>
                   <td className="px-5 py-3 tabular-nums">
                     {r.clockInDistanceM != null ? (
@@ -234,15 +345,15 @@ export function AttendanceView({
                   </div>
                 </>
               ) : (
-                <p className="min-w-0 flex-1 truncate font-medium text-ink">{formatDate(r.date)}</p>
+                <p className="min-w-0 flex-1 truncate font-medium text-ink">{formatDate(r.date, "short", locale)}</p>
               )}
               <AttendanceBadge status={r.status} />
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
-              <Mini label="Masuk" value={formatTime(r.clockIn)} />
-              <Mini label="Pulang" value={formatTime(r.clockOut)} />
-              <Mini label="Telat" value={r.lateMinutes ? `${r.lateMinutes}m` : "—"} />
-              <Mini label="Jarak" value={r.clockInDistanceM != null ? `${r.clockInDistanceM}m` : "—"} />
+              <Mini label={t.thIn} value={formatTime(r.clockIn)} />
+              <Mini label={t.thOut} value={formatTime(r.clockOut)} />
+              <Mini label={t.thLate} value={r.lateMinutes ? `${r.lateMinutes}m` : "—"} />
+              <Mini label={t.thDistance} value={r.clockInDistanceM != null ? `${r.clockInDistanceM}m` : "—"} />
             </div>
           </button>
         ))}
@@ -273,6 +384,8 @@ function ClockApprovalsCard({
   employees: EmpLite[];
   currentUserName: string;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const [list, setList] = useState(approvals);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -291,14 +404,14 @@ function ClockApprovalsCard({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        toast.error("Gagal memproses. Pastikan Anda HR/admin.");
+        toast.error(t.processFailed);
         return;
       }
       setList((cur) => cur.filter((a) => a.id !== id));
-      toast.success(status === "approved" ? "Absensi dikonfirmasi ✓" : "Pengajuan ditolak ✓");
+      toast.success(status === "approved" ? t.approvedOk : t.rejectedOk);
       router.refresh();
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionProblem);
     } finally {
       setBusyId(null);
     }
@@ -314,8 +427,8 @@ function ClockApprovalsCard({
             <AlertTriangle className="h-4 w-4" />
           </span>
           <div>
-            <CardTitle>Clock di Luar Area — Perlu Konfirmasi</CardTitle>
-            <p className="mt-0.5 text-sm text-muted">Karyawan absen di luar radius kantor. Setujui untuk merekam absensinya.</p>
+            <CardTitle>{t.approvalsTitle}</CardTitle>
+            <p className="mt-0.5 text-sm text-muted">{t.approvalsDesc}</p>
           </div>
         </div>
       </CardHeader>
@@ -338,9 +451,9 @@ function ClockApprovalsCard({
                     {isIn ? <LogIn className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
                     Clock-{a.direction}
                   </span>
-                  <span className="text-ink">{formatDate(a.date)} · {formatTime(a.requestedAt)}</span>
+                  <span className="text-ink">{formatDate(a.date, "short", locale)} · {formatTime(a.requestedAt)}</span>
                   {a.distanceM != null && (
-                    <span className="text-[#8c3c1f]">{formatDistance(a.distanceM)} dari lokasi</span>
+                    <span className="text-[#8c3c1f]">{t.fromSite(formatDistance(a.distanceM))}</span>
                   )}
                 </div>
                 {a.note && (
@@ -351,10 +464,10 @@ function ClockApprovalsCard({
               </div>
               <div className="flex items-center gap-2 sm:w-auto">
                 <Button size="sm" disabled={busyId === a.id} onClick={() => decide(a.id, "approved")} className="flex-1 sm:flex-none">
-                  <Check className="h-4 w-4" /> Setujui
+                  <Check className="h-4 w-4" /> {t.approve}
                 </Button>
                 <Button size="sm" variant="outline" disabled={busyId === a.id} onClick={() => decide(a.id, "rejected")} className="flex-1 sm:flex-none">
-                  <X className="h-4 w-4" /> Tolak
+                  <X className="h-4 w-4" /> {t.reject}
                 </Button>
               </div>
             </div>
@@ -398,11 +511,13 @@ function Mini({ label, value }: { label: string; value: string }) {
 }
 
 function Empty() {
+  const locale = useLocale();
+  const t = STR[locale];
   return (
     <div className="flex flex-col items-center justify-center gap-1 py-12 text-center">
       <Clock className="h-6 w-6 text-faint" />
-      <p className="text-sm font-medium text-ink">Tidak ada data absensi</p>
-      <p className="text-sm text-faint">Pilih tanggal lain atau ubah filter tim / ketepatan waktu.</p>
+      <p className="text-sm font-medium text-ink">{t.emptyTitle}</p>
+      <p className="text-sm text-faint">{t.emptyHint}</p>
     </div>
   );
 }

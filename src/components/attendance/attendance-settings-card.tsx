@@ -9,8 +9,71 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
+
+const STR: Record<
+  Locale,
+  {
+    coordsFilled: (label: string) => string;
+    locationFailed: string;
+    saved: string;
+    saveFailed: string;
+    title: string;
+    desc: string;
+    close: string;
+    configure: string;
+    locationName: string;
+    useMyLocation: string;
+    viewOnMap: string;
+    maxRadius: string;
+    maxRadiusHint: string;
+    requirePhoto: string;
+    requireLocation: string;
+    saveSettings: string;
+  }
+> = {
+  id: {
+    coordsFilled: (label) => `Koordinat ${label} diisi dari lokasi Anda saat ini.`,
+    locationFailed: "Gagal mengambil lokasi. Izinkan akses lokasi.",
+    saved: "Pengaturan absensi tersimpan ✓",
+    saveFailed: "Gagal menyimpan pengaturan (perlu izin HR).",
+    title: "Pengaturan Lokasi Absensi (HR)",
+    desc: "Atur titik & radius clock-in/out per divisi (Pabrik, Kebun, Kantor). Karyawan diabsen terhadap lokasi divisinya.",
+    close: "Tutup",
+    configure: "Atur",
+    locationName: "Nama lokasi",
+    useMyLocation: "Gunakan lokasi saya",
+    viewOnMap: "Lihat di peta",
+    maxRadius: "Radius maksimal (meter)",
+    maxRadiusHint: "Clock-in/out hanya diterima dalam radius ini.",
+    requirePhoto: "Wajib foto wajah saat clock-in/out",
+    requireLocation: "Wajib lokasi aktif (geofence)",
+    saveSettings: "Simpan pengaturan",
+  },
+  en: {
+    coordsFilled: (label) => `${label} coordinates filled from your current location.`,
+    locationFailed: "Failed to get location. Allow location access.",
+    saved: "Attendance settings saved ✓",
+    saveFailed: "Failed to save settings (HR permission required).",
+    title: "Attendance Location Settings (HR)",
+    desc: "Set the clock-in/out point & radius per division (Factory, Estate, Office). Employees are checked in against their division's location.",
+    close: "Close",
+    configure: "Configure",
+    locationName: "Location name",
+    useMyLocation: "Use my location",
+    viewOnMap: "View on map",
+    maxRadius: "Maximum radius (meters)",
+    maxRadiusHint: "Clock-in/out is only accepted within this radius.",
+    requirePhoto: "Require face photo at clock-in/out",
+    requireLocation: "Require active location (geofence)",
+    saveSettings: "Save settings",
+  },
+};
 
 export function AttendanceSettingsCard({ initial }: { initial: AttendanceSettings }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -32,11 +95,11 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
           lng: Number(pos.coords.longitude.toFixed(6)),
         });
         setLocating(null);
-        setMsg({ tone: "ok", text: `Koordinat ${TEAM_META[team].label} diisi dari lokasi Anda saat ini.` });
+        setMsg({ tone: "ok", text: t.coordsFilled(TEAM_META[team].label) });
       },
       () => {
         setLocating(null);
-        setMsg({ tone: "error", text: "Gagal mengambil lokasi. Izinkan akses lokasi." });
+        setMsg({ tone: "error", text: t.locationFailed });
       },
       { enableHighAccuracy: true, timeout: 12000 },
     );
@@ -52,9 +115,9 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
         body: JSON.stringify(form),
       });
       if (!res.ok) throw new Error();
-      toast.success("Pengaturan absensi tersimpan ✓");
+      toast.success(t.saved);
     } catch {
-      toast.error("Gagal menyimpan pengaturan (perlu izin HR).");
+      toast.error(t.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -64,14 +127,11 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>Pengaturan Lokasi Absensi (HR)</CardTitle>
-          <p className="mt-0.5 text-sm text-muted">
-            Atur titik &amp; radius clock-in/out per divisi (Pabrik, Kebun, Kantor). Karyawan diabsen
-            terhadap lokasi divisinya.
-          </p>
+          <CardTitle>{t.title}</CardTitle>
+          <p className="mt-0.5 text-sm text-muted">{t.desc}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setOpen((o) => !o)}>
-          <SlidersHorizontal className="h-4 w-4" /> {open ? "Tutup" : "Atur"}
+          <SlidersHorizontal className="h-4 w-4" /> {open ? t.close : t.configure}
         </Button>
       </CardHeader>
       {open && (
@@ -84,7 +144,7 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
                   {TEAM_META[team].label}
                 </span>
 
-                <Field label="Nama lokasi">
+                <Field label={t.locationName}>
                   <Input value={g.label} onChange={(e) => setGeo(team, { label: e.target.value })} />
                 </Field>
 
@@ -110,7 +170,7 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" onClick={() => useMyLocation(team)} disabled={locating === team}>
                     {locating === team ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
-                    Gunakan lokasi saya
+                    {t.useMyLocation}
                   </Button>
                   <a
                     href={`https://www.openstreetmap.org/?mlat=${g.lat}&mlon=${g.lng}#map=18/${g.lat}/${g.lng}`}
@@ -118,11 +178,11 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
                     rel="noopener noreferrer"
                     className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-line bg-panel px-3 text-xs font-medium text-muted hover:bg-sand"
                   >
-                    <MapPin className="h-3.5 w-3.5" /> Lihat di peta
+                    <MapPin className="h-3.5 w-3.5" /> {t.viewOnMap}
                   </a>
                 </div>
 
-                <Field label="Radius maksimal (meter)" hint="Clock-in/out hanya diterima dalam radius ini.">
+                <Field label={t.maxRadius} hint={t.maxRadiusHint}>
                   <Input
                     type="number"
                     min={1}
@@ -136,12 +196,12 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
 
           <div className="space-y-2">
             <Toggle
-              label="Wajib foto wajah saat clock-in/out"
+              label={t.requirePhoto}
               checked={form.requirePhoto}
               onChange={(v) => setForm((f) => ({ ...f, requirePhoto: v }))}
             />
             <Toggle
-              label="Wajib lokasi aktif (geofence)"
+              label={t.requireLocation}
               checked={form.requireLocation}
               onChange={(v) => setForm((f) => ({ ...f, requireLocation: v }))}
             />
@@ -151,7 +211,7 @@ export function AttendanceSettingsCard({ initial }: { initial: AttendanceSetting
 
           <Button onClick={save} disabled={busy} className="w-full sm:w-auto">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Simpan pengaturan
+            {t.saveSettings}
           </Button>
         </CardContent>
       )}

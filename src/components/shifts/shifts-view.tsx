@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, CalendarDays, Check, Clock, Coffee, Loader2, Pencil, PiggyBank, Plus, Trash2, Wallet, X } from "lucide-react";
 import type { Employee, RequestStatus, Shift, ShiftAssignment, TabunganEntry, TabunganKind, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
 import { cn, formatDate } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, RequestBadge } from "@/components/ui/badge";
@@ -17,9 +19,240 @@ import { useToast } from "@/components/ui/toast";
 
 type Emp = Pick<Employee, "id" | "name" | "team" | "position">;
 
-const KIND_LABEL: Record<TabunganKind, string> = {
-  deposit: "Setor",
-  withdrawal: "Cairkan",
+const KIND_LABEL: Record<Locale, Record<TabunganKind, string>> = {
+  id: {
+    deposit: "Setor",
+    withdrawal: "Cairkan",
+  },
+  en: {
+    deposit: "Deposit",
+    withdrawal: "Withdraw",
+  },
+};
+
+const STR: Record<
+  Locale,
+  {
+    // ShiftsView
+    insufficientBalanceEmployee: string;
+    decideFailed: string;
+    approvedToast: string;
+    rejectedToast: string;
+    connectionError: string;
+    deleteShiftFailed: string;
+    shiftDeleted: string;
+    shiftDefinitions: string;
+    addShift: string;
+    editShiftAria: (name: string) => string;
+    breakMinutes: (min: number) => string;
+    overtimeAfter: string;
+    leaveSavings: string;
+    leaveSavingsDesc: string;
+    pendingCount: (n: number) => string;
+    withdrawSavings: string;
+    yourLeaveSavings: string;
+    days: (n: number) => string;
+    noSavingsRecords: string;
+    autoFromAttendance: string;
+    approve: string;
+    reject: string;
+    tabunganSheetTitle: string;
+    tabunganSheetDesc: string;
+    requestSent: string;
+    addShiftTitle: string;
+    editShiftTitle: string;
+    newShiftDesc: string;
+    shiftAdded: string;
+    shiftUpdated: string;
+    deleteShiftTitle: (name: string) => string;
+    deleteShiftMessage: string;
+    deleteShiftConfirm: string;
+    // ScheduleCard
+    scheduleSaved: string;
+    scheduleSaveFailed: string;
+    shiftSchedule: string;
+    scheduleDescManage: string;
+    scheduleDescView: string;
+    noShift: string;
+    // ShiftForm
+    shiftNameRequired: string;
+    saveShiftFailed: string;
+    shiftNameLabel: string;
+    shiftNamePlaceholder: string;
+    teamLabel: string;
+    startTimeLabel: string;
+    endTimeLabel: string;
+    breakMinutesLabel: string;
+    overtimeAfterLabel: string;
+    colorLabel: string;
+    shiftColorAria: string;
+    deleteLabel: string;
+    cancel: string;
+    save: string;
+    // TabunganForm
+    pickEmployeeFirst: string;
+    dateRequired: string;
+    minOneDay: string;
+    overBalanceError: string;
+    insufficientBalance: string;
+    submitFailed: string;
+    employeeLabel: string;
+    kindLabel: string;
+    withdrawOption: string;
+    depositOption: string;
+    workDateLabel: string;
+    dayOffDateLabel: string;
+    daysCountLabel: string;
+    yourSavingsBalance: string;
+    reasonLabel: string;
+    reasonPlaceholder: string;
+    submit: string;
+  }
+> = {
+  id: {
+    insufficientBalanceEmployee: "Saldo tabungan karyawan tidak cukup untuk dicairkan.",
+    decideFailed: "Gagal memproses. Pastikan Anda berhak menyetujui.",
+    approvedToast: "Disetujui ✓",
+    rejectedToast: "Ditolak ✓",
+    connectionError: "Koneksi bermasalah. Coba lagi.",
+    deleteShiftFailed: "Gagal menghapus shift.",
+    shiftDeleted: "Shift dihapus ✓",
+    shiftDefinitions: "Definisi Shift",
+    addShift: "Tambah shift",
+    editShiftAria: (name: string) => `Ubah shift ${name}`,
+    breakMinutes: (min: number) => `Istirahat ${min} menit`,
+    overtimeAfter: "Lembur setelah",
+    leaveSavings: "Tabungan Libur",
+    leaveSavingsDesc: "Kerja di hari libur menambah tabungan (dikonfirmasi HR); cairkan untuk ambil libur pengganti.",
+    pendingCount: (n: number) => `${n} menunggu`,
+    withdrawSavings: "Cairkan tabungan",
+    yourLeaveSavings: "Tabungan libur Anda",
+    days: (n: number) => `${n} hari`,
+    noSavingsRecords: "Belum ada catatan tabungan libur.",
+    autoFromAttendance: "otomatis dari absensi",
+    approve: "Setujui",
+    reject: "Tolak",
+    tabunganSheetTitle: "Cairkan / Setor Tabungan Libur",
+    tabunganSheetDesc: "Buat catatan tabungan libur baru",
+    requestSent: "Pengajuan terkirim ✓",
+    addShiftTitle: "Tambah Shift",
+    editShiftTitle: "Ubah Shift",
+    newShiftDesc: "Definisikan shift baru",
+    shiftAdded: "Shift ditambahkan ✓",
+    shiftUpdated: "Shift diperbarui ✓",
+    deleteShiftTitle: (name: string) => `Hapus shift "${name}"?`,
+    deleteShiftMessage: "Jadwal yang memakai shift ini ikut terhapus. Tindakan ini tidak bisa dibatalkan.",
+    deleteShiftConfirm: "Ya, hapus",
+    scheduleSaved: "Jadwal disimpan ✓",
+    scheduleSaveFailed: "Gagal menyimpan jadwal. Coba lagi.",
+    shiftSchedule: "Jadwal Shift",
+    scheduleDescManage: "Atur shift tiap karyawan untuk tanggal terpilih.",
+    scheduleDescView: "Jadwal shift karyawan untuk tanggal terpilih.",
+    noShift: "— Tanpa shift",
+    shiftNameRequired: "Nama shift wajib diisi.",
+    saveShiftFailed: "Gagal menyimpan shift. Pastikan Anda berhak.",
+    shiftNameLabel: "Nama shift",
+    shiftNamePlaceholder: "cth. Factory Pagi",
+    teamLabel: "Tim",
+    startTimeLabel: "Jam mulai",
+    endTimeLabel: "Jam selesai",
+    breakMinutesLabel: "Istirahat (menit)",
+    overtimeAfterLabel: "Lembur setelah",
+    colorLabel: "Warna",
+    shiftColorAria: "Warna shift",
+    deleteLabel: "Hapus",
+    cancel: "Batal",
+    save: "Simpan",
+    pickEmployeeFirst: "Pilih karyawan dulu.",
+    dateRequired: "Tanggal wajib diisi.",
+    minOneDay: "Jumlah hari minimal 1.",
+    overBalanceError: "Jumlah melebihi saldo tabungan Anda.",
+    insufficientBalance: "Saldo tabungan tidak cukup.",
+    submitFailed: "Gagal mengajukan. Coba lagi.",
+    employeeLabel: "Karyawan",
+    kindLabel: "Jenis",
+    withdrawOption: "Cairkan (ambil libur)",
+    depositOption: "Setor (kerja hari libur)",
+    workDateLabel: "Tanggal kerja",
+    dayOffDateLabel: "Tanggal libur",
+    daysCountLabel: "Jumlah hari",
+    yourSavingsBalance: "Saldo tabungan Anda",
+    reasonLabel: "Alasan",
+    reasonPlaceholder: "cth. Ambil libur ganti kerja hari Minggu…",
+    submit: "Ajukan",
+  },
+  en: {
+    insufficientBalanceEmployee: "The employee's savings balance is not enough to withdraw.",
+    decideFailed: "Failed to process. Make sure you are authorized to approve.",
+    approvedToast: "Approved ✓",
+    rejectedToast: "Rejected ✓",
+    connectionError: "Connection problem. Try again.",
+    deleteShiftFailed: "Failed to delete the shift.",
+    shiftDeleted: "Shift deleted ✓",
+    shiftDefinitions: "Shift Definitions",
+    addShift: "Add shift",
+    editShiftAria: (name: string) => `Edit shift ${name}`,
+    breakMinutes: (min: number) => `${min} minute break`,
+    overtimeAfter: "Overtime after",
+    leaveSavings: "Leave Savings",
+    leaveSavingsDesc: "Working on a day off adds to your savings (confirmed by HR); withdraw to take a replacement day off.",
+    pendingCount: (n: number) => `${n} pending`,
+    withdrawSavings: "Withdraw savings",
+    yourLeaveSavings: "Your leave savings",
+    days: (n: number) => `${n} day${n === 1 ? "" : "s"}`,
+    noSavingsRecords: "No leave savings records yet.",
+    autoFromAttendance: "automatic from attendance",
+    approve: "Approve",
+    reject: "Reject",
+    tabunganSheetTitle: "Withdraw / Deposit Leave Savings",
+    tabunganSheetDesc: "Create a new leave savings record",
+    requestSent: "Request sent ✓",
+    addShiftTitle: "Add Shift",
+    editShiftTitle: "Edit Shift",
+    newShiftDesc: "Define a new shift",
+    shiftAdded: "Shift added ✓",
+    shiftUpdated: "Shift updated ✓",
+    deleteShiftTitle: (name: string) => `Delete shift "${name}"?`,
+    deleteShiftMessage: "Schedules using this shift will also be deleted. This action cannot be undone.",
+    deleteShiftConfirm: "Yes, delete",
+    scheduleSaved: "Schedule saved ✓",
+    scheduleSaveFailed: "Failed to save the schedule. Try again.",
+    shiftSchedule: "Shift Schedule",
+    scheduleDescManage: "Set each employee's shift for the selected date.",
+    scheduleDescView: "Employee shift schedule for the selected date.",
+    noShift: "— No shift",
+    shiftNameRequired: "Shift name is required.",
+    saveShiftFailed: "Failed to save the shift. Make sure you are authorized.",
+    shiftNameLabel: "Shift name",
+    shiftNamePlaceholder: "e.g. Factory Morning",
+    teamLabel: "Team",
+    startTimeLabel: "Start time",
+    endTimeLabel: "End time",
+    breakMinutesLabel: "Break (minutes)",
+    overtimeAfterLabel: "Overtime after",
+    colorLabel: "Color",
+    shiftColorAria: "Shift color",
+    deleteLabel: "Delete",
+    cancel: "Cancel",
+    save: "Save",
+    pickEmployeeFirst: "Select an employee first.",
+    dateRequired: "Date is required.",
+    minOneDay: "Minimum of 1 day.",
+    overBalanceError: "The amount exceeds your savings balance.",
+    insufficientBalance: "Savings balance is not enough.",
+    submitFailed: "Failed to submit. Try again.",
+    employeeLabel: "Employee",
+    kindLabel: "Type",
+    withdrawOption: "Withdraw (take a day off)",
+    depositOption: "Deposit (worked on a day off)",
+    workDateLabel: "Work date",
+    dayOffDateLabel: "Day-off date",
+    daysCountLabel: "Number of days",
+    yourSavingsBalance: "Your savings balance",
+    reasonLabel: "Reason",
+    reasonPlaceholder: "e.g. Taking a day off in lieu of working on Sunday…",
+    submit: "Submit",
+  },
 };
 
 /** YYYY-MM-DD hari ini menurut WITA. */
@@ -54,6 +287,8 @@ export function ShiftsView({
   /** Saved-day balance of the logged-in user, for the withdrawal cap. */
   selfBalance?: number;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const [shiftList, setShiftList] = useState(shifts);
   const [list, setList] = useState(entries);
@@ -94,17 +329,17 @@ export function ShiftsView({
         setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
         toast.error(
           data.error === "insufficient_balance"
-            ? "Saldo tabungan karyawan tidak cukup untuk dicairkan."
-            : "Gagal memproses. Pastikan Anda berhak menyetujui.",
+            ? t.insufficientBalanceEmployee
+            : t.decideFailed,
         );
         return;
       }
       setList((cur) => cur.map((e) => (e.id === id ? (data.request as TabunganEntry) : e)));
-      toast.success(status === "approved" ? "Disetujui ✓" : "Ditolak ✓");
+      toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
       router.refresh(); // saldo tabungan & halaman lain ikut segar
     } catch {
       setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionError);
     } finally {
       setBusyId(null);
     }
@@ -121,15 +356,15 @@ export function ShiftsView({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        toast.error("Gagal menghapus shift.");
+        toast.error(t.deleteShiftFailed);
         return;
       }
       setShiftList((cur) => cur.filter((s) => s.id !== deletingShift.id));
       setShiftForm(null);
-      toast.success("Shift dihapus ✓");
+      toast.success(t.shiftDeleted);
       router.refresh();
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionError);
     } finally {
       setDeleteBusy(false);
       setDeletingShift(null);
@@ -143,10 +378,10 @@ export function ShiftsView({
       {/* Shift definitions */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-ink">Definisi Shift</h2>
+          <h2 className="font-display text-lg font-semibold text-ink">{t.shiftDefinitions}</h2>
           {canManageShifts && (
             <Button size="sm" variant="outline" onClick={() => setShiftForm("new")}>
-              <Plus className="h-4 w-4" /> Tambah shift
+              <Plus className="h-4 w-4" /> {t.addShift}
             </Button>
           )}
         </div>
@@ -170,7 +405,7 @@ export function ShiftsView({
                       <button
                         onClick={() => setShiftForm(s)}
                         className="cursor-pointer rounded-lg p-1.5 text-faint transition-colors hover:bg-sand hover:text-ink"
-                        aria-label={`Ubah shift ${s.name}`}
+                        aria-label={t.editShiftAria(s.name)}
                       >
                         <Pencil className="h-4 w-4" />
                       </button>
@@ -182,10 +417,10 @@ export function ShiftsView({
                     <Clock className="h-4 w-4 text-faint" /> {s.startTime} – {s.endTime}
                   </p>
                   <p className="flex items-center gap-2">
-                    <Coffee className="h-4 w-4 text-faint" /> Istirahat {s.breakMinutes} menit
+                    <Coffee className="h-4 w-4 text-faint" /> {t.breakMinutes(s.breakMinutes)}
                   </p>
                   <p className="flex items-center gap-2">
-                    <ArrowUpFromLine className="h-4 w-4 text-faint" /> Lembur setelah {s.overtimeAfter}
+                    <ArrowUpFromLine className="h-4 w-4 text-faint" /> {t.overtimeAfter} {s.overtimeAfter}
                   </p>
                 </div>
               </div>
@@ -206,17 +441,17 @@ export function ShiftsView({
       <Card>
         <CardHeader className="flex-wrap">
           <div className="min-w-0">
-            <CardTitle>Tabungan Libur</CardTitle>
+            <CardTitle>{t.leaveSavings}</CardTitle>
             <p className="mt-0.5 text-sm text-muted">
-              Kerja di hari libur menambah tabungan (dikonfirmasi HR); cairkan untuk ambil libur pengganti.
+              {t.leaveSavingsDesc}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {pending > 0 && (
-              <Badge tone="gold" className="whitespace-nowrap">{pending} menunggu</Badge>
+              <Badge tone="gold" className="whitespace-nowrap">{t.pendingCount(pending)}</Badge>
             )}
             <Button size="sm" onClick={() => setAdding(true)}>
-              <Wallet className="h-4 w-4" /> Cairkan tabungan
+              <Wallet className="h-4 w-4" /> {t.withdrawSavings}
             </Button>
           </div>
         </CardHeader>
@@ -226,14 +461,14 @@ export function ShiftsView({
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest-700">
                 <PiggyBank className="h-5 w-5 text-lime" />
               </span>
-              <p className="text-sm text-forest-100/70">Tabungan libur Anda</p>
-              <p className="ml-auto font-display text-xl font-bold">{selfBalance} hari</p>
+              <p className="text-sm text-forest-100/70">{t.yourLeaveSavings}</p>
+              <p className="ml-auto font-display text-xl font-bold">{t.days(selfBalance)}</p>
             </div>
           )}
 
           {list.length === 0 && (
             <div className="rounded-2xl border border-line bg-cream/40 px-5 py-10 text-center text-sm text-faint">
-              Belum ada catatan tabungan libur.
+              {t.noSavingsRecords}
             </div>
           )}
 
@@ -259,14 +494,14 @@ export function ShiftsView({
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={isDeposit ? "matcha" : "clay"}>
                       {isDeposit ? <ArrowDownToLine className="h-3.5 w-3.5" /> : <ArrowUpFromLine className="h-3.5 w-3.5" />}
-                      {KIND_LABEL[e.kind]}
+                      {KIND_LABEL[locale][e.kind]}
                     </Badge>
                     <span className={cn("text-sm font-semibold", isDeposit ? "text-forest-700" : "text-[#8c3c1f]")}>
-                      {isDeposit ? "+" : "−"}{e.days} hari
+                      {isDeposit ? "+" : "−"}{t.days(e.days)}
                     </span>
-                    <span className="text-sm text-muted">{formatDate(e.eventDate)}</span>
+                    <span className="text-sm text-muted">{formatDate(e.eventDate, "short", locale)}</span>
                     {e.source === "attendance" && (
-                      <span className="rounded-full bg-sand px-2 py-0.5 text-[10px] font-medium text-muted">otomatis dari absensi</span>
+                      <span className="rounded-full bg-sand px-2 py-0.5 text-[10px] font-medium text-muted">{t.autoFromAttendance}</span>
                     )}
                   </div>
                   {e.reason && <p className="mt-1 line-clamp-1 text-sm text-faint">{e.reason}</p>}
@@ -276,10 +511,10 @@ export function ShiftsView({
                   {e.status === "pending" && canDecide(e) ? (
                     <>
                       <Button size="sm" disabled={busyId === e.id} onClick={() => decide(e.id, "approved")} className="flex-1 sm:flex-none">
-                        <Check className="h-4 w-4" /> Setujui
+                        <Check className="h-4 w-4" /> {t.approve}
                       </Button>
                       <Button size="sm" variant="outline" disabled={busyId === e.id} onClick={() => decide(e.id, "rejected")} className="flex-1 sm:flex-none">
-                        <X className="h-4 w-4" /> Tolak
+                        <X className="h-4 w-4" /> {t.reject}
                       </Button>
                     </>
                   ) : (
@@ -292,7 +527,7 @@ export function ShiftsView({
         </CardContent>
       </Card>
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title="Cairkan / Setor Tabungan Libur" description="Buat catatan tabungan libur baru">
+      <Sheet open={adding} onClose={() => setAdding(false)} title={t.tabunganSheetTitle} description={t.tabunganSheetDesc}>
         <TabunganForm
           employees={employees}
           currentEmployeeId={currentEmployeeId}
@@ -301,7 +536,7 @@ export function ShiftsView({
           onSubmit={(entry) => {
             setList((prev) => [entry, ...prev]);
             setAdding(false);
-            toast.success("Pengajuan terkirim ✓");
+            toast.success(t.requestSent);
             router.refresh();
           }}
           onCancel={() => setAdding(false)}
@@ -311,8 +546,8 @@ export function ShiftsView({
       <Sheet
         open={shiftForm !== null}
         onClose={() => setShiftForm(null)}
-        title={shiftForm === "new" ? "Tambah Shift" : "Ubah Shift"}
-        description={shiftForm === "new" ? "Definisikan shift baru" : shiftForm?.name}
+        title={shiftForm === "new" ? t.addShiftTitle : t.editShiftTitle}
+        description={shiftForm === "new" ? t.newShiftDesc : shiftForm?.name}
       >
         <ShiftForm
           key={shiftForm === "new" ? "new" : shiftForm?.id ?? "none"}
@@ -320,7 +555,7 @@ export function ShiftsView({
           onSaved={(s, isNew) => {
             setShiftList((cur) => (isNew ? [...cur, s] : cur.map((x) => (x.id === s.id ? s : x))));
             setShiftForm(null);
-            toast.success(isNew ? "Shift ditambahkan ✓" : "Shift diperbarui ✓");
+            toast.success(isNew ? t.shiftAdded : t.shiftUpdated);
             router.refresh();
           }}
           onDelete={shiftForm !== "new" && shiftForm ? () => setDeletingShift(shiftForm) : undefined}
@@ -330,9 +565,9 @@ export function ShiftsView({
 
       <ConfirmDialog
         open={deletingShift !== null}
-        title={`Hapus shift "${deletingShift?.name}"?`}
-        message="Jadwal yang memakai shift ini ikut terhapus. Tindakan ini tidak bisa dibatalkan."
-        confirmLabel="Ya, hapus"
+        title={t.deleteShiftTitle(deletingShift?.name ?? "")}
+        message={t.deleteShiftMessage}
+        confirmLabel={t.deleteShiftConfirm}
         tone="danger"
         busy={deleteBusy}
         onConfirm={deleteShift}
@@ -355,6 +590,8 @@ function ScheduleCard({
   employees: Emp[];
   canManage: boolean;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const toast = useToast();
   const router = useRouter();
   const [date, setDate] = useState(todayWita());
@@ -393,7 +630,7 @@ function ScheduleCard({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error();
-      toast.success("Jadwal disimpan ✓");
+      toast.success(t.scheduleSaved);
       router.refresh();
     } catch {
       setMap((cur) => {
@@ -402,7 +639,7 @@ function ScheduleCard({
         else next.delete(key);
         return next;
       });
-      toast.error("Gagal menyimpan jadwal. Coba lagi.");
+      toast.error(t.scheduleSaveFailed);
     } finally {
       setBusyEmp(null);
     }
@@ -412,9 +649,9 @@ function ScheduleCard({
     <Card>
       <CardHeader className="flex-wrap">
         <div className="min-w-0">
-          <CardTitle>Jadwal Shift</CardTitle>
+          <CardTitle>{t.shiftSchedule}</CardTitle>
           <p className="mt-0.5 text-sm text-muted">
-            {canManage ? "Atur shift tiap karyawan untuk tanggal terpilih." : "Jadwal shift karyawan untuk tanggal terpilih."}
+            {canManage ? t.scheduleDescManage : t.scheduleDescView}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -445,7 +682,7 @@ function ScheduleCard({
                     onChange={(ev) => assign(e.id, ev.target.value)}
                     className="w-36 sm:w-48"
                   >
-                    <option value="">— Tanpa shift</option>
+                    <option value="">{t.noShift}</option>
                     {teamShifts.map((s) => (
                       <option key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</option>
                     ))}
@@ -458,7 +695,7 @@ function ScheduleCard({
                   {current.startTime}–{current.endTime}
                 </span>
               ) : (
-                <span className="shrink-0 text-sm text-faint">— Tanpa shift</span>
+                <span className="shrink-0 text-sm text-faint">{t.noShift}</span>
               )}
             </div>
           );
@@ -481,6 +718,8 @@ function ShiftForm({
   onDelete?: () => void;
   onCancel: () => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -495,7 +734,7 @@ function ShiftForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return toast.error("Nama shift wajib diisi.");
+    if (!form.name.trim()) return toast.error(t.shiftNameRequired);
     setSaving(true);
     try {
       const res = await fetch("/api/shifts", {
@@ -505,12 +744,12 @@ function ShiftForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.shift) {
-        toast.error("Gagal menyimpan shift. Pastikan Anda berhak.");
+        toast.error(t.saveShiftFailed);
         return;
       }
       onSaved(data.shift as Shift, !shift);
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionError);
     } finally {
       setSaving(false);
     }
@@ -518,10 +757,10 @@ function ShiftForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Nama shift">
-        <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="cth. Factory Pagi" required />
+      <Field label={t.shiftNameLabel}>
+        <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t.shiftNamePlaceholder} required />
       </Field>
-      <Field label="Tim">
+      <Field label={t.teamLabel}>
         <Select value={form.team} onChange={(e) => setForm((f) => ({ ...f, team: e.target.value as Team }))}>
           {(["factory", "farm", "office"] as Team[]).map((t) => (
             <option key={t} value={t}>{TEAM_META[t].label}</option>
@@ -529,15 +768,15 @@ function ShiftForm({
         </Select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Jam mulai">
+        <Field label={t.startTimeLabel}>
           <Input type="time" value={form.startTime} onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} required />
         </Field>
-        <Field label="Jam selesai">
+        <Field label={t.endTimeLabel}>
           <Input type="time" value={form.endTime} onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} required />
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Istirahat (menit)">
+        <Field label={t.breakMinutesLabel}>
           <Input
             type="number"
             min={0}
@@ -545,18 +784,18 @@ function ShiftForm({
             onChange={(e) => setForm((f) => ({ ...f, breakMinutes: Math.max(0, Number(e.target.value) || 0) }))}
           />
         </Field>
-        <Field label="Lembur setelah">
+        <Field label={t.overtimeAfterLabel}>
           <Input type="time" value={form.overtimeAfter} onChange={(e) => setForm((f) => ({ ...f, overtimeAfter: e.target.value }))} required />
         </Field>
       </div>
-      <Field label="Warna">
+      <Field label={t.colorLabel}>
         <div className="flex items-center gap-3">
           <input
             type="color"
             value={form.color}
             onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
             className="h-10 w-14 cursor-pointer rounded-lg border border-line bg-panel p-1"
-            aria-label="Warna shift"
+            aria-label={t.shiftColorAria}
           />
           <span className="text-sm text-muted">{form.color}</span>
         </div>
@@ -564,13 +803,13 @@ function ShiftForm({
       <div className="flex gap-2 pt-2">
         {onDelete && (
           <Button type="button" variant="outline" onClick={onDelete} disabled={saving} className="text-[#8c3c1f]">
-            <Trash2 className="h-4 w-4" /> Hapus
+            <Trash2 className="h-4 w-4" /> {t.deleteLabel}
           </Button>
         )}
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>Batal</Button>
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
         <Button type="submit" className="flex-1" disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          Simpan
+          {t.save}
         </Button>
       </div>
     </form>
@@ -594,6 +833,8 @@ function TabunganForm({
   onSubmit: (e: TabunganEntry) => void;
   onCancel: () => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
@@ -613,10 +854,10 @@ function TabunganForm({
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
-    if (!form.employeeId) return toast.error("Pilih karyawan dulu.");
-    if (!form.eventDate) return toast.error("Tanggal wajib diisi.");
-    if (form.days < 1) return toast.error("Jumlah hari minimal 1.");
-    if (overBalance) return toast.error("Jumlah melebihi saldo tabungan Anda.");
+    if (!form.employeeId) return toast.error(t.pickEmployeeFirst);
+    if (!form.eventDate) return toast.error(t.dateRequired);
+    if (form.days < 1) return toast.error(t.minOneDay);
+    if (overBalance) return toast.error(t.overBalanceError);
     setSaving(true);
     try {
       const res = await fetch("/api/tabungan", {
@@ -634,14 +875,14 @@ function TabunganForm({
       if (!res.ok || !data.request) {
         toast.error(
           data.error === "insufficient_balance"
-            ? "Saldo tabungan tidak cukup."
-            : "Gagal mengajukan. Coba lagi.",
+            ? t.insufficientBalance
+            : t.submitFailed,
         );
         return;
       }
       onSubmit(data.request as TabunganEntry);
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionError);
     } finally {
       setSaving(false);
     }
@@ -650,7 +891,7 @@ function TabunganForm({
   return (
     <form onSubmit={submit} className="space-y-4">
       {lockToSelf ? (
-        <Field label="Karyawan">
+        <Field label={t.employeeLabel}>
           <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
             <Avatar name={selfEmployee!.name} size="sm" />
             <div className="min-w-0">
@@ -660,7 +901,7 @@ function TabunganForm({
           </div>
         </Field>
       ) : (
-        <Field label="Karyawan">
+        <Field label={t.employeeLabel}>
           <Select value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
             {employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name} — {TEAM_META[e.team].label}</option>
@@ -670,39 +911,39 @@ function TabunganForm({
       )}
 
       {canRequestForOthers && (
-        <Field label="Jenis">
+        <Field label={t.kindLabel}>
           <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as TabunganKind }))}>
-            <option value="withdrawal">Cairkan (ambil libur)</option>
-            <option value="deposit">Setor (kerja hari libur)</option>
+            <option value="withdrawal">{t.withdrawOption}</option>
+            <option value="deposit">{t.depositOption}</option>
           </Select>
         </Field>
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label={form.kind === "deposit" ? "Tanggal kerja" : "Tanggal libur"}>
+        <Field label={form.kind === "deposit" ? t.workDateLabel : t.dayOffDateLabel}>
           <Input type="date" value={form.eventDate} onChange={(e) => setForm((f) => ({ ...f, eventDate: e.target.value }))} required />
         </Field>
-        <Field label="Jumlah hari">
+        <Field label={t.daysCountLabel}>
           <Input type="number" min={1} value={form.days} onChange={(e) => setForm((f) => ({ ...f, days: Math.max(1, Number(e.target.value) || 1) }))} required />
         </Field>
       </div>
 
       {selfWithdraw && (
         <div className={cn("flex items-center justify-between rounded-xl px-3 py-2.5 text-sm", overBalance ? "bg-clay-soft text-[#8c3c1f]" : "bg-sand text-muted")}>
-          <span>Saldo tabungan Anda</span>
-          <span className="font-semibold">{selfBalance} hari</span>
+          <span>{t.yourSavingsBalance}</span>
+          <span className="font-semibold">{t.days(selfBalance)}</span>
         </div>
       )}
 
-      <Field label="Alasan">
-        <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="cth. Ambil libur ganti kerja hari Minggu…" />
+      <Field label={t.reasonLabel}>
+        <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder={t.reasonPlaceholder} />
       </Field>
 
       <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>Batal</Button>
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
         <Button type="submit" className="flex-1" disabled={saving || overBalance}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          Ajukan
+          {t.submit}
         </Button>
       </div>
     </form>

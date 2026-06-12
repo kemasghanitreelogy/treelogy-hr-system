@@ -1,17 +1,32 @@
 import { LeaveView } from "@/components/leave/leave-view";
 import { getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
+import { getLocale } from "@/lib/locale-server";
+import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Cuti & Izin — Treelogy HR" };
 
+const STR: Record<Locale, { approverDesc: string; staffDesc: string }> = {
+  id: {
+    approverDesc: "Kelola cuti tahunan, sakit, dan tabungan libur karyawan.",
+    staffDesc: "Ajukan cuti/izin dan pantau saldo serta tabungan libur Anda.",
+  },
+  en: {
+    approverDesc: "Manage employees' annual leave, sick leave, and day-off savings.",
+    staffDesc: "Request leave and track your balance and day-off savings.",
+  },
+};
+
 export default async function LeavePage() {
-  const [requests, balances, tabungan, employeesAll, user] = await Promise.all([
+  const [requests, balances, tabungan, employeesAll, user, locale] = await Promise.all([
     getLeaveRequests(),
     getLeaveBalances(),
     getTabunganEntries(),
     getEmployees(),
     getSessionUser(),
+    getLocale(),
   ]);
+  const t = STR[locale];
   const employees = employeesAll
     .filter((e) => e.status === "active")
     .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position }));
@@ -25,9 +40,7 @@ export default async function LeavePage() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        {isApprover
-          ? "Kelola cuti tahunan, sakit, dan tabungan libur karyawan."
-          : "Ajukan cuti/izin dan pantau saldo serta tabungan libur Anda."}
+        {isApprover ? t.approverDesc : t.staffDesc}
       </p>
       <LeaveView
         requests={requests}

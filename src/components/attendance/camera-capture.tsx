@@ -4,6 +4,43 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Check, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
+
+const STR: Record<
+  Locale,
+  {
+    defaultTitle: string;
+    cameraError: string;
+    close: string;
+    capturedAlt: string;
+    faceGuide: string;
+    retake: string;
+    usePhoto: string;
+    takePhoto: string;
+  }
+> = {
+  id: {
+    defaultTitle: "Verifikasi Wajah",
+    cameraError: "Kamera tidak dapat diakses. Izinkan akses kamera di browser.",
+    close: "Tutup",
+    capturedAlt: "Hasil foto",
+    faceGuide: "Posisikan wajah di dalam bingkai",
+    retake: "Ulangi",
+    usePhoto: "Gunakan foto",
+    takePhoto: "Ambil foto",
+  },
+  en: {
+    defaultTitle: "Face Verification",
+    cameraError: "Camera cannot be accessed. Allow camera access in your browser.",
+    close: "Close",
+    capturedAlt: "Captured photo",
+    faceGuide: "Position your face inside the frame",
+    retake: "Retake",
+    usePhoto: "Use photo",
+    takePhoto: "Take photo",
+  },
+};
 
 /**
  * Selfie capture with a face-shaped oval guide.
@@ -12,7 +49,7 @@ import { Button } from "@/components/ui/button";
  */
 export function CameraCapture({
   open,
-  title = "Verifikasi Wajah",
+  title,
   onCapture,
   onCancel,
 }: {
@@ -21,6 +58,8 @@ export function CameraCapture({
   onCapture: (dataUrl: string) => void;
   onCancel: () => void;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +86,7 @@ export function CameraCapture({
         setReady(true);
       }
     } catch {
-      setError("Kamera tidak dapat diakses. Izinkan akses kamera di browser.");
+      setError("camera_denied");
     }
   }, []);
 
@@ -124,11 +163,11 @@ export function CameraCapture({
         className="flex shrink-0 items-center justify-between px-4 py-3 text-cream"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
-        <span className="font-display text-base font-semibold">{title}</span>
+        <span className="font-display text-base font-semibold">{title ?? t.defaultTitle}</span>
         <button
           onClick={cancel}
           className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-cream/70 hover:bg-forest-700/60"
-          aria-label="Tutup"
+          aria-label={t.close}
         >
           <X className="h-5 w-5" />
         </button>
@@ -139,14 +178,14 @@ export function CameraCapture({
         {error ? (
           <div className="px-8 text-center text-cream">
             <Camera className="mx-auto h-10 w-10 text-cream/50" />
-            <p className="mt-3 text-sm text-cream/80">{error}</p>
+            <p className="mt-3 text-sm text-cream/80">{t.cameraError}</p>
             <Button variant="secondary" className="mt-5" onClick={cancel}>
-              Tutup
+              {t.close}
             </Button>
           </div>
         ) : reviewing ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={captured!} alt="Hasil foto" className="h-full w-full object-cover" />
+          <img src={captured!} alt={t.capturedAlt} className="h-full w-full object-cover" />
         ) : (
           <>
             <video
@@ -181,7 +220,7 @@ export function CameraCapture({
               />
             </svg>
             <p className="absolute bottom-6 left-0 right-0 text-center text-sm text-cream/90">
-              Posisikan wajah di dalam bingkai
+              {t.faceGuide}
             </p>
           </>
         )}
@@ -195,14 +234,14 @@ export function CameraCapture({
         >
           {reviewing ? (
             <>
-              <ControlButton label="Ulangi" onClick={retake}>
+              <ControlButton label={t.retake} onClick={retake}>
                 <RotateCcw className="h-6 w-6" />
               </ControlButton>
               <button
                 onClick={confirm}
                 className="flex cursor-pointer items-center justify-center rounded-full bg-lime ring-4 ring-cream/20 transition active:scale-95"
                 style={{ height: 72, width: 72 }}
-                aria-label="Gunakan foto"
+                aria-label={t.usePhoto}
               >
                 <Check className="h-8 w-8 text-bark" />
               </button>
@@ -214,7 +253,7 @@ export function CameraCapture({
               disabled={!ready}
               className="flex cursor-pointer items-center justify-center rounded-full bg-cream ring-4 ring-cream/30 transition active:scale-95 disabled:opacity-40"
               style={{ height: 76, width: 76 }}
-              aria-label="Ambil foto"
+              aria-label={t.takePhoto}
             >
               <span className="h-16 w-16 rounded-full border-[3px] border-bark" />
             </button>

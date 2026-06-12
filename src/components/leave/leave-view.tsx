@@ -7,6 +7,8 @@ import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, Ta
 import { TEAM_META } from "@/lib/constants";
 import { compressImageFile } from "@/lib/image";
 import { cn, formatDate } from "@/lib/utils";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, RequestBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,11 +18,180 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 
-const LEAVE_LABEL: Record<LeaveType, string> = {
-  annual: "Cuti tahunan",
-  sick: "Sakit",
-  unpaid: "Tanpa gaji",
-  "tukar-libur": "Tukar libur",
+const LEAVE_LABEL: Record<Locale, Record<LeaveType, string>> = {
+  id: {
+    annual: "Cuti tahunan",
+    sick: "Sakit",
+    unpaid: "Tanpa gaji",
+    "tukar-libur": "Tukar libur",
+  },
+  en: {
+    annual: "Annual leave",
+    sick: "Sick",
+    unpaid: "Unpaid",
+    "tukar-libur": "Day-off swap",
+  },
+};
+
+const STR: Record<
+  Locale,
+  {
+    decideFailed: string;
+    approvedToast: string;
+    rejectedToast: string;
+    connectionError: string;
+    requestSent: string;
+    tabRequests: string;
+    tabBalances: string;
+    requestLeave: string;
+    emptyRequests: string;
+    days: (n: number) => string;
+    viewProof: string;
+    approve: string;
+    reject: string;
+    sheetTitle: string;
+    sheetDesc: string;
+    totalSavedAll: string;
+    yourSaved: string;
+    balancePerEmployee: string;
+    myBalance: string;
+    annualLeave: string;
+    remainingOf: (remaining: number, quota: number) => string;
+    sickUsed: string;
+    tabunganLibur: string;
+    ledgerTitle: string;
+    deposit: string;
+    withdraw: string;
+    close: string;
+    viewAll: (n: number) => string;
+    onlyImageOrPdf: string;
+    maxFileSize: string;
+    readFileFailed: string;
+    pickEmployeeFirst: string;
+    datesRequired: string;
+    endBeforeStart: string;
+    invalidProofType: string;
+    proofTooLarge: string;
+    proofUploadFailed: string;
+    submitFailed: string;
+    employee: string;
+    type: string;
+    start: string;
+    end: string;
+    reason: string;
+    reasonPlaceholder: string;
+    proofOptional: string;
+    removeAttachment: string;
+    attachImageOrPdf: string;
+    proofNote: string;
+    cancel: string;
+    submit: string;
+  }
+> = {
+  id: {
+    decideFailed: "Gagal memproses. Anda hanya bisa menyetujui karyawan di divisi Anda.",
+    approvedToast: "Pengajuan disetujui ✓",
+    rejectedToast: "Pengajuan ditolak ✓",
+    connectionError: "Koneksi bermasalah. Coba lagi.",
+    requestSent: "Pengajuan cuti/izin terkirim ✓",
+    tabRequests: "Permintaan",
+    tabBalances: "Saldo & Tabungan Libur",
+    requestLeave: "Ajukan Cuti/Izin",
+    emptyRequests: "Belum ada pengajuan cuti/izin.",
+    days: (n: number) => `${n} hari`,
+    viewProof: "Lihat bukti",
+    approve: "Setujui",
+    reject: "Tolak",
+    sheetTitle: "Ajukan Cuti / Izin",
+    sheetDesc: "Buat permintaan baru",
+    totalSavedAll: "Total Tabungan Libur (semua karyawan)",
+    yourSaved: "Tabungan Libur Anda",
+    balancePerEmployee: "Saldo Cuti per Karyawan",
+    myBalance: "Saldo Cuti Saya",
+    annualLeave: "Cuti tahunan",
+    remainingOf: (remaining: number, quota: number) => `${remaining}/${quota} sisa`,
+    sickUsed: "Cuti sakit terpakai",
+    tabunganLibur: "Tabungan libur",
+    ledgerTitle: "Riwayat tabungan libur",
+    deposit: "Setor",
+    withdraw: "Cairkan",
+    close: "Tutup",
+    viewAll: (n: number) => `Lihat semua (${n})`,
+    onlyImageOrPdf: "Hanya file gambar atau PDF yang didukung.",
+    maxFileSize: "Ukuran file maksimal 5 MB.",
+    readFileFailed: "Gagal membaca file.",
+    pickEmployeeFirst: "Pilih karyawan dulu.",
+    datesRequired: "Tanggal mulai & selesai wajib diisi.",
+    endBeforeStart: "Tanggal selesai tidak boleh sebelum tanggal mulai.",
+    invalidProofType: "Bukti harus berupa gambar atau PDF.",
+    proofTooLarge: "Ukuran file bukti maksimal 5 MB.",
+    proofUploadFailed: "Gagal mengunggah file bukti. Coba lagi.",
+    submitFailed: "Gagal mengajukan. Pastikan Anda HR/admin.",
+    employee: "Karyawan",
+    type: "Jenis",
+    start: "Mulai",
+    end: "Selesai",
+    reason: "Alasan",
+    reasonPlaceholder: "cth. Acara keluarga…",
+    proofOptional: "Bukti (opsional)",
+    removeAttachment: "Hapus lampiran",
+    attachImageOrPdf: "Lampirkan gambar atau PDF",
+    proofNote: "Maks. 5 MB. Tidak wajib.",
+    cancel: "Batal",
+    submit: "Ajukan",
+  },
+  en: {
+    decideFailed: "Failed to process. You can only approve employees in your own division.",
+    approvedToast: "Request approved ✓",
+    rejectedToast: "Request rejected ✓",
+    connectionError: "Connection problem. Please try again.",
+    requestSent: "Leave request submitted ✓",
+    tabRequests: "Requests",
+    tabBalances: "Balance & Day-Off Savings",
+    requestLeave: "Request Leave",
+    emptyRequests: "No leave requests yet.",
+    days: (n: number) => `${n} day${n === 1 ? "" : "s"}`,
+    viewProof: "View proof",
+    approve: "Approve",
+    reject: "Reject",
+    sheetTitle: "Request Leave",
+    sheetDesc: "Create a new request",
+    totalSavedAll: "Total Day-Off Savings (all employees)",
+    yourSaved: "Your Day-Off Savings",
+    balancePerEmployee: "Leave Balance per Employee",
+    myBalance: "My Leave Balance",
+    annualLeave: "Annual leave",
+    remainingOf: (remaining: number, quota: number) => `${remaining}/${quota} left`,
+    sickUsed: "Sick leave used",
+    tabunganLibur: "Day-off savings",
+    ledgerTitle: "Day-off savings history",
+    deposit: "Deposit",
+    withdraw: "Withdraw",
+    close: "Close",
+    viewAll: (n: number) => `View all (${n})`,
+    onlyImageOrPdf: "Only image or PDF files are supported.",
+    maxFileSize: "Maximum file size is 5 MB.",
+    readFileFailed: "Failed to read the file.",
+    pickEmployeeFirst: "Select an employee first.",
+    datesRequired: "Start & end dates are required.",
+    endBeforeStart: "End date cannot be before the start date.",
+    invalidProofType: "Proof must be an image or PDF.",
+    proofTooLarge: "Proof file size must be at most 5 MB.",
+    proofUploadFailed: "Failed to upload the proof file. Please try again.",
+    submitFailed: "Failed to submit. Make sure you are HR/admin.",
+    employee: "Employee",
+    type: "Type",
+    start: "Start",
+    end: "End",
+    reason: "Reason",
+    reasonPlaceholder: "e.g. Family event…",
+    proofOptional: "Proof (optional)",
+    removeAttachment: "Remove attachment",
+    attachImageOrPdf: "Attach an image or PDF",
+    proofNote: "Max 5 MB. Optional.",
+    cancel: "Cancel",
+    submit: "Submit",
+  },
 };
 
 type Tab = "requests" | "balances";
@@ -56,6 +227,8 @@ export function LeaveView({
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
   const router = useRouter();
+  const locale = useLocale();
+  const t = STR[locale];
   // A plain employee only ever sees their own rows, so the name/avatar per row
   // is redundant. Show it only for approvers (HR/admin or a division manager).
   const showEmployee = canApproveAll || approverTeam != null;
@@ -87,15 +260,15 @@ export function LeaveView({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
         setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
-        toast.error("Gagal memproses. Anda hanya bisa menyetujui karyawan di divisi Anda.");
+        toast.error(t.decideFailed);
         return;
       }
       setList((cur) => cur.map((r) => (r.id === id ? data.request : r)));
-      toast.success(status === "approved" ? "Pengajuan disetujui ✓" : "Pengajuan ditolak ✓");
+      toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
       router.refresh(); // sinkronkan saldo & halaman lain di latar belakang
     } catch {
       setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionError);
     } finally {
       setDecidingId(null);
     }
@@ -104,7 +277,7 @@ export function LeaveView({
   function addRequest(r: LeaveRequest) {
     setList((prev) => [r, ...prev]);
     setAdding(false);
-    toast.success("Pengajuan cuti/izin terkirim ✓");
+    toast.success(t.requestSent);
     router.refresh();
   }
 
@@ -116,21 +289,21 @@ export function LeaveView({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-xl bg-sand p-1">
           <TabBtn active={tab === "requests"} onClick={() => setTab("requests")}>
-            Permintaan {pending > 0 && <span className="ml-1 rounded-full bg-gold px-1.5 text-[10px] text-white">{pending}</span>}
+            {t.tabRequests} {pending > 0 && <span className="ml-1 rounded-full bg-gold px-1.5 text-[10px] text-white">{pending}</span>}
           </TabBtn>
           <TabBtn active={tab === "balances"} onClick={() => setTab("balances")}>
-            Saldo &amp; Tabungan Libur
+            {t.tabBalances}
           </TabBtn>
         </div>
         <Button onClick={() => setAdding(true)} className="shrink-0">
-          <Plus className="h-4 w-4" /> Ajukan Cuti/Izin
+          <Plus className="h-4 w-4" /> {t.requestLeave}
         </Button>
       </div>
 
       {tab === "requests" ? (
         <div className="space-y-3">
           {list.length === 0 && (
-            <div className="card px-5 py-10 text-center text-sm text-faint">Belum ada pengajuan cuti/izin.</div>
+            <div className="card px-5 py-10 text-center text-sm text-faint">{t.emptyRequests}</div>
           )}
           {list.map((r) => {
             const emp = empMap.get(r.employeeId);
@@ -150,11 +323,11 @@ export function LeaveView({
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : "sky"}>
-                      {LEAVE_LABEL[r.type]}
+                      {LEAVE_LABEL[locale][r.type]}
                     </Badge>
-                    <span className="text-sm font-medium text-ink">{r.days} hari</span>
+                    <span className="text-sm font-medium text-ink">{t.days(r.days)}</span>
                     <span className="text-sm text-muted">
-                      {formatDate(r.startDate)} – {formatDate(r.endDate)}
+                      {formatDate(r.startDate, "short", locale)} – {formatDate(r.endDate, "short", locale)}
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-1 text-sm text-faint">{r.reason}</p>
@@ -165,7 +338,7 @@ export function LeaveView({
                       rel="noopener noreferrer"
                       className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-sky hover:underline"
                     >
-                      <Paperclip className="h-3.5 w-3.5" /> Lihat bukti
+                      <Paperclip className="h-3.5 w-3.5" /> {t.viewProof}
                     </a>
                   )}
                 </div>
@@ -173,10 +346,10 @@ export function LeaveView({
                   {r.status === "pending" && canDecide(r) ? (
                     <>
                       <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
-                        <Check className="h-4 w-4" /> Setujui
+                        <Check className="h-4 w-4" /> {t.approve}
                       </Button>
                       <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => decide(r.id, "rejected")} className="flex-1 sm:flex-none">
-                        <X className="h-4 w-4" /> Tolak
+                        <X className="h-4 w-4" /> {t.reject}
                       </Button>
                     </>
                   ) : (
@@ -191,7 +364,7 @@ export function LeaveView({
         <BalancesView balances={balances} tabungan={tabungan} employees={employees} showEmployee={showEmployee} />
       )}
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title="Ajukan Cuti / Izin" description="Buat permintaan baru">
+      <Sheet open={adding} onClose={() => setAdding(false)} title={t.sheetTitle} description={t.sheetDesc}>
         <LeaveForm
           employees={employees}
           currentEmployeeId={currentEmployeeId}
@@ -216,6 +389,8 @@ function BalancesView({
   /** false = tampilan mandiri karyawan: tanpa framing org-wide & tanpa identitas per baris. */
   showEmployee?: boolean;
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const totalSaved = balances.reduce((s, b) => s + b.tabunganLibur, 0);
   // Group ledger entries by employee, newest first, for the per-row history.
@@ -238,16 +413,16 @@ function BalancesView({
           </span>
           <div>
             <p className="text-sm text-forest-100/70">
-              {showEmployee ? "Total Tabungan Libur (semua karyawan)" : "Tabungan Libur Anda"}
+              {showEmployee ? t.totalSavedAll : t.yourSaved}
             </p>
-            <p className="font-display text-3xl font-bold">{totalSaved} hari</p>
+            <p className="font-display text-3xl font-bold">{t.days(totalSaved)}</p>
           </div>
         </CardContent>
       </Card>
 
       <Card className="overflow-hidden">
         <CardHeader>
-          <CardTitle>{showEmployee ? "Saldo Cuti per Karyawan" : "Saldo Cuti Saya"}</CardTitle>
+          <CardTitle>{showEmployee ? t.balancePerEmployee : t.myBalance}</CardTitle>
         </CardHeader>
         <div className="divide-y divide-line">
           {balances.map((b) => {
@@ -265,7 +440,7 @@ function BalancesView({
                     </div>
                     {b.tabunganLibur > 0 && (
                       <Badge tone="matcha">
-                        <PiggyBank className="h-3.5 w-3.5" /> {b.tabunganLibur} hari
+                        <PiggyBank className="h-3.5 w-3.5" /> {t.days(b.tabunganLibur)}
                       </Badge>
                     )}
                   </div>
@@ -273,22 +448,22 @@ function BalancesView({
                 <div className={cn("grid gap-3 sm:grid-cols-3", showEmployee && "mt-3")}>
                   <div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted">Cuti tahunan</span>
-                      <span className="font-medium text-ink">{remaining}/{b.annualQuota} sisa</span>
+                      <span className="text-muted">{t.annualLeave}</span>
+                      <span className="font-medium text-ink">{t.remainingOf(remaining, b.annualQuota)}</span>
                     </div>
                     <Progress value={b.annualUsed} max={b.annualQuota} className="mt-1.5" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted">Cuti sakit terpakai</span>
-                      <span className="font-medium text-ink">{b.sickUsed} hari</span>
+                      <span className="text-muted">{t.sickUsed}</span>
+                      <span className="font-medium text-ink">{t.days(b.sickUsed)}</span>
                     </div>
                     <Progress value={b.sickUsed} max={12} className="mt-1.5" barClassName="bg-olive" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted">Tabungan libur</span>
-                      <span className="font-medium text-ink">{b.tabunganLibur} hari</span>
+                      <span className="text-muted">{t.tabunganLibur}</span>
+                      <span className="font-medium text-ink">{t.days(b.tabunganLibur)}</span>
                     </div>
                     <Progress value={b.tabunganLibur} max={12} className="mt-1.5" barClassName="bg-gold" />
                   </div>
@@ -303,20 +478,29 @@ function BalancesView({
   );
 }
 
-const LEDGER_STATUS: Record<RequestStatus, string> = {
-  pending: "menunggu",
-  approved: "disetujui",
-  rejected: "ditolak",
+const LEDGER_STATUS: Record<Locale, Record<RequestStatus, string>> = {
+  id: {
+    pending: "menunggu",
+    approved: "disetujui",
+    rejected: "ditolak",
+  },
+  en: {
+    pending: "pending",
+    approved: "approved",
+    rejected: "rejected",
+  },
 };
 
 /** Per-employee tabungan libur history (deposits in / withdrawals out). */
 function TabunganLedger({ entries }: { entries: TabunganEntry[] }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const [open, setOpen] = useState(false);
   if (entries.length === 0) return null;
   const shown = open ? entries : entries.slice(0, 3);
   return (
     <div className="mt-3 rounded-xl bg-sand/60 px-3 py-2.5">
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">Riwayat tabungan libur</p>
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-faint">{t.ledgerTitle}</p>
       <ul className="space-y-1">
         {shown.map((e) => {
           const isDeposit = e.kind === "deposit";
@@ -328,15 +512,15 @@ function TabunganLedger({ entries }: { entries: TabunganEntry[] }) {
               <span className={cn("font-semibold tabular-nums", isDeposit ? "text-forest-700" : "text-[#8c3c1f]")}>
                 {isDeposit ? "+" : "−"}{e.days}
               </span>
-              <span className="text-muted">{formatDate(e.eventDate)}</span>
-              <span className="min-w-0 flex-1 truncate text-faint">{e.reason || (isDeposit ? "Setor" : "Cairkan")}</span>
+              <span className="text-muted">{formatDate(e.eventDate, "short", locale)}</span>
+              <span className="min-w-0 flex-1 truncate text-faint">{e.reason || (isDeposit ? t.deposit : t.withdraw)}</span>
               <span
                 className={cn(
                   "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
                   e.status === "approved" ? "bg-[#e9f0d8] text-forest-600" : e.status === "rejected" ? "bg-clay-soft text-[#8c3c1f]" : "bg-gold/15 text-[#8a6d1f]",
                 )}
               >
-                {LEDGER_STATUS[e.status]}
+                {LEDGER_STATUS[locale][e.status]}
               </span>
             </li>
           );
@@ -344,7 +528,7 @@ function TabunganLedger({ entries }: { entries: TabunganEntry[] }) {
       </ul>
       {entries.length > 3 && (
         <button onClick={() => setOpen((v) => !v)} className="mt-1.5 cursor-pointer text-[11px] font-medium text-sky hover:underline">
-          {open ? "Tutup" : `Lihat semua (${entries.length})`}
+          {open ? t.close : t.viewAll(entries.length)}
         </button>
       )}
     </div>
@@ -379,6 +563,8 @@ function LeaveForm({
   onCancel: () => void;
 }) {
   const toast = useToast();
+  const locale = useLocale();
+  const t = STR[locale];
   const [saving, setSaving] = useState(false);
   // Non-managers can only file for themselves — lock the employee to their own record.
   const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
@@ -398,11 +584,11 @@ function LeaveForm({
     e.target.value = ""; // allow re-picking the same file after removal
     if (!file) return;
     if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
-      toast.error("Hanya file gambar atau PDF yang didukung.");
+      toast.error(t.onlyImageOrPdf);
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Ukuran file maksimal 5 MB.");
+      toast.error(t.maxFileSize);
       return;
     }
     try {
@@ -412,11 +598,11 @@ function LeaveForm({
       } else {
         const reader = new FileReader();
         reader.onload = () => setProof({ dataUrl: String(reader.result), name: file.name });
-        reader.onerror = () => toast.error("Gagal membaca file.");
+        reader.onerror = () => toast.error(t.readFileFailed);
         reader.readAsDataURL(file);
       }
     } catch {
-      toast.error("Gagal membaca file.");
+      toast.error(t.readFileFailed);
     }
   }
 
@@ -424,15 +610,15 @@ function LeaveForm({
     e.preventDefault();
     // Validation — surfaces a real "tidak berhasil" path via toast.
     if (!form.employeeId) {
-      toast.error("Pilih karyawan dulu.");
+      toast.error(t.pickEmployeeFirst);
       return;
     }
     if (!form.startDate || !form.endDate) {
-      toast.error("Tanggal mulai & selesai wajib diisi.");
+      toast.error(t.datesRequired);
       return;
     }
     if (form.endDate < form.startDate) {
-      toast.error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
+      toast.error(t.endBeforeStart);
       return;
     }
     setSaving(true);
@@ -452,17 +638,17 @@ function LeaveForm({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
         const msg: Record<string, string> = {
-          end_before_start: "Tanggal selesai tidak boleh sebelum tanggal mulai.",
-          invalid_proof_type: "Bukti harus berupa gambar atau PDF.",
-          proof_too_large: "Ukuran file bukti maksimal 5 MB.",
-          proof_upload_failed: "Gagal mengunggah file bukti. Coba lagi.",
+          end_before_start: t.endBeforeStart,
+          invalid_proof_type: t.invalidProofType,
+          proof_too_large: t.proofTooLarge,
+          proof_upload_failed: t.proofUploadFailed,
         };
-        toast.error(msg[data.error as string] ?? "Gagal mengajukan. Pastikan Anda HR/admin.");
+        toast.error(msg[data.error as string] ?? t.submitFailed);
         return;
       }
       onSubmit(data.request as LeaveRequest);
     } catch {
-      toast.error("Koneksi bermasalah. Coba lagi.");
+      toast.error(t.connectionError);
     } finally {
       setSaving(false);
     }
@@ -471,7 +657,7 @@ function LeaveForm({
   return (
     <form onSubmit={submit} className="space-y-4">
       {lockToSelf ? (
-        <Field label="Karyawan">
+        <Field label={t.employee}>
           <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
             <Avatar name={selfEmployee!.name} size="sm" />
             <div className="min-w-0">
@@ -481,7 +667,7 @@ function LeaveForm({
           </div>
         </Field>
       ) : (
-        <Field label="Karyawan">
+        <Field label={t.employee}>
           <Select value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
             {employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name} — {TEAM_META[e.team as Team].label}</option>
@@ -489,47 +675,47 @@ function LeaveForm({
           </Select>
         </Field>
       )}
-      <Field label="Jenis">
+      <Field label={t.type}>
         <Select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as LeaveType }))}>
-          {(["annual", "sick", "unpaid", "tukar-libur"] as LeaveType[]).map((t) => (
-            <option key={t} value={t}>{LEAVE_LABEL[t]}</option>
+          {(["annual", "sick", "unpaid", "tukar-libur"] as LeaveType[]).map((lt) => (
+            <option key={lt} value={lt}>{LEAVE_LABEL[locale][lt]}</option>
           ))}
         </Select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Mulai">
+        <Field label={t.start}>
           <Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} required />
         </Field>
-        <Field label="Selesai">
+        <Field label={t.end}>
           <Input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} required />
         </Field>
       </div>
-      <Field label="Alasan">
-        <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder="cth. Acara keluarga…" />
+      <Field label={t.reason}>
+        <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder={t.reasonPlaceholder} />
       </Field>
-      <Field label="Bukti (opsional)">
+      <Field label={t.proofOptional}>
         {proof ? (
           <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
             <Paperclip className="h-4 w-4 shrink-0 text-muted" />
             <span className="min-w-0 flex-1 truncate text-sm text-ink">{proof.name}</span>
-            <button type="button" onClick={() => setProof(null)} className="shrink-0 text-faint transition-colors hover:text-ink" aria-label="Hapus lampiran">
+            <button type="button" onClick={() => setProof(null)} className="shrink-0 text-faint transition-colors hover:text-ink" aria-label={t.removeAttachment}>
               <X className="h-4 w-4" />
             </button>
           </div>
         ) : (
           <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-line bg-sand/40 px-3 py-2.5 text-sm text-muted transition-colors hover:bg-sand">
             <Paperclip className="h-4 w-4" />
-            Lampirkan gambar atau PDF
+            {t.attachImageOrPdf}
             <input type="file" accept="image/*,application/pdf" className="hidden" onChange={pickFile} />
           </label>
         )}
-        <p className="mt-1 text-xs text-faint">Maks. 5 MB. Tidak wajib.</p>
+        <p className="mt-1 text-xs text-faint">{t.proofNote}</p>
       </Field>
       <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>Batal</Button>
+        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
         <Button type="submit" className="flex-1" disabled={saving}>
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          Ajukan
+          {t.submit}
         </Button>
       </div>
     </form>

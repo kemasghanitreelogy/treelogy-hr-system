@@ -11,16 +11,46 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useLocale } from "@/components/layout/locale-context";
+import type { Locale } from "@/lib/i18n";
 
 const GREEN = "#3d5a2e";
 const LIME = "#a4c26a";
 const CLAY = "#c2603f";
+
+const STR: Record<Locale, {
+  dateLabel: (l: string) => string;
+  present: string;
+  late: string;
+  absent: string;
+  teamLabels: Record<string, string>;
+  employees: string;
+}> = {
+  id: {
+    dateLabel: (l) => `Tanggal ${l}`,
+    present: "Hadir",
+    late: "Terlambat",
+    absent: "Alpa",
+    teamLabels: { factory: "Pabrik", farm: "Kebun", office: "Kantor" },
+    employees: "karyawan",
+  },
+  en: {
+    dateLabel: (l) => `Date ${l}`,
+    present: "Present",
+    late: "Late",
+    absent: "Absent",
+    teamLabels: { factory: "Factory", farm: "Farm", office: "Office" },
+    employees: "employees",
+  },
+};
 
 export function AttendanceTrendChart({
   data,
 }: {
   data: { date: string; present: number; late: number; absent: number }[];
 }) {
+  const locale = useLocale();
+  const t = STR[locale];
   const fmt = data.map((d) => ({ ...d, label: d.date.slice(8) }));
   return (
     <ResponsiveContainer width="100%" height={240}>
@@ -40,11 +70,11 @@ export function AttendanceTrendChart({
             fontSize: 12,
             boxShadow: "0 12px 40px rgba(31,46,26,0.14)",
           }}
-          labelFormatter={(l) => `Tanggal ${l}`}
+          labelFormatter={(l) => t.dateLabel(String(l))}
         />
-        <Area type="monotone" dataKey="present" name="Hadir" stroke={GREEN} strokeWidth={2.5} fill="url(#gPresent)" />
-        <Area type="monotone" dataKey="late" name="Terlambat" stroke="#e0a82e" strokeWidth={2} fill="transparent" />
-        <Area type="monotone" dataKey="absent" name="Alpa" stroke={CLAY} strokeWidth={2} fill="transparent" />
+        <Area type="monotone" dataKey="present" name={t.present} stroke={GREEN} strokeWidth={2.5} fill="url(#gPresent)" />
+        <Area type="monotone" dataKey="late" name={t.late} stroke="#e0a82e" strokeWidth={2} fill="transparent" />
+        <Area type="monotone" dataKey="absent" name={t.absent} stroke={CLAY} strokeWidth={2} fill="transparent" />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -53,11 +83,9 @@ export function AttendanceTrendChart({
 const TEAM_COLORS = ["#3d5a2e", "#6b7548", "#4a7ba6", "#e0a82e"];
 
 export function TeamDonut({ data }: { data: { team: string; count: number }[] }) {
-  const labels: Record<string, string> = {
-    factory: "Pabrik",
-    farm: "Kebun",
-    office: "Kantor",
-  };
+  const locale = useLocale();
+  const t = STR[locale];
+  const labels = t.teamLabels;
   const fmt = data.map((d) => ({ name: labels[d.team] ?? d.team, value: d.count }));
   const total = fmt.reduce((s, d) => s + d.value, 0);
   return (
@@ -77,7 +105,7 @@ export function TeamDonut({ data }: { data: { team: string; count: number }[] })
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="font-display text-2xl font-bold text-ink">{total}</span>
-          <span className="text-[11px] text-faint">karyawan</span>
+          <span className="text-[11px] text-faint">{t.employees}</span>
         </div>
       </div>
       <ul className="flex-1 space-y-2">
