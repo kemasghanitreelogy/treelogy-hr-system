@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LogIn, LogOut, X } from "lucide-react";
-import type { AttendanceRecord, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
+import type { AttendanceRecord, AttendanceStatus, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
 import { formatDistance } from "@/lib/geo";
@@ -11,7 +11,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/field";
+import { Field, Input } from "@/components/ui/field";
+import { Sheet } from "@/components/ui/sheet";
 import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
@@ -54,6 +55,19 @@ const STR: Record<
     reject: string;
     emptyTitle: string;
     emptyHint: string;
+    exportTitle: string;
+    exportDesc: string;
+    exportFrom: string;
+    exportTo: string;
+    exportBtn: string;
+    exportEmpty: string;
+    cName: string;
+    cTeam: string;
+    cDate: string;
+    cStatus: string;
+    cLateMin: string;
+    cOtMin: string;
+    cDistance: string;
   }
 > = {
   id: {
@@ -89,6 +103,19 @@ const STR: Record<
     reject: "Tolak",
     emptyTitle: "Tidak ada data absensi",
     emptyHint: "Pilih tanggal lain atau ubah filter tim / ketepatan waktu.",
+    exportTitle: "Ekspor Rekap Absensi",
+    exportDesc: "Pilih rentang tanggal. File CSV berisi data informatif (tanpa foto).",
+    exportFrom: "Dari tanggal",
+    exportTo: "Sampai tanggal",
+    exportBtn: "Unduh CSV",
+    exportEmpty: "Tidak ada data pada rentang ini.",
+    cName: "Nama",
+    cTeam: "Tim",
+    cDate: "Tanggal",
+    cStatus: "Status",
+    cLateMin: "Telat (menit)",
+    cOtMin: "Lembur (menit)",
+    cDistance: "Jarak (m)",
   },
   en: {
     myHistory: "My attendance history",
@@ -123,10 +150,29 @@ const STR: Record<
     reject: "Reject",
     emptyTitle: "No attendance data",
     emptyHint: "Pick another date or change the team / punctuality filter.",
+    exportTitle: "Export Attendance Summary",
+    exportDesc: "Pick a date range. The CSV contains informative data only (no photos).",
+    exportFrom: "From date",
+    exportTo: "To date",
+    exportBtn: "Download CSV",
+    exportEmpty: "No data in this range.",
+    cName: "Name",
+    cTeam: "Team",
+    cDate: "Date",
+    cStatus: "Status",
+    cLateMin: "Late (min)",
+    cOtMin: "Overtime (min)",
+    cDistance: "Distance (m)",
   },
 };
 
-type EmpLite = Pick<Employee, "id" | "name" | "team" | "position" | "workStart" | "workEnd">;
+type EmpLite = Pick<Employee, "id" | "nik" | "name" | "team" | "position" | "workStart" | "workEnd">;
+
+/** Label status untuk ekspor CSV (data informatif). */
+const STATUS_CSV: Record<Locale, Record<AttendanceStatus, string>> = {
+  id: { present: "Hadir", late: "Terlambat", absent: "Alpa", leave: "Cuti", sick: "Sakit", off: "Libur", holiday: "Hari libur" },
+  en: { present: "Present", late: "Late", absent: "Absent", leave: "Leave", sick: "Sick", off: "Day off", holiday: "Holiday" },
+};
 
 interface Row extends AttendanceRecord {
   emp: EmpLite;
@@ -160,6 +206,11 @@ export function AttendanceView({
   // Filter ketepatan waktu: "ontime" = hadir tanpa telat, "late" = terlambat.
   const [punct, setPunct] = useState<"all" | "ontime" | "late">("all");
   const [selected, setSelected] = useState<Row | null>(null);
+  // Ekspor rekap: rentang tanggal.
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState(dates[0] ?? defaultDate);
+  const [exportTo, setExportTo] = useState(dates[dates.length - 1] ?? defaultDate);
+  const toast = useToast();
 
   // Scope: HR → Semua/Data Saya (default Data Saya). Karyawan: hanya datanya.
   const scopeOpts = scopeOptionsFor(canReviewAll, false);
@@ -194,6 +245,48 @@ export function AttendanceView({
     return s;
   }, [rows]);
 
+  function exportCsv() {
+    const inRange = records
+      .filter((r) => r.date >= exportFrom && r.date <= exportTo)
+      .map((r) => ({ r, emp: empMap.get(r.employeeId) }))
+      .filter((x) => x.emp && (team === "all" || x.emp.team === team))
+      .sort((a, b) => a.r.date.localeCompare(b.r.date) || a.emp!.name.localeCompare(b.emp!.name));
+    if (inRange.length === 0) {
+      toast.error(t.exportEmpty);
+      return;
+    }
+    const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const header = ["NIK", t.cName, t.cTeam, t.cDate, t.thIn, t.thOut, t.cLateMin, t.cOtMin, t.cDistance, t.cStatus]
+      .map(cell)
+      .join(",");
+    const lines = inRange.map(({ r, emp }) =>
+      [
+        emp!.nik,
+        emp!.name,
+        TEAM_META[emp!.team].label,
+        r.date,
+        r.clockIn ? formatTime(r.clockIn) : "",
+        r.clockOut ? formatTime(r.clockOut) : "",
+        r.lateMinutes || 0,
+        r.overtimeMinutes || 0,
+        r.clockInDistanceM ?? "",
+        STATUS_CSV[locale][r.status],
+      ]
+        .map(cell)
+        .join(","),
+    );
+    // BOM agar Excel mengenali UTF-8 (huruf Indonesia tampil benar).
+    const csv = "﻿" + [header, ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rekap-absensi-${exportFrom}_${exportTo}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setExportOpen(false);
+  }
+
   return (
     <div className="space-y-4 fade-up">
       {/* Heading (employee self-view) */}
@@ -222,7 +315,7 @@ export function AttendanceView({
           </div>
         </div>
         {reviewing && (
-          <Button variant="outline" className="shrink-0">
+          <Button variant="outline" className="shrink-0" onClick={() => setExportOpen(true)}>
             <Download className="h-4 w-4" /> {t.exportRecap}
           </Button>
         )}
@@ -384,6 +477,34 @@ export function AttendanceView({
         scheduleEnd={selected?.emp.workEnd ?? "17:00"}
         onClose={() => setSelected(null)}
       />
+
+      <Sheet open={exportOpen} onClose={() => setExportOpen(false)} title={t.exportTitle} description={t.exportDesc}>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t.exportFrom}>
+              <Input
+                type="date"
+                value={exportFrom}
+                min={dates[0]}
+                max={dates[dates.length - 1]}
+                onChange={(e) => setExportFrom(e.target.value)}
+              />
+            </Field>
+            <Field label={t.exportTo}>
+              <Input
+                type="date"
+                value={exportTo}
+                min={dates[0]}
+                max={dates[dates.length - 1]}
+                onChange={(e) => setExportTo(e.target.value)}
+              />
+            </Field>
+          </div>
+          <Button className="w-full" onClick={exportCsv}>
+            <Download className="h-4 w-4" /> {t.exportBtn}
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }

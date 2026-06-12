@@ -31,6 +31,7 @@ export default async function AttendancePage() {
     .filter((r) => canManage || (user?.employeeId != null && r.employeeId === user.employeeId));
   const employees = employeesAll.map((e) => ({
     id: e.id,
+    nik: e.nik,
     name: e.name,
     team: e.team,
     position: e.position,
