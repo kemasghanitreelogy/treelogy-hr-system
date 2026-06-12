@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownToLine, ArrowUpFromLine, Check, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { compressImageFile } from "@/lib/image";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatTime } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { Avatar } from "@/components/ui/avatar";
@@ -86,6 +86,13 @@ const STR: Record<
     proofNote: string;
     cancel: string;
     submit: string;
+    detailTitle: string;
+    statusLabel: string;
+    requestedAtLabel: string;
+    decidedByLabel: string;
+    proofLabel: string;
+    noProof: string;
+    openInNewTab: string;
   }
 > = {
   id: {
@@ -139,6 +146,13 @@ const STR: Record<
     proofNote: "Maks. 5 MB. Tidak wajib.",
     cancel: "Batal",
     submit: "Ajukan",
+    detailTitle: "Detail Pengajuan",
+    statusLabel: "Status",
+    requestedAtLabel: "Diajukan",
+    decidedByLabel: "Diputuskan oleh",
+    proofLabel: "Bukti lampiran",
+    noProof: "Tidak ada lampiran.",
+    openInNewTab: "Buka di tab baru",
   },
   en: {
     decideFailed: "Failed to process. You can only approve employees in your own division.",
@@ -191,6 +205,13 @@ const STR: Record<
     proofNote: "Max 5 MB. Optional.",
     cancel: "Cancel",
     submit: "Submit",
+    detailTitle: "Request Details",
+    statusLabel: "Status",
+    requestedAtLabel: "Submitted",
+    decidedByLabel: "Decided by",
+    proofLabel: "Attached proof",
+    noProof: "No attachment.",
+    openInNewTab: "Open in new tab",
   },
 };
 
@@ -223,6 +244,7 @@ export function LeaveView({
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
   const [decidingId, setDecidingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<LeaveRequest | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
@@ -308,7 +330,11 @@ export function LeaveView({
           {list.map((r) => {
             const emp = empMap.get(r.employeeId);
             return (
-              <div key={r.id} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+              <div
+                key={r.id}
+                onClick={() => setSelected(r)}
+                className="card flex cursor-pointer flex-col gap-3 p-4 transition-colors hover:bg-cream/60 sm:flex-row sm:items-center"
+              >
                 {showEmployee && (
                   <div className="flex items-center gap-3 sm:w-52">
                     <Avatar name={emp?.name ?? "?"} size="sm" />
@@ -332,17 +358,12 @@ export function LeaveView({
                   </div>
                   <p className="mt-1 line-clamp-1 text-sm text-faint">{r.reason}</p>
                   {r.proofPath && (
-                    <a
-                      href={`/api/leave/proof?path=${encodeURIComponent(r.proofPath)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-sky hover:underline"
-                    >
+                    <span className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-sky">
                       <Paperclip className="h-3.5 w-3.5" /> {t.viewProof}
-                    </a>
+                    </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 sm:w-auto">
+                <div className="flex items-center gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
                   {r.status === "pending" && canDecide(r) ? (
                     <>
                       <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
@@ -373,6 +394,138 @@ export function LeaveView({
           onCancel={() => setAdding(false)}
         />
       </Sheet>
+
+      <Sheet
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title={t.detailTitle}
+        description={selected ? empMap.get(selected.employeeId)?.name : ""}
+        width="lg"
+      >
+        {selected && (() => {
+          const live = list.find((r) => r.id === selected.id) ?? selected;
+          return (
+            <LeaveDetail
+              request={live}
+              emp={empMap.get(live.employeeId)}
+              t={t}
+              locale={locale}
+              canDecide={canDecide(live)}
+              deciding={decidingId === live.id}
+              onDecide={(status) => decide(live.id, status)}
+            />
+          );
+        })()}
+      </Sheet>
+    </div>
+  );
+}
+
+/** Detail satu pengajuan + pratinjau bukti (gambar/PDF) tanpa unduh. */
+function LeaveDetail({
+  request: r,
+  emp,
+  t,
+  locale,
+  canDecide,
+  deciding,
+  onDecide,
+}: {
+  request: LeaveRequest;
+  emp?: Pick<Employee, "id" | "name" | "team" | "position">;
+  t: (typeof STR)["id"];
+  locale: Locale;
+  canDecide: boolean;
+  deciding: boolean;
+  onDecide: (status: RequestStatus) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <Avatar name={emp?.name ?? "?"} />
+        <div className="min-w-0">
+          <p className="font-semibold text-ink">{emp?.name ?? "?"}</p>
+          <p className="truncate text-xs text-faint">
+            {emp && <span className={TEAM_META[emp.team].tone}>{TEAM_META[emp.team].label}</span>}
+            {emp?.position ? ` · ${emp.position}` : ""}
+          </p>
+        </div>
+        <span className="ml-auto"><RequestBadge status={r.status} /></span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Info label={t.type}>
+          <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : "sky"}>
+            {LEAVE_LABEL[locale][r.type]}
+          </Badge>
+        </Info>
+        <Info label={t.days(r.days)}>
+          <span className="text-sm font-medium text-ink">
+            {formatDate(r.startDate, "short", locale)} – {formatDate(r.endDate, "short", locale)}
+          </span>
+        </Info>
+        <Info label={t.requestedAtLabel}>
+          <span className="text-sm text-ink">{formatDate(r.requestedAt, "short", locale)} · {formatTime(r.requestedAt)}</span>
+        </Info>
+        {r.approver && (
+          <Info label={t.decidedByLabel}>
+            <span className="text-sm text-ink">{r.approver}</span>
+          </Info>
+        )}
+      </div>
+
+      <Info label={t.reason}>
+        <p className="whitespace-pre-wrap text-sm text-ink">{r.reason || "—"}</p>
+      </Info>
+
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{t.proofLabel}</p>
+        {r.proofPath ? <ProofPreview path={r.proofPath} t={t} /> : <p className="text-sm text-faint">{t.noProof}</p>}
+      </div>
+
+      {r.status === "pending" && canDecide && (
+        <div className="flex gap-2 border-t border-line pt-4">
+          <Button className="flex-1" disabled={deciding} onClick={() => onDecide("approved")}>
+            {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t.approve}
+          </Button>
+          <Button variant="outline" className="flex-1" disabled={deciding} onClick={() => onDecide("rejected")}>
+            <X className="h-4 w-4" /> {t.reject}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Info({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-line bg-sand/40 px-3 py-2">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-faint">{label}</p>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+/** Pratinjau bukti inline: gambar via <img>, PDF via <iframe> (endpoint redirect ke signed URL). */
+function ProofPreview({ path, t }: { path: string; t: (typeof STR)["id"] }) {
+  const url = `/api/leave/proof?path=${encodeURIComponent(path)}`;
+  const isPdf = path.toLowerCase().endsWith(".pdf");
+  return (
+    <div className="overflow-hidden rounded-2xl border border-line bg-cream/40">
+      {isPdf ? (
+        <iframe src={url} title={t.proofLabel} className="h-[58vh] w-full border-0 bg-white" />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={t.proofLabel} className="max-h-[58vh] w-full bg-white object-contain" />
+      )}
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center justify-center gap-1.5 border-t border-line py-2 text-xs font-medium text-sky hover:bg-sand"
+      >
+        {isPdf ? <FileText className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />} {t.openInNewTab}
+      </a>
     </div>
   );
 }
