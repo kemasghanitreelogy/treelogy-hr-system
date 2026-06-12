@@ -37,7 +37,6 @@ const STR: Record<
     jp1: string;
     bpjsEmployeeTotal: string;
     taxDeductions: string;
-    pph21: (ptkp: string) => string;
     employerPaid: string;
     bpjsKes4: string;
     jht37: string;
@@ -73,7 +72,6 @@ const STR: Record<
     jp1: "Jaminan Pensiun (1%)",
     bpjsEmployeeTotal: "Total BPJS karyawan",
     taxDeductions: "Potongan — Pajak",
-    pph21: (ptkp) => `PPh 21 (TER ${ptkp})`,
     employerPaid: "Ditanggung perusahaan (info)",
     bpjsKes4: "BPJS Kesehatan (4%)",
     jht37: "JHT (3.7%)",
@@ -108,7 +106,6 @@ const STR: Record<
     jp1: "Pension (JP) (1%)",
     bpjsEmployeeTotal: "Total employee BPJS",
     taxDeductions: "Deductions — Tax",
-    pph21: (ptkp) => `PPh 21 (TER ${ptkp})`,
     employerPaid: "Employer-paid (info)",
     bpjsKes4: "BPJS Kesehatan (4%)",
     jht37: "JHT (3.7%)",

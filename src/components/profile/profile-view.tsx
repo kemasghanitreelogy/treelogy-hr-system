@@ -190,10 +190,28 @@ export function ProfileView({
             <Info label="Telepon" value={emp.phone} />
           </Section>
 
+          <Section title="Identitas (KTP)" icon={UserRound}>
+            <Info label="NIK KTP" value={emp.ktpNik || "—"} />
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-sm text-muted">Foto KTP</span>
+              {emp.ktpPhotoPath ? (
+                <a
+                  href={`/api/ktp/photo?path=${encodeURIComponent(emp.ktpPhotoPath)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-sky hover:underline"
+                >
+                  Lihat foto
+                </a>
+              ) : (
+                <span className="text-sm text-faint">—</span>
+              )}
+            </div>
+          </Section>
+
           <Section title="Kompensasi" icon={Banknote}>
             <Info label="Gaji pokok" value={rupiah(emp.baseSalary)} />
             <Info label="Tunjangan" value={rupiah(emp.allowance)} />
-            <Info label="PTKP" value={emp.ptkp} />
             <Info label="NPWP" value={emp.npwp} />
             <Info label="BPJS Kesehatan" value={emp.bpjsKes ? "Aktif" : "Tidak"} />
             <Info label="BPJS Ketenagakerjaan" value={emp.bpjsTk ? "Aktif" : "Tidak"} />

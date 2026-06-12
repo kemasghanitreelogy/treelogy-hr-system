@@ -7,6 +7,34 @@ export const runtime = "nodejs";
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TYPES = ["probation", "pkwt", "pkwtt", "magang", "harian"];
 
+// --- Contract document upload (private `contract-docs` bucket; PDF or image) ---
+const DOC_EXT: Record<string, string> = {
+  "application/pdf": "pdf",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+const DOC_MAX_BYTES = 10 * 1024 * 1024;
+type SbClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+
+function parseDataUrl(dataUrl?: string): { mime: string; buffer: Buffer } | null {
+  if (!dataUrl) return null;
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!m) return null;
+  return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
+}
+
+/** Upload a signed contract to `contract-docs/<employeeId>/...`. Returns path or an error response. */
+async function uploadDoc(supabase: SbClient, employeeId: string, dataUrl: string): Promise<string | NextResponse> {
+  const file = parseDataUrl(dataUrl);
+  if (!file || !DOC_EXT[file.mime]) return NextResponse.json({ error: "invalid_doc_type" }, { status: 400 });
+  if (file.buffer.length > DOC_MAX_BYTES) return NextResponse.json({ error: "doc_too_large" }, { status: 400 });
+  const path = `${employeeId}/${crypto.randomUUID()}.${DOC_EXT[file.mime]}`;
+  const { error } = await supabase.storage.from("contract-docs").upload(path, file.buffer, { contentType: file.mime, upsert: false });
+  if (error) return NextResponse.json({ error: "doc_upload_failed" }, { status: 403 });
+  return path;
+}
+
 async function auth() {
   const supabase = await createClient();
   if (!supabase) return { error: NextResponse.json({ error: "unavailable" }, { status: 503 }) };
@@ -18,7 +46,7 @@ async function auth() {
 }
 
 export async function POST(req: Request) {
-  let body: { employeeId?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string };
+  let body: { employeeId?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string; docFile?: string };
   try {
     body = await req.json();
   } catch {
@@ -32,6 +60,13 @@ export async function POST(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
+  let docPath: string | null = null;
+  if (body.docFile) {
+    const path = await uploadDoc(supabase!, body.employeeId, body.docFile);
+    if (path instanceof NextResponse) return path;
+    docPath = path;
+  }
+
   const { data, error } = await supabase!
     .from("employee_contracts")
     .insert({
@@ -41,6 +76,7 @@ export async function POST(req: Request) {
       end_date: body.endDate || null,
       status: body.status === "ended" ? "ended" : "active",
       note: body.note?.trim() || null,
+      doc_path: docPath,
     })
     .select("*")
     .single();

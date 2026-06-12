@@ -36,6 +36,29 @@ async function ensureAccount(employeeId: string, email: string | null | undefine
   return !pErr;
 }
 
+// --- KTP photo upload (private bucket; HR + the employee can read via RLS) ---
+const KTP_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const KTP_MAX_BYTES = 5 * 1024 * 1024;
+type SbClient = NonNullable<Awaited<ReturnType<typeof createClient>>>;
+
+function parseDataUrl(dataUrl?: string): { mime: string; buffer: Buffer } | null {
+  if (!dataUrl) return null;
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!m) return null;
+  return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
+}
+
+/** Upload a KTP scan to `ktp-photos/<employeeId>/...`. Returns the path or an error response. */
+async function uploadKtpPhoto(supabase: SbClient, employeeId: string, dataUrl: string): Promise<string | NextResponse> {
+  const file = parseDataUrl(dataUrl);
+  if (!file || !KTP_EXT[file.mime]) return NextResponse.json({ error: "invalid_ktp_type" }, { status: 400 });
+  if (file.buffer.length > KTP_MAX_BYTES) return NextResponse.json({ error: "ktp_too_large" }, { status: 400 });
+  const path = `${employeeId}/${crypto.randomUUID()}.${KTP_EXT[file.mime]}`;
+  const { error } = await supabase.storage.from("ktp-photos").upload(path, file.buffer, { contentType: file.mime, upsert: false });
+  if (error) return NextResponse.json({ error: "ktp_upload_failed" }, { status: 403 });
+  return path;
+}
+
 const TEAM_PREFIX: Record<Team, string> = { factory: "01", farm: "02", office: "04" };
 const LOCATION: Record<Team, Employee["location"]> = {
   factory: "Factory · Bali",
@@ -54,8 +77,10 @@ interface Payload {
   phone?: string;
   baseSalary?: number;
   allowance?: number;
-  ptkp?: string;
   religion?: string | null;
+  ktpNik?: string | null;
+  /** KTP scan as a `data:<mime>;base64,...` URL; uploaded to the private bucket. */
+  ktpPhotoFile?: string;
   npwp?: string | null;
   bankName?: string;
   bankAccount?: string;
@@ -78,8 +103,8 @@ function toRow(p: Payload): Record<string, unknown> {
   if (p.phone !== undefined) row.phone = p.phone || null;
   if (p.baseSalary !== undefined) row.base_salary = Number(p.baseSalary) || 0;
   if (p.allowance !== undefined) row.allowance = Number(p.allowance) || 0;
-  if (p.ptkp !== undefined) row.ptkp = p.ptkp;
   if (p.religion !== undefined) row.religion = p.religion || null;
+  if (p.ktpNik !== undefined) row.ktp_nik = p.ktpNik || null;
   if (p.npwp !== undefined) row.npwp = p.npwp || null;
   if (p.bankName !== undefined) row.bank_name = p.bankName || null;
   if (p.bankAccount !== undefined) row.bank_account = p.bankAccount || null;
@@ -141,7 +166,16 @@ export async function POST(req: Request) {
   if (error || !data) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
-  const employee = mapEmployee(data);
+  let saved = data;
+  // KTP scan needs the new id for its storage path, so upload after the insert.
+  if (body.ktpPhotoFile) {
+    const path = await uploadKtpPhoto(supabase!, String(data.id), body.ktpPhotoFile);
+    if (path instanceof NextResponse) return path;
+    const { data: withPhoto } = await supabase!
+      .from("employees").update({ ktp_photo_path: path }).eq("id", data.id).select("*").maybeSingle();
+    if (withPhoto) saved = withPhoto;
+  }
+  const employee = mapEmployee(saved);
   // Akun login otomatis (password awal = email).
   const accountCreated = await ensureAccount(employee.id, employee.email);
   return NextResponse.json({ ok: true, employee, accountCreated });
@@ -161,6 +195,11 @@ export async function PATCH(req: Request) {
   if (authErr) return authErr;
 
   const row = toRow(body);
+  if (body.ktpPhotoFile) {
+    const path = await uploadKtpPhoto(supabase!, body.id, body.ktpPhotoFile);
+    if (path instanceof NextResponse) return path;
+    row.ktp_photo_path = path;
+  }
   if (Object.keys(row).length === 0) {
     return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
   }

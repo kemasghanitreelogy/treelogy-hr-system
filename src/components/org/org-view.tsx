@@ -239,7 +239,6 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       joinDate: "",
       baseSalary: 0,
       allowance: 0,
-      ptkp: "TK/0",
       npwp: null,
       bpjsKes: true,
       bpjsTk: true,

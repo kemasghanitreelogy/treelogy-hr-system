@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileSignature, Loader2, Plus, Trash2 } from "lucide-react";
+import { FileSignature, FileText, Loader2, Plus, Trash2, Upload } from "lucide-react";
 import type { EmployeeContract } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
@@ -23,6 +23,7 @@ const TYPE_LABEL: Record<Locale, Record<CType, string>> = {
 const STR: Record<Locale, {
   title: string; empty: string; add: string; ongoing: string; active: string; ended: string;
   typeLabel: string; startLabel: string; endLabel: string; endHint: string; noteLabel: string; statusLabel: string;
+  docLabel: string; docHint: string; viewDoc: string;
   cancel: string; save: string; sheetTitle: string; saved: string; deleted: string; saveFailed: string;
   deleteFailed: string; connection: string;
 }> = {
@@ -30,6 +31,7 @@ const STR: Record<Locale, {
     title: "Riwayat Kontrak", empty: "Belum ada kontrak.", add: "Tambah kontrak", ongoing: "Berlangsung",
     active: "Aktif", ended: "Berakhir", typeLabel: "Jenis kontrak", startLabel: "Mulai", endLabel: "Berakhir",
     endHint: "Kosongkan jika berkelanjutan (tetap).", noteLabel: "Catatan", statusLabel: "Status",
+    docLabel: "Dokumen kontrak", docHint: "PDF/gambar, maks 10MB", viewDoc: "Lihat dokumen",
     cancel: "Batal", save: "Simpan", sheetTitle: "Tambah Kontrak", saved: "Kontrak ditambahkan ✓", deleted: "Kontrak dihapus ✓",
     saveFailed: "Gagal menyimpan. Pastikan Anda HR/admin.", deleteFailed: "Gagal menghapus.", connection: "Koneksi bermasalah. Coba lagi.",
   },
@@ -37,6 +39,7 @@ const STR: Record<Locale, {
     title: "Contract History", empty: "No contracts yet.", add: "Add contract", ongoing: "Ongoing",
     active: "Active", ended: "Ended", typeLabel: "Contract type", startLabel: "Start", endLabel: "End",
     endHint: "Leave empty if ongoing (permanent).", noteLabel: "Note", statusLabel: "Status",
+    docLabel: "Contract document", docHint: "PDF/image, max 10MB", viewDoc: "View document",
     cancel: "Cancel", save: "Save", sheetTitle: "Add Contract", saved: "Contract added ✓", deleted: "Contract deleted ✓",
     saveFailed: "Failed to save. Make sure you are HR/admin.", deleteFailed: "Failed to delete.", connection: "Connection problem. Try again.",
   },
@@ -90,6 +93,16 @@ export function ContractsCard({ employeeId, contracts, canManage }: { employeeId
                   {formatDate(c.startDate, "short", locale)} – {c.endDate ? formatDate(c.endDate, "short", locale) : t.ongoing}
                 </p>
                 {c.note && <p className="mt-0.5 text-xs text-faint">{c.note}</p>}
+                {c.docPath && (
+                  <a
+                    href={`/api/contracts/doc?path=${encodeURIComponent(c.docPath)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-sky hover:underline"
+                  >
+                    <FileText className="h-3 w-3" /> {t.viewDoc}
+                  </a>
+                )}
               </div>
               {canManage && (
                 <button onClick={() => remove(c.id)} className="shrink-0 cursor-pointer rounded-lg p-1 text-faint transition-colors hover:text-[#8c3c1f]" aria-label="Hapus">
@@ -118,6 +131,8 @@ function ContractForm({ employeeId, onSaved, onCancel }: { employeeId: string; o
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ type: "pkwt" as CType, startDate: "", endDate: "", status: "active" as EmployeeContract["status"], note: "" });
+  const [docFile, setDocFile] = useState<string | null>(null);
+  const [docName, setDocName] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -126,7 +141,7 @@ function ContractForm({ employeeId, onSaved, onCancel }: { employeeId: string; o
     try {
       const res = await fetch("/api/contracts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ employeeId, type: form.type, startDate: form.startDate, endDate: form.endDate || null, status: form.status, note: form.note }),
+        body: JSON.stringify({ employeeId, type: form.type, startDate: form.startDate, endDate: form.endDate || null, status: form.status, note: form.note, ...(docFile ? { docFile } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.contract) { toast.error(t.saveFailed); return; }
@@ -152,6 +167,24 @@ function ContractForm({ employeeId, onSaved, onCancel }: { employeeId: string; o
         </Select>
       </Field>
       <Field label={t.noteLabel}><Textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} /></Field>
+      <Field label={t.docLabel} hint={t.docHint}>
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-cream/50 px-3 py-2 text-sm text-ink transition-colors hover:bg-cream">
+          <Upload className="h-4 w-4 text-faint" />
+          <span className="truncate max-w-[14rem]">{docName || t.docLabel}</span>
+          <input
+            type="file"
+            accept="application/pdf,image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => { setDocFile(String(reader.result)); setDocName(file.name); };
+              reader.readAsDataURL(file);
+            }}
+          />
+        </label>
+      </Field>
       <div className="flex gap-2 pt-2">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
         <Button type="submit" className="flex-1" disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />}{t.save}</Button>

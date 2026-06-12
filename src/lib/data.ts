@@ -90,8 +90,9 @@ export const mapEmployee = (r: Row): Employee => ({
   endDate: (r.end_date as string) ?? null,
   baseSalary: n(r.base_salary),
   allowance: n(r.allowance),
-  ptkp: r.ptkp as Employee["ptkp"],
   religion: (r.religion as Employee["religion"]) ?? null,
+  ktpNik: (r.ktp_nik as string) ?? null,
+  ktpPhotoPath: (r.ktp_photo_path as string) ?? null,
   npwp: (r.npwp as string) ?? null,
   bpjsKes: Boolean(r.bpjs_kes),
   bpjsTk: Boolean(r.bpjs_tk),
@@ -121,6 +122,7 @@ export const mapContract = (r: Row): EmployeeContract => ({
   endDate: (r.end_date as string) ?? null,
   status: r.status as EmployeeContract["status"],
   note: (r.note as string) ?? null,
+  docPath: (r.doc_path as string) ?? null,
 });
 
 export const mapScheduleTemplate = (r: Row): ScheduleTemplate => ({

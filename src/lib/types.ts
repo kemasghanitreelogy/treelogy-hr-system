@@ -1,7 +1,6 @@
 export type Team = "factory" | "farm" | "office";
 export type EmployeeStatus = "active" | "inactive";
 export type Role = "admin" | "hr" | "manager" | "employee";
-export type PTKP = "TK/0" | "TK/1" | "TK/2" | "TK/3" | "K/0" | "K/1" | "K/2" | "K/3";
 export type Religion = "islam" | "kristen" | "katolik" | "hindu" | "buddha" | "konghucu";
 
 export interface Employee {
@@ -17,8 +16,9 @@ export interface Employee {
   endDate?: string | null;
   baseSalary: number; // monthly gross base
   allowance: number; // fixed monthly allowances
-  ptkp: PTKP;
   religion?: Religion | null;
+  ktpNik?: string | null; // 16-digit national ID (KTP), distinct from `nik` (employee number)
+  ktpPhotoPath?: string | null; // KTP scan in the private `ktp-photos` bucket
   npwp?: string | null;
   bpjsKes: boolean;
   bpjsTk: boolean;
@@ -53,6 +53,7 @@ export interface EmployeeContract {
   endDate?: string | null; // null = berkelanjutan
   status: "active" | "ended";
   note?: string | null;
+  docPath?: string | null; // signed contract document in the private `contract-docs` bucket
 }
 
 /** Pola jadwal kerja yang bisa diterapkan ke banyak karyawan sekaligus. */

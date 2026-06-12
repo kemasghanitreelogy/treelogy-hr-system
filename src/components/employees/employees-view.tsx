@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, UserX, Wallet } from "lucide-react";
+import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Upload, UserX, Wallet } from "lucide-react";
 import type { Employee, EmployeeContract, Religion, Team } from "@/lib/types";
 import { ContractsCard } from "./contracts-card";
 import type { Locale } from "@/lib/i18n";
@@ -13,7 +13,6 @@ const RELIGION_LABEL: Record<Locale, Record<Religion, string>> = {
 };
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
-import { PTKP_OPTIONS } from "@/lib/payroll";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, EmployeeStatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,9 +73,15 @@ const ID_STR = {
   compensationTax: "Kompensasi & Pajak",
   baseSalary: "Gaji pokok",
   allowance: "Tunjangan",
-  ptkpStatus: "Status PTKP",
   religion: "Agama",
   npwp: "NPWP",
+  identity: "Identitas (KTP)",
+  ktpNik: "NIK KTP",
+  ktpNikPlaceholder: "16 digit",
+  ktpPhoto: "Foto KTP",
+  ktpPhotoHint: "JPG/PNG, maks 5MB",
+  viewKtp: "Lihat foto",
+  changeFile: "Ganti file",
   bpjsKes: "BPJS Kesehatan",
   bpjsTk: "BPJS Ketenagakerjaan",
   activeLabel: "Aktif",
@@ -111,7 +116,6 @@ const ID_STR = {
   baseSalaryRp: "Gaji pokok (Rp)",
   allowanceRp: "Tunjangan (Rp)",
   clockInHint: "Patokan telat (WITA)",
-  ptkpHint: "Menentukan kategori tarif PPh 21 (TER)",
   bank: "Bank",
   bankAccount: "No. rekening",
   cancel: "Batal",
@@ -163,9 +167,15 @@ const STR: Record<Locale, typeof ID_STR> = {
     compensationTax: "Compensation & Tax",
     baseSalary: "Base salary",
     allowance: "Allowance",
-    ptkpStatus: "PTKP status",
     religion: "Religion",
     npwp: "NPWP",
+    identity: "Identity (KTP)",
+    ktpNik: "KTP NIK",
+    ktpNikPlaceholder: "16 digits",
+    ktpPhoto: "KTP photo",
+    ktpPhotoHint: "JPG/PNG, max 5MB",
+    viewKtp: "View photo",
+    changeFile: "Change file",
     bpjsKes: "BPJS Kesehatan",
     bpjsTk: "BPJS Ketenagakerjaan",
     activeLabel: "Active",
@@ -196,7 +206,6 @@ const STR: Record<Locale, typeof ID_STR> = {
     baseSalaryRp: "Base salary (Rp)",
     allowanceRp: "Allowance (Rp)",
     clockInHint: "Late benchmark (WITA)",
-    ptkpHint: "Determines the PPh 21 (TER) rate category",
     bank: "Bank",
     bankAccount: "Account number",
     cancel: "Cancel",
@@ -578,6 +587,34 @@ function EmployeeDetail({
 
       <ContractsCard employeeId={emp.id} contracts={contracts} canManage={canManage} />
 
+      {canManage && (
+        <div className="rounded-2xl border border-line bg-panel p-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <ShieldCheck className="h-4 w-4 text-forest-600" /> {t.identity}
+          </h3>
+          <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
+            <Stat label={t.ktpNik} value={emp.ktpNik || "—"} />
+            <div>
+              <dt className="text-faint">{t.ktpPhoto}</dt>
+              <dd className="mt-0.5">
+                {emp.ktpPhotoPath ? (
+                  <a
+                    href={`/api/ktp/photo?path=${encodeURIComponent(emp.ktpPhotoPath)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-sky hover:underline"
+                  >
+                    {t.viewKtp}
+                  </a>
+                ) : (
+                  <span className="text-ink">—</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-line bg-panel p-4">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
           <Wallet className="h-4 w-4 text-forest-600" /> {t.compensationTax}
@@ -585,7 +622,6 @@ function EmployeeDetail({
         <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
           <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
           <Stat label={t.allowance} value={rupiah(emp.allowance)} />
-          <Stat label={t.ptkpStatus} value={emp.ptkp} />
           <Stat label={t.religion} value={emp.religion ? RELIGION_LABEL[locale][emp.religion] : "—"} />
           <Stat label={t.npwp} value={emp.npwp ?? "—"} />
           <Stat label={t.bpjsKes} value={emp.bpjsKes ? t.activeLabel : "—"} />
@@ -800,13 +836,16 @@ function EmployeeForm({
     phone: initial?.phone ?? "",
     baseSalary: String(initial?.baseSalary ?? "3500000"),
     allowance: String(initial?.allowance ?? "500000"),
-    ptkp: initial?.ptkp ?? "TK/0",
     religion: (initial?.religion ?? "") as Religion | "",
+    ktpNik: initial?.ktpNik ?? "",
     bankName: initial?.bankName ?? "BCA",
     bankAccount: initial?.bankAccount ?? "",
     workStart: initial?.workStart ?? "08:00",
     workEnd: initial?.workEnd ?? "17:00",
   });
+  // KTP scan as a data URL, only set when the user picks a new file.
+  const [ktpPhotoFile, setKtpPhotoFile] = useState<string | null>(null);
+  const [ktpFileName, setKtpFileName] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const locale = useLocale();
@@ -829,8 +868,9 @@ function EmployeeForm({
         phone: form.phone,
         baseSalary: Number(form.baseSalary) || 0,
         allowance: Number(form.allowance) || 0,
-        ptkp: form.ptkp,
         religion: form.religion || null,
+        ktpNik: form.ktpNik || null,
+        ...(ktpPhotoFile ? { ktpPhotoFile } : {}),
         bankName: form.bankName,
         bankAccount: form.bankAccount,
         workStart: form.workStart,
@@ -897,13 +937,6 @@ function EmployeeForm({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t.ptkpStatus} hint={t.ptkpHint}>
-          <Select value={form.ptkp} onChange={(e) => set("ptkp", e.target.value as Employee["ptkp"])}>
-            {PTKP_OPTIONS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </Select>
-        </Field>
         <Field label={t.religion}>
           <Select value={form.religion} onChange={(e) => set("religion", e.target.value as Religion)}>
             <option value="">—</option>
@@ -912,7 +945,48 @@ function EmployeeForm({
             ))}
           </Select>
         </Field>
+        <Field label={t.ktpNik}>
+          <Input
+            value={form.ktpNik}
+            onChange={(e) => set("ktpNik", e.target.value.replace(/\D/g, "").slice(0, 16))}
+            inputMode="numeric"
+            placeholder={t.ktpNikPlaceholder}
+          />
+        </Field>
       </div>
+      <Field label={t.ktpPhoto} hint={t.ktpPhotoHint}>
+        <div className="flex items-center gap-3">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-cream/50 px-3 py-2 text-sm text-ink transition-colors hover:bg-cream">
+            <Upload className="h-4 w-4 text-faint" />
+            <span className="truncate max-w-[12rem]">{ktpFileName || (initial?.ktpPhotoPath ? t.changeFile : t.ktpPhoto)}</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  setKtpPhotoFile(String(reader.result));
+                  setKtpFileName(file.name);
+                };
+                reader.readAsDataURL(file);
+              }}
+            />
+          </label>
+          {initial?.ktpPhotoPath && !ktpPhotoFile && (
+            <a
+              href={`/api/ktp/photo?path=${encodeURIComponent(initial.ktpPhotoPath)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-sky hover:underline"
+            >
+              {t.viewKtp}
+            </a>
+          )}
+        </div>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.bank}>
           <Select value={form.bankName} onChange={(e) => set("bankName", e.target.value)}>
