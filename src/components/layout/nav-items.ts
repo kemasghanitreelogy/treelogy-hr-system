@@ -77,7 +77,9 @@ function visibleFor(permissions: string[]): Set<string> {
   const allowed = new Set<string>();
   for (const href of Object.keys(ITEMS)) {
     const item = ITEMS[href];
-    const ok = href === "/access" ? set.has("access.roles") || set.has("access.users") : set.has(item.perm);
+    // Peran & Akses: khusus admin (access.roles). HR yang hanya punya
+    // access.users tidak melihat menu ini.
+    const ok = href === "/access" ? set.has("access.roles") : set.has(item.perm);
     if (ok) allowed.add(href);
   }
   return allowed;

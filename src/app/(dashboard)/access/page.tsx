@@ -1,9 +1,15 @@
+import { notFound } from "next/navigation";
 import { AccessView } from "@/components/access/access-view";
 import { getEmployees, getRoles, getSystemUsers } from "@/lib/data";
+import { can, getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Peran & Akses — Treelogy HR" };
 
 export default async function AccessPage() {
+  // Khusus admin (access.roles) — cegah akses lewat URL untuk peran lain.
+  const user = await getSessionUser();
+  if (!can(user, "access.roles")) notFound();
+
   const [employeesAll, users] = await Promise.all([getEmployees(), getSystemUsers()]);
   const employees = employeesAll.map((e) => ({
     id: e.id,
