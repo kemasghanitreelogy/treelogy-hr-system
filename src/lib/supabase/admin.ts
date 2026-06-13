@@ -17,7 +17,15 @@ export function createAdminClient(): SupabaseClient | null {
   });
 }
 
-/** Find an auth user by email (case-insensitive). Returns id + email, or null. */
+/**
+ * Find an auth user by email (case-insensitive). Returns id + email, or null
+ * when the user genuinely does not exist.
+ *
+ * THROWS on a real lookup failure (e.g. GoTrue's "Database error finding users",
+ * which happens when an auth.users row has NULL token columns). Callers MUST
+ * distinguish this from `null` — treating a lookup error as "not found" silently
+ * hid a 2-day OTP outage. See request/route.ts for the surfacing pattern.
+ */
 export async function findUserByEmail(
   admin: SupabaseClient,
   email: string,
@@ -26,7 +34,8 @@ export async function findUserByEmail(
   // Paginate through users; HR org is small, but stay correct for growth.
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
-    if (error || !data?.users?.length) return null;
+    if (error) throw new Error(`listUsers failed: ${error.message}`);
+    if (!data?.users?.length) return null;
     const match = data.users.find((u) => (u.email ?? "").toLowerCase() === target);
     if (match) return { id: match.id, email: match.email ?? target };
     if (data.users.length < 200) return null; // last page

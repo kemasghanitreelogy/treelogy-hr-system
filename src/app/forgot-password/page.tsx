@@ -63,12 +63,17 @@ export default function ForgotPasswordPage() {
     }
     setBusy(true);
     try {
-      const { ok, status } = await postJson("/api/auth/forgot/request", { email: target });
+      const { ok, data } = await postJson("/api/auth/forgot/request", { email: target });
       if (!ok) {
+        const reason = (data as { error?: string })?.error;
         setError(
-          status === 503
+          reason === "not_configured"
             ? "Layanan email belum dikonfigurasi. Hubungi admin."
-            : "Gagal mengirim kode. Coba lagi.",
+            : reason === "send_failed"
+              ? "Email gagal terkirim. Coba lagi atau hubungi admin."
+              : reason === "lookup_unavailable"
+                ? "Layanan sedang bermasalah. Coba lagi sebentar lagi."
+                : "Gagal mengirim kode. Coba lagi.",
         );
         return;
       }

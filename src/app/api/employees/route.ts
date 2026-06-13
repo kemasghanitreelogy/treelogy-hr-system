@@ -23,7 +23,17 @@ async function ensureAccount(employeeId: string, email: string | null | undefine
   });
   userId = created?.user?.id;
   if (error || !userId) {
-    const existing = await findUserByEmail(admin, mail);
+    // createUser failed (likely the email already exists) — fall back to a
+    // lookup. findUserByEmail can throw on a real lookup error; account
+    // creation is best-effort, so treat that as "couldn't link" rather than
+    // failing the whole employee create.
+    let existing: { id: string; email: string } | null = null;
+    try {
+      existing = await findUserByEmail(admin, mail);
+    } catch (err) {
+      console.error("[employees/ensureAccount] lookup failed:", err);
+      return false;
+    }
     if (!existing) return false;
     userId = existing.id;
   }
