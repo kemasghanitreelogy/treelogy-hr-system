@@ -12,6 +12,10 @@ const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function witaDow(when: Date): number {
   return WD.indexOf(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Makassar", weekday: "short" }).format(when));
 }
+/** Tanggal (YYYY-MM-DD) menurut WITA — dipakai untuk mencocokkan hari libur. */
+function witaDateStr(when: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Makassar", year: "numeric", month: "2-digit", day: "2-digit" }).format(when);
+}
 /** HH:MM menurut WITA. */
 function witaHHMM(when: Date): string {
   return new Intl.DateTimeFormat("en-GB", {
@@ -83,7 +87,7 @@ export async function POST(req: Request) {
   // Hari libur = bukan hari kerja menurut jadwal, ATAU hari libur (nasional /
   // keagamaan sesuai agama karyawan).
   const workDays = Array.isArray(emp?.work_days) ? emp!.work_days!.map(Number) : [1, 2, 3, 4, 5];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = witaDateStr(new Date());
   let isOffDay = !workDays.includes(witaDow(new Date()));
   if (!isOffDay) {
     const { data: hol } = await supabase.from("holidays").select("type, religion").eq("date", todayStr);

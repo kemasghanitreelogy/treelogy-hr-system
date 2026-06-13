@@ -8,6 +8,7 @@ import {
   getAttendanceSettings,
   getClockApprovals,
   getEmployees,
+  getHolidayToday,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
@@ -43,6 +44,8 @@ export default async function AttendancePage() {
   // Pick the geofence of the division the current user is registered in.
   const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
   const myGeofence = settings.geofences[me?.team ?? "office"];
+  // Today's holiday that applies to this employee (drives the swap/overtime prompt).
+  const holidayToday = await getHolidayToday(me?.religion);
 
   // Karyawan (audience "self") sudah punya widget clock di Beranda — di sini
   // cukup riwayat saja, jangan dobel. HR/admin tetap dapat widget di halaman
@@ -74,6 +77,8 @@ export default async function AttendancePage() {
           requireLocation={settings.requireLocation}
           requirePhoto={settings.requirePhoto}
           workDays={me?.workDays}
+          holidayToday={holidayToday != null}
+          holidayName={holidayToday?.name ?? null}
         />
       </div>
       <div className="space-y-4">

@@ -274,6 +274,27 @@ export async function getHolidays(): Promise<Holiday[]> {
   return rows.slice().sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/**
+ * The holiday that applies to a given employee TODAY (WITA), or null. A public
+ * holiday applies to everyone; a religious holiday only to that religion. Drives
+ * the clock-in "this is a holiday → swap/overtime?" prompt even on a scheduled
+ * work day.
+ */
+export async function getHolidayToday(religion?: string | null): Promise<Holiday | null> {
+  const witaToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Makassar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const holidays = await getHolidays();
+  return (
+    holidays.find(
+      (h) => h.date === witaToday && (h.type === "public" || (h.type === "religious" && h.religion === religion)),
+    ) ?? null
+  );
+}
+
 /** Semua kontrak (HR via RLS) untuk ditampilkan per karyawan di halaman Karyawan. */
 export const getAllContracts = () => fetchTable("employee_contracts", mapContract, seedContracts);
 

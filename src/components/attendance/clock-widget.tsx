@@ -69,11 +69,14 @@ const STR: Record<
     cancel: string;
     sendToHr: string;
     offDayTitle: string;
+    holidayTitle: (name: string) => string;
     offDayBody: string;
     offDaySwapTitle: string;
     offDaySwapDesc: string;
     offDayOtTitle: string;
     offDayOtDesc: string;
+    offDayNoteLabel: string;
+    offDayNotePlaceholder: string;
     swapSent: string;
     overtimeSent: string;
     offDayPending: string;
@@ -118,11 +121,14 @@ const STR: Record<
     cancel: "Batal",
     sendToHr: "Kirim ke HR",
     offDayTitle: "Hari ini jadwal libur Anda 🎉",
+    holidayTitle: (name) => `Hari ini libur: ${name} 🎉`,
     offDayBody: "Anda tetap masuk di hari libur. Mau dihitung sebagai apa?",
     offDaySwapTitle: "Tukar hari libur",
     offDaySwapDesc: "Disimpan jadi tabungan libur — bisa dicairkan jadi libur lain (perlu konfirmasi HR).",
     offDayOtTitle: "Hitung sebagai lembur",
     offDayOtDesc: "Seluruh jam kerja hari ini dicatat sebagai lembur (dibuat saat Anda clock-out).",
+    offDayNoteLabel: "Catatan (opsional)",
+    offDayNotePlaceholder: "cth. lembur kejar deadline ekspor",
     swapSent: "Tercatat — diajukan jadi tabungan libur ✓",
     overtimeSent: "Tercatat sebagai lembur — selesaikan dengan clock-out ✓",
     offDayPending: "Kerja di hari libur diajukan — menunggu konfirmasi HR ✓",
@@ -166,11 +172,14 @@ const STR: Record<
     cancel: "Cancel",
     sendToHr: "Send to HR",
     offDayTitle: "Today is your day off 🎉",
+    holidayTitle: (name) => `Today is a holiday: ${name} 🎉`,
     offDayBody: "You're clocking in on a day off. How should it count?",
     offDaySwapTitle: "Swap a day off",
     offDaySwapDesc: "Saved as leave savings — withdraw it for another day off later (needs HR confirmation).",
     offDayOtTitle: "Count as overtime",
     offDayOtDesc: "Your whole day's work is recorded as overtime (created when you clock out).",
+    offDayNoteLabel: "Note (optional)",
+    offDayNotePlaceholder: "e.g. overtime to hit the export deadline",
     swapSent: "Recorded — submitted as leave savings ✓",
     overtimeSent: "Recorded as overtime — finish by clocking out ✓",
     offDayPending: "Holiday work submitted — awaiting HR confirmation ✓",
@@ -226,6 +235,8 @@ export function ClockWidget({
   requirePhoto,
   shiftLabel = "Office Reguler · 08:00–17:00",
   workDays = [1, 2, 3, 4, 5],
+  holidayToday = false,
+  holidayName = null,
 }: {
   geofence: TeamGeofence;
   requireLocation: boolean;
@@ -233,10 +244,15 @@ export function ClockWidget({
   shiftLabel?: string;
   /** Hari kerja karyawan (0=Min..6=Sab); clock-in di luar ini → modal pilihan. */
   workDays?: number[];
+  /** Hari ini libur nasional/keagamaan yang berlaku untuk karyawan ini →
+   *  walau terjadwal kerja, clock-in tetap memunculkan pilihan tukar/lembur. */
+  holidayToday?: boolean;
+  holidayName?: string | null;
 }) {
   const locale = useLocale();
   const t = STR[locale];
-  const offDayToday = !workDays.includes(witaDowNow());
+  // Libur = bukan hari kerja menurut jadwal, ATAU hari libur kalender yang cocok.
+  const offDayToday = holidayToday || !workDays.includes(witaDowNow());
   const [now, setNow] = useState<Date | null>(null);
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("out");
@@ -329,12 +345,12 @@ export function ClockWidget({
     else submit(geo, null, true);
   }
 
-  // Karyawan memilih perlakuan clock-in di hari libur.
-  function chooseOffDay(choice: "swap" | "overtime") {
+  // Karyawan memilih perlakuan clock-in di hari libur (+ catatan opsional).
+  function chooseOffDay(choice: "swap" | "overtime", note: string) {
     const p = oodPending;
     setOodPending(null);
     if (!p) return;
-    submit(p.coords, p.photo, false, choice);
+    submit(p.coords, p.photo, false, choice, note);
   }
 
   async function submit(
@@ -342,6 +358,7 @@ export function ClockWidget({
     photo: string | null,
     asOutOfRange = false,
     offDayChoice?: "swap" | "overtime",
+    offDayNote?: string,
   ) {
     // Clock-in di hari libur (dalam area) → minta pilihan dulu sebelum kirim.
     if (pendingDir === "in" && offDayToday && !asOutOfRange && !offDayChoice) {
@@ -360,7 +377,7 @@ export function ClockWidget({
           lng: coords?.lng,
           photo,
           confirmOutOfRange: asOutOfRange || undefined,
-          note: asOutOfRange ? oorNote.trim() || undefined : undefined,
+          note: asOutOfRange ? oorNote.trim() || undefined : offDayNote?.trim() || undefined,
           offDayChoice,
         }),
       });
@@ -551,7 +568,7 @@ export function ClockWidget({
         onCancel={() => setOorPrompt(null)}
       />
 
-      <OffDayModal open={oodPending != null} t={t} onChoose={chooseOffDay} onCancel={() => setOodPending(null)} />
+      <OffDayModal open={oodPending != null} t={t} holidayName={holidayName} onChoose={chooseOffDay} onCancel={() => setOodPending(null)} />
     </>
   );
 }
@@ -654,16 +671,23 @@ function OutOfRangeModal({
 function OffDayModal({
   open,
   t,
+  holidayName,
   onChoose,
   onCancel,
 }: {
   open: boolean;
   t: (typeof STR)["id"];
-  onChoose: (choice: "swap" | "overtime") => void;
+  holidayName?: string | null;
+  onChoose: (choice: "swap" | "overtime", note: string) => void;
   onCancel: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [note, setNote] = useState("");
   useEffect(() => setMounted(true), []);
+  // Reset the note whenever the sheet (re)opens.
+  useEffect(() => {
+    if (open) setNote("");
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
@@ -687,7 +711,7 @@ function OffDayModal({
             <PartyPopper className="h-6 w-6" />
           </span>
           <div className="min-w-0">
-            <h2 className="font-display text-lg font-bold">{t.offDayTitle}</h2>
+            <h2 className="font-display text-lg font-bold">{holidayName ? t.holidayTitle(holidayName) : t.offDayTitle}</h2>
             <p className="mt-0.5 text-sm text-white/90">{t.offDayBody}</p>
           </div>
         </div>
@@ -695,7 +719,7 @@ function OffDayModal({
         <div className="space-y-2.5 p-5">
           <button
             type="button"
-            onClick={() => onChoose("swap")}
+            onClick={() => onChoose("swap", note)}
             className="flex w-full items-center gap-3 rounded-2xl border border-forest-200 bg-[#e9f0d8] px-4 py-3.5 text-left transition-transform active:scale-[0.98]"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-forest-600 text-cream">
@@ -710,7 +734,7 @@ function OffDayModal({
 
           <button
             type="button"
-            onClick={() => onChoose("overtime")}
+            onClick={() => onChoose("overtime", note)}
             className="flex w-full items-center gap-3 rounded-2xl border border-sky/30 bg-sky-soft px-4 py-3.5 text-left transition-transform active:scale-[0.98]"
           >
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky text-cream">
@@ -722,6 +746,10 @@ function OffDayModal({
             </span>
             <ChevronRight className="h-5 w-5 shrink-0 text-sky" />
           </button>
+
+          <Field label={t.offDayNoteLabel} className="pt-1">
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.offDayNotePlaceholder} rows={2} />
+          </Field>
 
           <button
             type="button"

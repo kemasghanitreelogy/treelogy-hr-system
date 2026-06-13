@@ -61,6 +61,8 @@ export function SelfDashboard({
   canPayroll,
   scheduleLabel,
   workDays,
+  holidayToday = false,
+  holidayName = null,
   locale = "id",
 }: {
   firstName: string;
@@ -72,6 +74,8 @@ export function SelfDashboard({
   canPayroll: boolean;
   scheduleLabel?: string;
   workDays?: number[];
+  holidayToday?: boolean;
+  holidayName?: string | null;
   locale?: Locale;
 }) {
   const t = STR[locale];
@@ -91,6 +95,8 @@ export function SelfDashboard({
           requirePhoto={requirePhoto}
           shiftLabel={scheduleLabel}
           workDays={workDays}
+          holidayToday={holidayToday}
+          holidayName={holidayName}
         />
       </div>
 

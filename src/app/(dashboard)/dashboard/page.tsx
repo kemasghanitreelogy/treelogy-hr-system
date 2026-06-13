@@ -27,6 +27,7 @@ import {
   getAttendanceSettings,
   getDashboardData,
   getEmployee,
+  getHolidayToday,
   getLeaveBalances,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
@@ -168,6 +169,7 @@ export default async function DashboardPage() {
     const balance = balances.find((b) => b.employeeId === user.employeeId);
     const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
+    const holidayToday = await getHolidayToday(me?.religion);
     return (
       <SelfDashboard
         firstName={firstName}
@@ -179,6 +181,8 @@ export default async function DashboardPage() {
         canPayroll={can(user, "payroll.view")}
         scheduleLabel={scheduleLabel}
         workDays={me?.workDays}
+        holidayToday={holidayToday != null}
+        holidayName={holidayToday?.name ?? null}
         locale={locale}
       />
     );
