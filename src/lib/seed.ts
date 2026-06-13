@@ -114,12 +114,25 @@ export const employees: Employee[] = employeesRaw.map((e) => ({
   workDays: e.team === "office" ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6],
 }));
 
-// Contoh hari libur (nasional + keagamaan).
+// Hari libur nasional Indonesia 2026 (nasional + keagamaan). Tanggal hari besar
+// Islam/Buddha mengikuti perhitungan umum & dapat menyesuaikan SKB pemerintah.
 export const holidays: Holiday[] = [
-  { id: "h1", date: "2026-06-01", name: "Hari Lahir Pancasila", type: "public" },
-  { id: "h2", date: "2026-03-19", name: "Hari Suci Nyepi", type: "religious", religion: "hindu" },
-  { id: "h3", date: "2026-12-25", name: "Hari Raya Natal", type: "religious", religion: "kristen" },
-  { id: "h4", date: "2026-08-17", name: "Hari Kemerdekaan RI", type: "public" },
+  { id: "h1", date: "2026-01-01", name: "Tahun Baru Masehi 2026", type: "public" },
+  { id: "h2", date: "2026-01-16", name: "Isra Mikraj Nabi Muhammad SAW", type: "religious", religion: "islam" },
+  { id: "h3", date: "2026-02-17", name: "Tahun Baru Imlek 2577 Kongzili", type: "public" },
+  { id: "h4", date: "2026-03-19", name: "Hari Suci Nyepi (Tahun Baru Saka 1948)", type: "religious", religion: "hindu" },
+  { id: "h5", date: "2026-03-20", name: "Hari Raya Idul Fitri 1447 H", type: "religious", religion: "islam" },
+  { id: "h6", date: "2026-03-21", name: "Hari Raya Idul Fitri 1447 H (hari ke-2)", type: "religious", religion: "islam" },
+  { id: "h7", date: "2026-04-03", name: "Wafat Yesus Kristus (Jumat Agung)", type: "religious", religion: "kristen" },
+  { id: "h8", date: "2026-05-01", name: "Hari Buruh Internasional", type: "public" },
+  { id: "h9", date: "2026-05-14", name: "Kenaikan Yesus Kristus", type: "religious", religion: "kristen" },
+  { id: "h10", date: "2026-05-27", name: "Hari Raya Idul Adha 1447 H", type: "religious", religion: "islam" },
+  { id: "h11", date: "2026-05-31", name: "Hari Raya Waisak 2570", type: "religious", religion: "buddha" },
+  { id: "h12", date: "2026-06-01", name: "Hari Lahir Pancasila", type: "public" },
+  { id: "h13", date: "2026-06-16", name: "Tahun Baru Islam 1448 H", type: "religious", religion: "islam" },
+  { id: "h14", date: "2026-08-17", name: "Hari Kemerdekaan Republik Indonesia", type: "public" },
+  { id: "h15", date: "2026-08-25", name: "Maulid Nabi Muhammad SAW", type: "religious", religion: "islam" },
+  { id: "h16", date: "2026-12-25", name: "Hari Raya Natal", type: "religious", religion: "kristen" },
 ];
 
 // Contoh kontrak kerja per karyawan.
