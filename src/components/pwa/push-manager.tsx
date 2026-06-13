@@ -5,8 +5,6 @@ import { Bell, BellOff, BellRing, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
-// Demo: the signed-in user (Dewi Lestari → employee e08).
-const CURRENT_USER_ID = "e08";
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
@@ -72,7 +70,7 @@ export function PushManager() {
       const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: sub, userId: CURRENT_USER_ID }),
+        body: JSON.stringify({ subscription: sub }),
       });
       if (!res.ok) throw new Error("save_failed");
       setState("subscribed");
@@ -118,7 +116,6 @@ export function PushManager() {
           title: "Pengingat Clock-In ⏰",
           body: "Jangan lupa absen masuk shift hari ini. Selamat bekerja! 🌿",
           url: "/attendance",
-          userId: CURRENT_USER_ID,
         }),
       });
       const data = await res.json();
