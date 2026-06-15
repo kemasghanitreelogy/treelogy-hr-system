@@ -38,6 +38,7 @@ interface Flat {
   emp: Draft;
   depth: number;
   parentId: string | null;
+  hasChildren: boolean;
 }
 
 const INDENT = 22; // px per hierarchy level — also the horizontal drag step
@@ -187,8 +188,9 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
     (team: Team): Flat[] => {
       const out: Flat[] = [];
       const walk = (emp: Draft, depth: number, parentId: string | null) => {
-        out.push({ id: emp.id, emp, depth, parentId });
-        for (const c of childrenOf(emp.id)) walk(c, depth + 1, emp.id);
+        const kids = childrenOf(emp.id);
+        out.push({ id: emp.id, emp, depth, parentId, hasChildren: kids.length > 0 });
+        for (const c of kids) walk(c, depth + 1, emp.id);
       };
       for (const r of rootsOf(team)) walk(r, 0, null);
       return out;
@@ -539,8 +541,9 @@ function Row({
   dragging: boolean;
   onEdit: (e: Draft) => void;
 }) {
-  const { emp, depth } = item;
-  const isHead = depth === 0;
+  const { emp, depth, hasChildren } = item;
+  // A division head only earns the badge if they actually have subordinates.
+  const isHead = depth === 0 && hasChildren;
   const { attributes, listeners, setNodeRef: dragRef } = useDraggable({ id: emp.id });
   const { setNodeRef: dropRef } = useDroppable({ id: emp.id });
   const locale = useLocale();

@@ -4,7 +4,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
 
-export const metadata = { title: "Shift & Jadwal — Treelogy HR" };
+export const metadata = { title: "Jadwal — Treelogy HR" };
 
 const STR: Record<Locale, { intro: string }> = {
   id: {

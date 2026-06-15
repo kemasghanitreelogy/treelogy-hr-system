@@ -78,6 +78,11 @@ const ID_STR = {
   identity: "Identitas (KTP)",
   ktpNik: "NIK KTP",
   ktpNikPlaceholder: "16 digit",
+  birthPlace: "Tempat lahir",
+  birthPlacePlaceholder: "cth. Denpasar",
+  dateOfBirth: "Tanggal lahir",
+  ktpAddress: "Alamat KTP",
+  ktpAddressPlaceholder: "Alamat sesuai KTP",
   ktpPhoto: "Foto KTP",
   ktpPhotoHint: "JPG/PNG, maks 5MB",
   viewKtp: "Lihat foto",
@@ -172,6 +177,11 @@ const STR: Record<Locale, typeof ID_STR> = {
     identity: "Identity (KTP)",
     ktpNik: "KTP NIK",
     ktpNikPlaceholder: "16 digits",
+    birthPlace: "Birth place",
+    birthPlacePlaceholder: "e.g. Denpasar",
+    dateOfBirth: "Date of birth",
+    ktpAddress: "KTP address",
+    ktpAddressPlaceholder: "Address as on KTP",
     ktpPhoto: "KTP photo",
     ktpPhotoHint: "JPG/PNG, max 5MB",
     viewKtp: "View photo",
@@ -594,6 +604,12 @@ function EmployeeDetail({
           </h3>
           <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
             <Stat label={t.ktpNik} value={emp.ktpNik || "—"} />
+            <Stat label={t.dateOfBirth} value={emp.dateOfBirth || "—"} />
+            <Stat label={t.birthPlace} value={emp.birthPlace || "—"} />
+            <div className="col-span-2">
+              <dt className="text-faint">{t.ktpAddress}</dt>
+              <dd className="mt-0.5 text-ink">{emp.ktpAddress || "—"}</dd>
+            </div>
             <div>
               <dt className="text-faint">{t.ktpPhoto}</dt>
               <dd className="mt-0.5">
@@ -837,6 +853,9 @@ function EmployeeForm({
     baseSalary: String(initial?.baseSalary ?? "3500000"),
     allowance: String(initial?.allowance ?? "500000"),
     religion: (initial?.religion ?? "") as Religion | "",
+    birthPlace: initial?.birthPlace ?? "",
+    dateOfBirth: initial?.dateOfBirth ?? "",
+    ktpAddress: initial?.ktpAddress ?? "",
     ktpNik: initial?.ktpNik ?? "",
     bankName: initial?.bankName ?? "BCA",
     bankAccount: initial?.bankAccount ?? "",
@@ -869,6 +888,9 @@ function EmployeeForm({
         baseSalary: Number(form.baseSalary) || 0,
         allowance: Number(form.allowance) || 0,
         religion: form.religion || null,
+        birthPlace: form.birthPlace || null,
+        dateOfBirth: form.dateOfBirth || null,
+        ktpAddress: form.ktpAddress || null,
         ktpNik: form.ktpNik || null,
         ...(ktpPhotoFile ? { ktpPhotoFile } : {}),
         bankName: form.bankName,
@@ -954,6 +976,17 @@ function EmployeeForm({
           />
         </Field>
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t.birthPlace}>
+          <Input value={form.birthPlace} onChange={(e) => set("birthPlace", e.target.value)} placeholder={t.birthPlacePlaceholder} />
+        </Field>
+        <Field label={t.dateOfBirth}>
+          <Input type="date" value={form.dateOfBirth} onChange={(e) => set("dateOfBirth", e.target.value)} />
+        </Field>
+      </div>
+      <Field label={t.ktpAddress}>
+        <Input value={form.ktpAddress} onChange={(e) => set("ktpAddress", e.target.value)} placeholder={t.ktpAddressPlaceholder} />
+      </Field>
       <Field label={t.ktpPhoto} hint={t.ktpPhotoHint}>
         <div className="flex items-center gap-3">
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-cream/50 px-3 py-2 text-sm text-ink transition-colors hover:bg-cream">

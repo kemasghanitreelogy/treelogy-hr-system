@@ -37,7 +37,7 @@ const ITEMS: Record<string, NavItem> = {
   "/payroll": { href: "/payroll", label: "Payroll", labelEn: "Payroll", icon: Wallet, perm: "payroll.view" },
   "/employees": { href: "/employees", label: "Karyawan", labelEn: "Employees", icon: Users, perm: "employees.view" },
   "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", labelEn: "Org Structure", icon: Network, perm: "dashboard.view" },
-  "/shifts": { href: "/shifts", label: "Shift & Jadwal", labelEn: "Shifts & Schedule", icon: Layers, perm: "shifts.view" },
+  "/shifts": { href: "/shifts", label: "Jadwal", labelEn: "Schedule", icon: Layers, perm: "shifts.view" },
   "/holidays": { href: "/holidays", label: "Hari Libur", labelEn: "Holidays", icon: CalendarOff, perm: "dashboard.view" },
   "/kpi": { href: "/kpi", label: "KPI & Kinerja", labelEn: "KPI & Performance", icon: Target, perm: "kpi.view" },
   "/access": { href: "/access", label: "Peran & Akses", labelEn: "Roles & Access", icon: ShieldCheck, perm: "access.roles" },

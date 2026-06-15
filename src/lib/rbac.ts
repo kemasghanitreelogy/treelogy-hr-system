@@ -31,10 +31,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     module: "shifts",
-    label: "Shift & Jadwal",
+    label: "Jadwal",
     permissions: [
-      { id: "shifts.view", label: "Lihat shift & jadwal" },
-      { id: "shifts.manage", label: "Kelola shift" },
+      { id: "shifts.view", label: "Lihat jadwal" },
+      { id: "shifts.manage", label: "Kelola jadwal" },
       { id: "shifts.swap_approve", label: "Setujui tukar libur" },
     ],
   },

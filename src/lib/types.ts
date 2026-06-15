@@ -17,6 +17,9 @@ export interface Employee {
   baseSalary: number; // monthly gross base
   allowance: number; // fixed monthly allowances
   religion?: Religion | null;
+  birthPlace?: string | null; // tempat lahir (from KTP)
+  dateOfBirth?: string | null; // YYYY-MM-DD — tanggal lahir (from KTP)
+  ktpAddress?: string | null; // alamat sesuai KTP
   ktpNik?: string | null; // 16-digit national ID (KTP), distinct from `nik` (employee number)
   ktpPhotoPath?: string | null; // KTP scan in the private `ktp-photos` bucket
   npwp?: string | null;
