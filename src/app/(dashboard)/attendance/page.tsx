@@ -82,7 +82,7 @@ export default async function AttendancePage() {
         />
       </div>
       <div className="space-y-4">
-        {canManage && <AttendanceSettingsCard initial={settings} />}
+        {canManage && <AttendanceSettingsCard initial={settings} googleMapsApiKey={process.env.GOOGLE_MAP_API_KEY ?? ""} />}
         {view}
       </div>
     </div>

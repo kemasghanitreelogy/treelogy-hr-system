@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/google.maps": "^3.65.1",
     "@types/node": "^22.9.0",
     "@types/nodemailer": "^8.0.0",
     "@types/react": "^19.0.0",
