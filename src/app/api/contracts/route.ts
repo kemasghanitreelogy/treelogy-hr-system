@@ -84,6 +84,45 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, contract: mapContract(data) });
 }
 
+export async function PATCH(req: Request) {
+  let body: { id?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string; docFile?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+  if (body.type !== undefined && !TYPES.includes(body.type)) return NextResponse.json({ error: "invalid_type" }, { status: 400 });
+  if (body.startDate !== undefined && !ISO_DATE.test(body.startDate)) return NextResponse.json({ error: "invalid_date" }, { status: 400 });
+  if (body.endDate && !ISO_DATE.test(body.endDate)) return NextResponse.json({ error: "invalid_date" }, { status: 400 });
+
+  const { supabase, error: authErr } = await auth();
+  if (authErr) return authErr;
+
+  const updates: Record<string, unknown> = {};
+  if (body.type !== undefined) updates.type = body.type;
+  if (body.startDate !== undefined) updates.start_date = body.startDate;
+  if (body.endDate !== undefined) updates.end_date = body.endDate || null;
+  if (body.status !== undefined) updates.status = body.status === "ended" ? "ended" : "active";
+  if (body.note !== undefined) updates.note = body.note?.trim() || null;
+
+  if (body.docFile) {
+    // The storage path is keyed by employee; fetch it from the existing row.
+    const { data: row } = await supabase!.from("employee_contracts").select("employee_id").eq("id", body.id).maybeSingle();
+    if (!row) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+    const path = await uploadDoc(supabase!, String(row.employee_id), body.docFile);
+    if (path instanceof NextResponse) return path;
+    updates.doc_path = path;
+  }
+
+  if (Object.keys(updates).length === 0) return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
+
+  const { data, error } = await supabase!.from("employee_contracts").update(updates).eq("id", body.id).select("*").maybeSingle();
+  // RLS filters non-HR writes to 0 rows (no error) — treat as forbidden.
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  return NextResponse.json({ ok: true, contract: mapContract(data) });
+}
+
 export async function DELETE(req: Request) {
   let body: { id?: string };
   try {

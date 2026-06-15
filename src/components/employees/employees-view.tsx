@@ -118,6 +118,7 @@ const ID_STR = {
   positionPlaceholder: "cth. Operator",
   phonePlaceholder: "0812-…",
   emailPlaceholder: "nama@treelogy.com",
+  emailHint: "Wajib — akun login dibuat otomatis (sandi awal = email).",
   baseSalaryRp: "Gaji pokok (Rp)",
   allowanceRp: "Tunjangan (Rp)",
   clockInHint: "Patokan telat (WITA)",
@@ -211,6 +212,7 @@ const STR: Record<Locale, typeof ID_STR> = {
     team: "Team",
     position: "Position",
     positionPlaceholder: "e.g. Operator",
+    emailHint: "Required — a login account is created automatically (initial password = email).",
     phonePlaceholder: "0812-…",
     emailPlaceholder: "name@treelogy.com",
     baseSalaryRp: "Base salary (Rp)",
@@ -935,8 +937,8 @@ function EmployeeForm({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t.email}>
-          <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t.emailPlaceholder} />
+        <Field label={t.email} hint={t.emailHint}>
+          <Input type="email" required value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t.emailPlaceholder} />
         </Field>
         <Field label={t.phone}>
           <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t.phonePlaceholder} />

@@ -17,7 +17,7 @@ import {
   shifts as seedShifts,
   tabunganEntries as seedTabungan,
 } from "./seed";
-import { roles, systemUsers } from "./rbac";
+import { roles, systemUsers, type UserStatus } from "./rbac";
 import { isSupabaseConfigured } from "./supabase/config";
 import { createClient } from "./supabase/server";
 import type {
@@ -558,16 +558,28 @@ export async function getSystemUsers() {
   try {
     const supabase = await createClient();
     if (!supabase) return systemUsers;
-    const { data, error } = await supabase.from("profiles").select("employee_id, role_id");
-    if (error || !data) return systemUsers;
+    const [{ data: profs }, { data: emps }] = await Promise.all([
+      supabase.from("profiles").select("employee_id, role_id"),
+      supabase.from("employees").select("id, email, status"),
+    ]);
+    if (!profs || !emps) return systemUsers;
     const roleByEmp = new Map<string, string>();
-    for (const r of data as Row[]) {
-      if (r.employee_id && r.role_id) roleByEmp.set(String(r.employee_id), String(r.role_id));
+    for (const r of profs as Row[]) {
+      // A linked account always has at least the default "Karyawan" role.
+      if (r.employee_id) roleByEmp.set(String(r.employee_id), r.role_id ? String(r.role_id) : "role-employee");
     }
     if (roleByEmp.size === 0) return systemUsers;
-    return systemUsers.map((u) =>
-      roleByEmp.has(u.employeeId) ? { ...u, roleId: roleByEmp.get(u.employeeId)! } : u,
-    );
+    // Build the user list straight from the real employees that have an account.
+    return (emps as Row[])
+      .filter((e) => roleByEmp.has(String(e.id)))
+      .map((e) => ({
+        id: `u-${String(e.id)}`,
+        employeeId: String(e.id),
+        email: String(e.email ?? ""),
+        roleId: roleByEmp.get(String(e.id))!,
+        status: (e.status === "inactive" ? "suspended" : "active") as UserStatus,
+        lastActive: "",
+      }));
   } catch {
     return systemUsers;
   }
