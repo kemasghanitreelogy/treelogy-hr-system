@@ -871,14 +871,6 @@ function EmployeeForm({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t.clockIn} hint={t.clockInHint}>
-          <Input type="time" value={form.workStart} onChange={(e) => set("workStart", e.target.value)} />
-        </Field>
-        <Field label={t.clockOut}>
-          <Input type="time" value={form.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
-        </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
         <Field label={t.religion}>
           <Select value={form.religion} onChange={(e) => set("religion", e.target.value as Religion)}>
             <option value="">—</option>
