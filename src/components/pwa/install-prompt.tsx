@@ -9,19 +9,6 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-const DISMISS_KEY = "treelogy-pwa-dismissed";
-const DISMISS_DAYS = 14; // Android/desktop: a real action, snooze longer.
-const IOS_DISMISS_DAYS = 3; // iOS: just guidance, let it resurface sooner.
-
-function recentlyDismissed(days: number): boolean {
-  try {
-    const ts = Number(localStorage.getItem(DISMISS_KEY) || 0);
-    return Date.now() - ts < days * 86_400_000;
-  } catch {
-    return false;
-  }
-}
-
 function isStandalone(): boolean {
   return (
     window.matchMedia?.("(display-mode: standalone)").matches ||
@@ -49,13 +36,13 @@ export function InstallPrompt() {
   const [inApp, setInApp] = useState(false);
 
   useEffect(() => {
-    if (isStandalone()) return; // already installed → nothing to do
+    if (isStandalone()) return; // already installed → never nag again
 
     // Android / desktop Chromium: capture the native install prompt.
     const onBeforeInstall = (e: Event) => {
       e.preventDefault();
       setDeferred(e as BeforeInstallPromptEvent);
-      if (!recentlyDismissed(DISMISS_DAYS)) setShow(true);
+      setShow(true);
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
     const onInstalled = () => setShow(false);
@@ -64,7 +51,7 @@ export function InstallPrompt() {
     // iOS has NO install API — surface the manual "Add to Home Screen" steps
     // (any iOS browser; in an in-app webview we tell them to open Safari first).
     let timer: number | undefined;
-    if (isIosDevice() && !recentlyDismissed(IOS_DISMISS_DAYS)) {
+    if (isIosDevice()) {
       setInApp(isInAppBrowser());
       timer = window.setTimeout(() => {
         setIosHint(true);
@@ -79,13 +66,10 @@ export function InstallPrompt() {
     };
   }, []);
 
+  // Dismissal is in-memory only — the banner returns on every fresh load/visit
+  // until the app is actually installed (standalone), per requirement.
   function dismiss() {
     setShow(false);
-    try {
-      localStorage.setItem(DISMISS_KEY, String(Date.now()));
-    } catch {
-      /* ignore */
-    }
   }
 
   async function install() {
