@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, History, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
+import { leaveHistory, type LeavePeriod } from "@/lib/leave-policy";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, formatTime } from "@/lib/utils";
@@ -61,6 +62,15 @@ const STR: Record<
     myBalance: string;
     annualLeave: string;
     remainingOf: (remaining: number, quota: number) => string;
+    notEligibleYet: string;
+    viewHistory: string;
+    historyTitle: string;
+    myHistoryDesc: string;
+    noHistory: string;
+    yearLabel: (n: number) => string;
+    currentPeriod: string;
+    usedOf: (used: number, quota: number) => string;
+    remainingDays: (n: number) => string;
     sickUsed: string;
     tabunganLibur: string;
     ledgerTitle: string;
@@ -125,6 +135,15 @@ const STR: Record<
     myBalance: "Saldo Cuti Saya",
     annualLeave: "Cuti tahunan",
     remainingOf: (remaining: number, quota: number) => `${remaining}/${quota} sisa`,
+    notEligibleYet: "Belum berhak (< 1 thn)",
+    viewHistory: "Lihat riwayat",
+    historyTitle: "Riwayat Saldo Cuti",
+    myHistoryDesc: "Per periode masa kerja Anda",
+    noHistory: "Belum ada periode masa kerja.",
+    yearLabel: (n) => `Tahun ke-${n}`,
+    currentPeriod: "Berjalan",
+    usedOf: (used, quota) => `${used}/${quota} terpakai`,
+    remainingDays: (n) => `${n} sisa`,
     sickUsed: "Cuti sakit terpakai",
     tabunganLibur: "Tabungan libur",
     ledgerTitle: "Riwayat tabungan libur",
@@ -188,6 +207,15 @@ const STR: Record<
     myBalance: "My Leave Balance",
     annualLeave: "Annual leave",
     remainingOf: (remaining: number, quota: number) => `${remaining}/${quota} left`,
+    notEligibleYet: "Not eligible yet (< 1 yr)",
+    viewHistory: "View history",
+    historyTitle: "Leave Balance History",
+    myHistoryDesc: "By your service-year period",
+    noHistory: "No service periods yet.",
+    yearLabel: (n) => `Year ${n}`,
+    currentPeriod: "Current",
+    usedOf: (used, quota) => `${used}/${quota} used`,
+    remainingDays: (n) => `${n} left`,
     sickUsed: "Sick leave used",
     tabunganLibur: "Day-off savings",
     ledgerTitle: "Day-off savings history",
@@ -243,6 +271,7 @@ export function LeaveView({
   canRequestForOthers = true,
   canApproveAll = false,
   approverTeam = null,
+  tenureStarts = {},
 }: {
   requests: LeaveRequest[];
   balances: LeaveBalance[];
@@ -250,6 +279,8 @@ export function LeaveView({
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
+  /** employeeId → tenure-anchor ISO date (earliest contract start / join date). */
+  tenureStarts?: Record<string, string>;
   canRequestForOthers?: boolean;
   /** HR/admin: may approve any request, any division. */
   canApproveAll?: boolean;
@@ -408,7 +439,14 @@ export function LeaveView({
           })}
         </div>
       ) : (
-        <BalancesView balances={scopedBalances} tabungan={scopedTabungan} employees={employees} showEmployee={showEmployee} />
+        <BalancesView
+          balances={scopedBalances}
+          tabungan={scopedTabungan}
+          employees={employees}
+          showEmployee={showEmployee}
+          requests={list}
+          tenureStarts={tenureStarts}
+        />
       )}
 
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.sheetTitle} description={t.sheetDesc}>
@@ -563,16 +601,32 @@ function BalancesView({
   tabungan,
   employees,
   showEmployee = true,
+  requests = [],
+  tenureStarts = {},
 }: {
   balances: LeaveBalance[];
   tabungan: TabunganEntry[];
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   /** false = tampilan mandiri karyawan: tanpa framing org-wide & tanpa identitas per baris. */
   showEmployee?: boolean;
+  requests?: LeaveRequest[];
+  tenureStarts?: Record<string, string>;
 }) {
   const locale = useLocale();
   const t = STR[locale];
   const empMap = new Map(employees.map((e) => [e.id, e]));
+  // Per-employee leave-balance history (by service-year period).
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const historyPeriods = useMemo(
+    () =>
+      historyFor
+        ? leaveHistory(
+            tenureStarts[historyFor],
+            requests.filter((r) => r.employeeId === historyFor),
+          )
+        : [],
+    [historyFor, tenureStarts, requests],
+  );
   const totalSaved = balances.reduce((s, b) => s + b.tabunganLibur, 0);
   // Group ledger entries by employee, newest first, for the per-row history.
   const ledgerByEmp = new Map<string, TabunganEntry[]>();
@@ -630,9 +684,11 @@ function BalancesView({
                   <div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted">{t.annualLeave}</span>
-                      <span className="font-medium text-ink">{t.remainingOf(remaining, b.annualQuota)}</span>
+                      <span className="font-medium text-ink">
+                        {b.annualQuota === 0 ? t.notEligibleYet : t.remainingOf(remaining, b.annualQuota)}
+                      </span>
                     </div>
-                    <Progress value={b.annualUsed} max={b.annualQuota} className="mt-1.5" />
+                    <Progress value={b.annualUsed} max={Math.max(b.annualQuota, 1)} className="mt-1.5" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between text-xs">
@@ -649,12 +705,76 @@ function BalancesView({
                     <Progress value={b.tabunganLibur} max={12} className="mt-1.5" barClassName="bg-gold" />
                   </div>
                 </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFor(b.employeeId)}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-forest-700 transition-colors hover:bg-[#e9f0d8] active:scale-95"
+                  >
+                    <History className="h-3.5 w-3.5" /> {t.viewHistory}
+                  </button>
+                </div>
                 <TabunganLedger entries={ledgerByEmp.get(b.employeeId) ?? []} />
               </div>
             );
           })}
         </div>
       </Card>
+
+      <Sheet
+        open={historyFor !== null}
+        onClose={() => setHistoryFor(null)}
+        title={t.historyTitle}
+        description={showEmployee ? empMap.get(historyFor ?? "")?.name : t.myHistoryDesc}
+      >
+        <LeaveHistory periods={historyPeriods} t={t} locale={locale} />
+      </Sheet>
+    </div>
+  );
+}
+
+/** Per-period annual-leave history list (newest period first). Mobile-first cards. */
+function LeaveHistory({
+  periods,
+  t,
+  locale,
+}: {
+  periods: LeavePeriod[];
+  t: (typeof STR)["id"];
+  locale: Locale;
+}) {
+  if (periods.length === 0) {
+    return <p className="py-8 text-center text-sm text-faint">{t.noHistory}</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {periods.map((p) => {
+        const remaining = Math.max(0, p.quota - p.used);
+        return (
+          <div key={p.index} className="rounded-2xl border border-line bg-panel p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-ink">{t.yearLabel(p.index)}</p>
+                <p className="truncate text-xs text-faint">
+                  {formatDate(p.startISO, "short", locale)} – {formatDate(p.endISO, "short", locale)}
+                </p>
+              </div>
+              {p.current && <Badge tone="matcha">{t.currentPeriod}</Badge>}
+            </div>
+            {p.quota === 0 ? (
+              <p className="mt-3 text-sm text-muted">{t.notEligibleYet}</p>
+            ) : (
+              <>
+                <div className="mt-3 flex items-center justify-between text-xs">
+                  <span className="text-muted">{t.usedOf(p.used, p.quota)}</span>
+                  <span className="font-medium text-ink">{t.remainingDays(remaining)}</span>
+                </div>
+                <Progress value={p.used} max={p.quota} className="mt-1.5" />
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

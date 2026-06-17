@@ -1,5 +1,6 @@
 import { LeaveView } from "@/components/leave/leave-view";
-import { getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries } from "@/lib/data";
+import { getAllContracts, getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries } from "@/lib/data";
+import { applyTenureQuota, earliestContractStart } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -18,15 +19,25 @@ const STR: Record<Locale, { approverDesc: string; staffDesc: string }> = {
 };
 
 export default async function LeavePage() {
-  const [requests, balances, tabungan, employeesAll, user, locale] = await Promise.all([
+  const [requests, balancesRaw, tabungan, employeesAll, contracts, user, locale] = await Promise.all([
     getLeaveRequests(),
     getLeaveBalances(),
     getTabunganEntries(),
     getEmployees(),
+    getAllContracts(),
     getSessionUser(),
     getLocale(),
   ]);
   const t = STR[locale];
+  // Annual leave only accrues after 1 full year of service (from contract start).
+  const balances = applyTenureQuota(balancesRaw, employeesAll, contracts);
+  // Tenure anchor per employee (earliest contract start → join date) for history.
+  const starts = earliestContractStart(contracts);
+  const tenureStarts: Record<string, string> = {};
+  for (const e of employeesAll) {
+    const s = starts.get(e.id) ?? e.joinDate;
+    if (s) tenureStarts[e.id] = s;
+  }
   const employees = employeesAll
     .filter((e) => e.status === "active")
     .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position }));
@@ -47,6 +58,7 @@ export default async function LeavePage() {
         balances={balances}
         tabungan={tabungan}
         employees={employees}
+        tenureStarts={tenureStarts}
         currentUserName={user?.name ?? "HR"}
         currentEmployeeId={user?.employeeId ?? null}
         canRequestForOthers={can(user, "leave.approve")}

@@ -29,7 +29,9 @@ import {
   getEmployee,
   getHolidayToday,
   getLeaveBalances,
+  getContracts,
 } from "@/lib/data";
+import { applyTenureQuota } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
 import { getLocale } from "@/lib/locale-server";
@@ -159,14 +161,17 @@ export default async function DashboardPage() {
 
   // Front-line worker → clock-first self-service home.
   if (user && audienceFromPermissions(user.permissions) === "self") {
-    const [settings, attendance, balances, me] = await Promise.all([
+    const [settings, attendance, balances, me, myContracts] = await Promise.all([
       getAttendanceSettings(),
       getAttendance(),
       getLeaveBalances(),
       user.employeeId ? getEmployee(user.employeeId) : Promise.resolve(undefined),
+      user.employeeId ? getContracts(user.employeeId) : Promise.resolve([]),
     ]);
     const recap = computeRecap(attendance, user.employeeId ?? "", CURRENT_PERIOD);
-    const balance = balances.find((b) => b.employeeId === user.employeeId);
+    const rawBalance = balances.find((b) => b.employeeId === user.employeeId);
+    // Annual leave only accrues after 1 full year of service (from contract start).
+    const balance = rawBalance && me ? applyTenureQuota([rawBalance], [me], myContracts)[0] : rawBalance;
     const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
     const holidayToday = await getHolidayToday(me?.religion);

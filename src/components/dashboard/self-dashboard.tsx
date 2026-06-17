@@ -16,6 +16,7 @@ const STR: Record<Locale, {
   holidaySavings: string;
   annualLeaveLeft: string;
   days: (n: number, quota: number) => string;
+  notEligibleYet: string;
   requestLeave: string;
   myPayslip: string;
   attendanceHistory: string;
@@ -28,6 +29,7 @@ const STR: Record<Locale, {
     holidaySavings: "Tabungan libur (hari)",
     annualLeaveLeft: "Sisa Cuti Tahunan",
     days: (n, quota) => `${n}/${quota} hari`,
+    notEligibleYet: "Belum berhak (< 1 thn)",
     requestLeave: "Ajukan Cuti / Izin",
     myPayslip: "Slip Gaji Saya",
     attendanceHistory: "Riwayat Absensi",
@@ -40,6 +42,7 @@ const STR: Record<Locale, {
     holidaySavings: "Banked days off (days)",
     annualLeaveLeft: "Annual Leave Remaining",
     days: (n, quota) => `${n}/${quota} days`,
+    notEligibleYet: "Not eligible yet (< 1 yr)",
     requestLeave: "Request Leave / Permit",
     myPayslip: "My Payslip",
     attendanceHistory: "Attendance History",
@@ -124,9 +127,11 @@ export function SelfDashboard({
         <CardContent>
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-ink">{t.annualLeaveLeft}</p>
-            <span className="text-sm text-muted">{t.days(annualLeft, balance?.annualQuota ?? 12)}</span>
+            <span className="text-sm text-muted">
+              {balance?.annualQuota === 0 ? t.notEligibleYet : t.days(annualLeft, balance?.annualQuota ?? 12)}
+            </span>
           </div>
-          <Progress value={balance?.annualUsed ?? 0} max={balance?.annualQuota ?? 12} className="mt-2" />
+          <Progress value={balance?.annualUsed ?? 0} max={Math.max(balance?.annualQuota ?? 12, 1)} className="mt-2" />
         </CardContent>
       </Card>
 
