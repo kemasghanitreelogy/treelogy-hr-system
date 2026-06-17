@@ -35,6 +35,7 @@ const STR: Record<
     loading: string;
     gpsInaccurate: (accuracy: number) => string;
     locationRequiredLong: string;
+    gpsSearching: string;
     outOfRange: (distance: string, max: number) => string;
     locationRequired: string;
     photoRequired: string;
@@ -86,7 +87,8 @@ const STR: Record<
     loading: "Memuat…",
     gpsInaccurate: (accuracy) =>
       `Sinyal GPS kurang akurat (±${accuracy} m). Pindah ke area terbuka lalu coba lagi.`,
-    locationRequiredLong: "Lokasi wajib aktif. Izinkan akses lokasi di browser/HP Anda.",
+    locationRequiredLong: "Akses lokasi diblokir. Izinkan lokasi untuk aplikasi ini di pengaturan browser/HP.",
+    gpsSearching: "Belum dapat sinyal GPS. Pastikan lokasi HP aktif, lalu coba lagi.",
     outOfRange: (distance, max) => `Di luar jangkauan (${distance} / maks ${max} m).`,
     locationRequired: "Lokasi wajib aktif.",
     photoRequired: "Foto wajah wajib diambil.",
@@ -137,7 +139,8 @@ const STR: Record<
     loading: "Loading…",
     gpsInaccurate: (accuracy) =>
       `GPS signal is inaccurate (±${accuracy} m). Move to an open area and try again.`,
-    locationRequiredLong: "Location must be enabled. Allow location access in your browser/phone.",
+    locationRequiredLong: "Location access is blocked. Allow location for this app in your browser/phone settings.",
+    gpsSearching: "Couldn't get a GPS signal yet. Make sure location is on, then try again.",
     outOfRange: (distance, max) => `Out of range (${distance} / max ${max} m).`,
     locationRequired: "Location must be enabled.",
     photoRequired: "A face photo is required.",
@@ -192,31 +195,33 @@ const STR: Record<
  * on, so we watch for a few seconds, keep the reading with the smallest accuracy
  * radius, and stop early once it's good enough (≤ targetAccuracy metres).
  */
-function getBestPosition(targetAccuracy = 30, maxWait = 10000): Promise<GeolocationPosition> {
+function getBestPosition(targetAccuracy = 30, maxWait = 18000): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
       reject(new Error("no_geo"));
       return;
     }
     let best: GeolocationPosition | null = null;
-    const finish = () => {
+    let settled = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       navigator.geolocation.clearWatch(id);
       if (best) resolve(best);
-      else reject(new Error("no_fix"));
+      else reject(err ?? new Error("no_fix"));
     };
-    const timer = setTimeout(finish, maxWait);
+    const timer = setTimeout(() => finish(), maxWait);
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
         if (pos.coords.accuracy <= targetAccuracy) finish(); // good enough — stop converging
       },
       (err) => {
-        if (!best) {
-          clearTimeout(timer);
-          navigator.geolocation.clearWatch(id);
-          reject(err);
-        }
+        // Only a real permission denial is terminal. Transient "position
+        // unavailable"/"timeout" errors are normal while the GPS chip cold-locks
+        // — ignore them and let the timer keep waiting for a fix (no reload needed).
+        if (err.code === err.PERMISSION_DENIED) finish(new Error("denied"));
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: maxWait },
     );
@@ -317,9 +322,12 @@ export function ClockWidget({
           setOorPrompt({ distance });
           return;
         }
-      } catch {
+      } catch (err) {
         setFlow("idle");
-        setNotice({ tone: "error", text: t.locationRequiredLong });
+        // Permission actually denied → tell them to allow it. Otherwise the GPS
+        // just hasn't locked yet → encourage a retry (no reload needed).
+        const denied = err instanceof Error && err.message === "denied";
+        setNotice({ tone: "error", text: denied ? t.locationRequiredLong : t.gpsSearching });
         return;
       }
     }

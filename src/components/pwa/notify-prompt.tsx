@@ -73,19 +73,37 @@ export function NotifyPrompt() {
     return () => window.clearTimeout(id);
   }, []);
 
-  async function enable() {
-    setBusy(true);
+  // Auto-dismiss the moment notifications get enabled (or blocked) by ANY means
+  // — the in-app button, the browser UI, or the phone's settings. Without this
+  // the popup lingers until something re-renders it.
+  useEffect(() => {
+    if (!show) return;
+    const settle = () => {
+      if (typeof Notification !== "undefined" && Notification.permission !== "default") setShow(false);
+    };
+    let status: PermissionStatus | null = null;
+    navigator.permissions
+      ?.query({ name: "notifications" as PermissionName })
+      .then((s) => {
+        status = s;
+        s.onchange = settle;
+      })
+      .catch(() => {});
+    // Coming back from the OS settings / permission sheet → re-check.
+    document.addEventListener("visibilitychange", settle);
+    window.addEventListener("focus", settle);
+    return () => {
+      if (status) status.onchange = null;
+      document.removeEventListener("visibilitychange", settle);
+      window.removeEventListener("focus", settle);
+    };
+  }, [show]);
+
+  // Fire-and-forget subscription so the modal never blocks on the network.
+  async function subscribeInBackground() {
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setShow(false);
-        return;
-      }
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (!reg) {
-        setShow(false);
-        return;
-      }
+      // `ready` resolves once the SW is active (more reliable than getRegistration).
+      const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC) as BufferSource,
@@ -97,12 +115,23 @@ export function NotifyPrompt() {
       });
       if (!res.ok) throw new Error("save_failed");
       toast.success(t.ok);
-      setShow(false);
     } catch {
       toast.error(t.fail);
-    } finally {
-      setBusy(false);
     }
+  }
+
+  async function enable() {
+    setBusy(true);
+    let perm: NotificationPermission = "default";
+    try {
+      perm = await Notification.requestPermission();
+    } catch {
+      /* some browsers reject if not user-gesture — treat as undecided */
+    }
+    // Close instantly the moment the user decides — no spinner, no lingering.
+    setShow(false);
+    setBusy(false);
+    if (perm === "granted") void subscribeInBackground();
   }
 
   return (
