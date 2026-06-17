@@ -75,6 +75,8 @@ const STR: Record<
     remainingDays: (n: number) => string;
     sickUsed: string;
     tabunganLibur: string;
+    companyUsed: string;
+    unpaidUsed: string;
     ledgerTitle: string;
     deposit: string;
     withdraw: string;
@@ -148,6 +150,8 @@ const STR: Record<
     remainingDays: (n) => `${n} sisa`,
     sickUsed: "Cuti sakit terpakai",
     tabunganLibur: "Tabungan libur",
+    companyUsed: "Cuti perusahaan",
+    unpaidUsed: "Cuti tanpa gaji",
     ledgerTitle: "Riwayat tabungan libur",
     deposit: "Setor",
     withdraw: "Cairkan",
@@ -220,6 +224,8 @@ const STR: Record<
     remainingDays: (n) => `${n} left`,
     sickUsed: "Sick leave used",
     tabunganLibur: "Day-off savings",
+    companyUsed: "Company leave",
+    unpaidUsed: "Unpaid leave",
     ledgerTitle: "Day-off savings history",
     deposit: "Deposit",
     withdraw: "Withdraw",
@@ -617,6 +623,15 @@ function BalancesView({
   const locale = useLocale();
   const t = STR[locale];
   const empMap = new Map(employees.map((e) => [e.id, e]));
+  // Approved company- & unpaid-leave days per employee (not tracked in the
+  // balance table — computed from requests).
+  const companyByEmp = new Map<string, number>();
+  const unpaidByEmp = new Map<string, number>();
+  for (const r of requests) {
+    if (r.status !== "approved") continue;
+    const bucket = r.type === "company" ? companyByEmp : r.type === "unpaid" ? unpaidByEmp : null;
+    if (bucket) bucket.set(r.employeeId, (bucket.get(r.employeeId) ?? 0) + r.days);
+  }
   // Per-employee leave-balance history (by service-year period).
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const historyPeriods = useMemo(
@@ -682,7 +697,7 @@ function BalancesView({
                     )}
                   </div>
                 )}
-                <div className={cn("grid gap-3 sm:grid-cols-3", showEmployee && "mt-3")}>
+                <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3", showEmployee && "mt-3")}>
                   <div>
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted">{t.annualLeave}</span>
@@ -698,6 +713,20 @@ function BalancesView({
                       <span className="font-medium text-ink">{t.days(b.sickUsed)}</span>
                     </div>
                     <Progress value={b.sickUsed} max={12} className="mt-1.5" barClassName="bg-olive" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted">{t.companyUsed}</span>
+                      <span className="font-medium text-ink">{t.days(companyByEmp.get(b.employeeId) ?? 0)}</span>
+                    </div>
+                    <Progress value={companyByEmp.get(b.employeeId) ?? 0} max={12} className="mt-1.5" barClassName="bg-forest-600" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted">{t.unpaidUsed}</span>
+                      <span className="font-medium text-ink">{t.days(unpaidByEmp.get(b.employeeId) ?? 0)}</span>
+                    </div>
+                    <Progress value={unpaidByEmp.get(b.employeeId) ?? 0} max={12} className="mt-1.5" barClassName="bg-[#c0612f]" />
                   </div>
                   <div>
                     <div className="flex items-center justify-between text-xs">
