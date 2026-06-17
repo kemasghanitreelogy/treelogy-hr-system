@@ -65,6 +65,16 @@ export function periodsBack(n: number, from: string): string[] {
   });
 }
 
+/** Today's date (YYYY-MM-DD) in WITA (Asia/Makassar) — the attendance timezone. */
+export function witaToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Makassar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export function formatTime(input?: string | null): string {
   if (!input) return "—";
   const d = new Date(input);

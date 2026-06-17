@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { EmployeesView } from "@/components/employees/employees-view";
 import { getAllContracts, getEmployees, getRoles, getSystemUsers } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
@@ -26,6 +27,9 @@ export default async function EmployeesPage() {
     getAllContracts(),
   ]);
   const t = STR[locale];
+  // Employees DB is HR/admin only (employees.manage) — even division heads are
+  // blocked. Guard the route, not just the menu, so it can't be reached by URL.
+  if (!can(user, "employees.manage")) redirect("/dashboard");
   const canManage = can(user, "employees.manage");
   const canAssignRoles = can(user, "access.users");
   const roles = getRoles().map((r) => ({ id: r.id, name: r.name, color: r.color }));

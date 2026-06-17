@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { minutesToHM } from "@/lib/utils";
 import type { AttendanceRecap } from "@/lib/data";
-import type { LeaveBalance, TeamGeofence } from "@/lib/types";
+import type { AttendanceRecord, LeaveBalance, TeamGeofence } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 
 const STR: Record<Locale, {
@@ -66,6 +66,7 @@ export function SelfDashboard({
   workDays,
   holidayToday = false,
   holidayName = null,
+  todayRecord = null,
   locale = "id",
 }: {
   firstName: string;
@@ -79,6 +80,7 @@ export function SelfDashboard({
   workDays?: number[];
   holidayToday?: boolean;
   holidayName?: string | null;
+  todayRecord?: Pick<AttendanceRecord, "clockIn" | "clockOut"> | null;
   locale?: Locale;
 }) {
   const t = STR[locale];
@@ -100,6 +102,7 @@ export function SelfDashboard({
           workDays={workDays}
           holidayToday={holidayToday}
           holidayName={holidayName}
+          todayRecord={todayRecord}
         />
       </div>
 

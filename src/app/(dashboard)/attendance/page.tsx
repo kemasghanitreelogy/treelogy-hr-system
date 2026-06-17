@@ -12,6 +12,7 @@ import {
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
+import { witaToday } from "@/lib/utils";
 
 export const metadata = { title: "Absensi — Treelogy HR" };
 
@@ -51,6 +52,9 @@ export default async function AttendancePage() {
   // cukup riwayat saja, jangan dobel. HR/admin tetap dapat widget di halaman
   // ini karena Beranda mereka berisi dashboard operasional (tanpa widget).
   const showClockWidget = audienceFromPermissions(user?.permissions ?? []) === "ops";
+  // Today's record (WITA) so the clock widget reflects clocked-in state on refresh.
+  const today = witaToday();
+  const todayRecord = all.find((r) => r.employeeId === user?.employeeId && r.date === today) ?? null;
 
   const view = (
     <AttendanceView
@@ -79,6 +83,7 @@ export default async function AttendancePage() {
           workDays={me?.workDays}
           holidayToday={holidayToday != null}
           holidayName={holidayToday?.name ?? null}
+          todayRecord={todayRecord}
         />
       </div>
       <div className="space-y-4">

@@ -18,7 +18,7 @@ import { AttendanceTrendChart, TeamDonut } from "@/components/dashboard/charts";
 import { PushManager } from "@/components/pwa/push-manager";
 import { SelfDashboard } from "@/components/dashboard/self-dashboard";
 import { TEAM_META } from "@/lib/constants";
-import { formatDate, rupiah } from "@/lib/utils";
+import { formatDate, rupiah, witaToday } from "@/lib/utils";
 import {
   CURRENT_PERIOD,
   TODAY,
@@ -169,6 +169,9 @@ export default async function DashboardPage() {
       user.employeeId ? getContracts(user.employeeId) : Promise.resolve([]),
     ]);
     const recap = computeRecap(attendance, user.employeeId ?? "", CURRENT_PERIOD);
+    // Today's record (WITA) so the clock widget survives a refresh.
+    const today = witaToday();
+    const todayRecord = attendance.find((r) => r.employeeId === user.employeeId && r.date === today) ?? null;
     const rawBalance = balances.find((b) => b.employeeId === user.employeeId);
     // Annual leave only accrues after 1 full year of service (from contract start).
     const balance = rawBalance && me ? applyTenureQuota([rawBalance], [me], myContracts)[0] : rawBalance;
@@ -188,6 +191,7 @@ export default async function DashboardPage() {
         workDays={me?.workDays}
         holidayToday={holidayToday != null}
         holidayName={holidayToday?.name ?? null}
+        todayRecord={todayRecord}
         locale={locale}
       />
     );

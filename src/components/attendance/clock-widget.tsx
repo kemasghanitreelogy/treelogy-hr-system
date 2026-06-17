@@ -17,7 +17,7 @@ import {
   Timer,
 } from "lucide-react";
 import { createPortal } from "react-dom";
-import type { TeamGeofence } from "@/lib/types";
+import type { AttendanceRecord, TeamGeofence } from "@/lib/types";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
 import { Field, Textarea } from "@/components/ui/field";
@@ -34,6 +34,7 @@ const STR: Record<
   {
     loading: string;
     gpsInaccurate: (accuracy: number) => string;
+    gpsLowAccuracy: (accuracy: number) => string;
     locationRequiredLong: string;
     gpsSearching: string;
     outOfRange: (distance: string, max: number) => string;
@@ -87,6 +88,8 @@ const STR: Record<
     loading: "Memuat…",
     gpsInaccurate: (accuracy) =>
       `Sinyal GPS kurang akurat (±${accuracy} m). Pindah ke area terbuka lalu coba lagi.`,
+    gpsLowAccuracy: (accuracy) =>
+      `Lokasi kurang presisi (±${accuracy} m) — biasanya karena Wi-Fi/laptop. Aktifkan "Lokasi Tepat" & gunakan GPS HP, lalu coba lagi.`,
     locationRequiredLong: "Akses lokasi diblokir. Izinkan lokasi untuk aplikasi ini di pengaturan browser/HP.",
     gpsSearching: "Belum dapat sinyal GPS. Pastikan lokasi HP aktif, lalu coba lagi.",
     outOfRange: (distance, max) => `Di luar jangkauan (${distance} / maks ${max} m).`,
@@ -139,6 +142,8 @@ const STR: Record<
     loading: "Loading…",
     gpsInaccurate: (accuracy) =>
       `GPS signal is inaccurate (±${accuracy} m). Move to an open area and try again.`,
+    gpsLowAccuracy: (accuracy) =>
+      `Location is imprecise (±${accuracy} m) — usually Wi-Fi/desktop. Turn on "Precise Location" & use your phone's GPS, then try again.`,
     locationRequiredLong: "Location access is blocked. Allow location for this app in your browser/phone settings.",
     gpsSearching: "Couldn't get a GPS signal yet. Make sure location is on, then try again.",
     outOfRange: (distance, max) => `Out of range (${distance} / max ${max} m).`,
@@ -242,6 +247,7 @@ export function ClockWidget({
   workDays = [1, 2, 3, 4, 5],
   holidayToday = false,
   holidayName = null,
+  todayRecord = null,
 }: {
   geofence: TeamGeofence;
   requireLocation: boolean;
@@ -253,6 +259,8 @@ export function ClockWidget({
    *  walau terjadwal kerja, clock-in tetap memunculkan pilihan tukar/lembur. */
   holidayToday?: boolean;
   holidayName?: string | null;
+  /** Today's attendance record (WITA) so the widget survives a page refresh. */
+  todayRecord?: Pick<AttendanceRecord, "clockIn" | "clockOut"> | null;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -260,8 +268,13 @@ export function ClockWidget({
   const offDayToday = holidayToday || !workDays.includes(witaDowNow());
   const [now, setNow] = useState<Date | null>(null);
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("out");
-  const [clockInAt, setClockInAt] = useState<Date | null>(null);
+  // Seed from today's server record so a refresh keeps the clocked-in state:
+  // clocked in (and not yet out) → "in"; otherwise "out".
+  const workingNow = !!todayRecord?.clockIn && !todayRecord?.clockOut;
+  const [phase, setPhase] = useState<Phase>(workingNow ? "in" : "out");
+  const [clockInAt, setClockInAt] = useState<Date | null>(
+    workingNow && todayRecord?.clockIn ? new Date(todayRecord.clockIn) : null,
+  );
   const [flow, setFlow] = useState<Flow>("idle");
   const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
@@ -305,6 +318,16 @@ export function ClockWidget({
         const distance = distanceMeters(lat, lng, geofence.lat, geofence.lng);
         coords = { lat, lng, distance, accuracy };
         setGeo(coords);
+        // A coarse fix (large uncertainty radius) can't be trusted for a geofence
+        // check — Safari on a laptop, or iOS with "Precise Location" off, reports a
+        // Wi-Fi/IP position that may be off by hundreds of metres to kilometres.
+        // Guide the user instead of falsely flagging them "X km out of range".
+        const accuracyLimit = Math.max(150, geofence.radiusM);
+        if (accuracy > accuracyLimit) {
+          setFlow("idle");
+          setNotice({ tone: "error", text: t.gpsLowAccuracy(Math.round(accuracy)) });
+          return;
+        }
         if (distance > geofence.radiusM) {
           // If the gap is within the GPS uncertainty, it's likely a weak signal
           // rather than truly being away — ask to retry instead of hard-rejecting.

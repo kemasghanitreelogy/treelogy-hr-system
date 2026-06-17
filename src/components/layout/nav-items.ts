@@ -34,7 +34,7 @@ const ITEMS: Record<string, NavItem> = {
   "/leave": { href: "/leave", label: "Cuti & Izin", labelEn: "Leave", icon: CalendarDays, perm: "leave.view" },
   "/overtime": { href: "/overtime", label: "Lembur", labelEn: "Overtime", icon: Timer, perm: "attendance.view" },
   "/payroll": { href: "/payroll", label: "Payroll", labelEn: "Payroll", icon: Wallet, perm: "payroll.view" },
-  "/employees": { href: "/employees", label: "Karyawan", labelEn: "Employees", icon: Users, perm: "employees.view" },
+  "/employees": { href: "/employees", label: "Karyawan", labelEn: "Employees", icon: Users, perm: "employees.manage" },
   "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", labelEn: "Org Structure", icon: Network, perm: "dashboard.view" },
   "/shifts": { href: "/shifts", label: "Jadwal", labelEn: "Schedule", icon: Layers, perm: "shifts.view" },
   "/holidays": { href: "/holidays", label: "Hari Libur", labelEn: "Holidays", icon: CalendarOff, perm: "dashboard.view" },
