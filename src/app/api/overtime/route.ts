@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { mapOvertime } from "@/lib/data";
 import { notifyApprovers, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
+import { isValidUploadedPath } from "@/lib/storage-path";
 import type { RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -22,6 +23,7 @@ const PROOF_EXT: Record<string, string> = {
   "application/pdf": "pdf",
 };
 const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+const PROOF_EXTS = ["jpg", "jpeg", "png", "webp", "heic", "pdf"];
 
 function parseDataUrl(dataUrl: string | undefined): { mime: string; buffer: Buffer } | null {
   if (!dataUrl) return null;
@@ -43,6 +45,7 @@ interface CreatePayload {
   endTime?: string;
   reason?: string;
   proofFile?: string;
+  proofPath?: string;
 }
 
 interface UpdatePayload {
@@ -91,10 +94,16 @@ export async function POST(req: Request) {
   const ratePerHour = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
   const amount = Math.round(ratePerHour * hours);
 
-  // Optional proof file.
+  // Optional proof file. Preferred: client uploaded straight to storage and
+  // sent the path. Fallback: base64 data URL uploaded here (demo / no Supabase).
   let proofPath: string | null = null;
-  const proof = parseDataUrl(body.proofFile);
-  if (body.proofFile) {
+  if (body.proofPath) {
+    if (!isValidUploadedPath(body.proofPath, body.employeeId, PROOF_EXTS)) {
+      return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+    }
+    proofPath = body.proofPath;
+  } else if (body.proofFile) {
+    const proof = parseDataUrl(body.proofFile);
     if (!proof || !PROOF_EXT[proof.mime]) {
       return NextResponse.json({ error: "invalid_proof_type" }, { status: 400 });
     }

@@ -4,6 +4,7 @@ import { mapLeave } from "@/lib/data";
 import { adjustLeaveUsage } from "@/lib/balance";
 import { notifyApprovers, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
+import { isValidUploadedPath } from "@/lib/storage-path";
 import type { LeaveType, RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -28,6 +29,7 @@ const PROOF_EXT: Record<string, string> = {
   "application/pdf": "pdf",
 };
 const PROOF_MAX_BYTES = 5 * 1024 * 1024;
+const PROOF_EXTS = ["jpg", "jpeg", "png", "webp", "heic", "pdf"];
 
 interface CreatePayload {
   employeeId?: string;
@@ -35,8 +37,10 @@ interface CreatePayload {
   startDate?: string;
   endDate?: string;
   reason?: string;
-  /** Optional proof, as a `data:<mime>;base64,...` URL. */
+  /** Optional proof, as a `data:<mime>;base64,...` URL (demo / fallback). */
   proofFile?: string;
+  /** Optional proof already uploaded directly to storage — "<empId>/<uuid>.<ext>". */
+  proofPath?: string;
 }
 
 /** Parse a `data:` URL into {mime, buffer}; returns null when absent/invalid. */
@@ -91,10 +95,16 @@ export async function POST(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
-  // Optional proof file — validate type/size, then upload to the private bucket.
+  // Optional proof file. Preferred: client uploaded straight to storage and
+  // sent the path. Fallback: base64 data URL uploaded here (demo / no Supabase).
   let proofPath: string | null = null;
-  const proof = parseDataUrl(body.proofFile);
-  if (body.proofFile) {
+  if (body.proofPath) {
+    if (!isValidUploadedPath(body.proofPath, body.employeeId, PROOF_EXTS)) {
+      return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+    }
+    proofPath = body.proofPath;
+  } else if (body.proofFile) {
+    const proof = parseDataUrl(body.proofFile);
     if (!proof || !PROOF_EXT[proof.mime]) {
       return NextResponse.json({ error: "invalid_proof_type" }, { status: 400 });
     }

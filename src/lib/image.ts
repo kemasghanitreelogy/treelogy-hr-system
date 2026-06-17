@@ -35,14 +35,13 @@ function fileToDataUrl(file: Blob): Promise<string> {
   });
 }
 
-/** Compress an image File → data URL ready for upload. Near-lossless WebP. */
-export async function compressImageFile(file: File): Promise<string> {
+/** Compress an image File → a Blob (near-lossless WebP). Small files pass through. */
+export async function compressImageBlob(file: File): Promise<Blob> {
   // Already small enough → don't touch it (preserve original quality exactly).
   if (file.size <= RECOMPRESS_ABOVE_MB * 1024 * 1024 && file.type !== "image/heic") {
-    return fileToDataUrl(file);
+    return file;
   }
   const { default: imageCompression } = await import("browser-image-compression");
-  let chosen: File | Blob = file;
   try {
     const out = await imageCompression(file, {
       maxSizeMB: TARGET_MAX_MB,
@@ -52,11 +51,16 @@ export async function compressImageFile(file: File): Promise<string> {
       fileType: "image/webp",
     });
     // Never emit something larger than the original.
-    if (out.size < file.size) chosen = out;
+    return out.size < file.size ? out : file;
   } catch {
     /* compression failed → use original; the server still validates size */
+    return file;
   }
-  return fileToDataUrl(chosen);
+}
+
+/** Compress an image File → data URL ready for upload. Near-lossless WebP. */
+export async function compressImageFile(file: File): Promise<string> {
+  return fileToDataUrl(await compressImageBlob(file));
 }
 
 /**

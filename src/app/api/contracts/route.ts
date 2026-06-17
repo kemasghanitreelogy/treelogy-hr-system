@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapContract } from "@/lib/data";
+import { isValidUploadedPath } from "@/lib/storage-path";
 
 export const runtime = "nodejs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TYPES = ["probation", "pkwt", "pkwtt", "magang", "harian"];
+const DOC_EXTS = ["pdf", "jpg", "jpeg", "png", "webp"];
 
 // --- Contract document upload (private `contract-docs` bucket; PDF or image) ---
 const DOC_EXT: Record<string, string> = {
@@ -46,7 +48,7 @@ async function auth() {
 }
 
 export async function POST(req: Request) {
-  let body: { employeeId?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string; docFile?: string };
+  let body: { employeeId?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string; docFile?: string; docPath?: string };
   try {
     body = await req.json();
   } catch {
@@ -61,7 +63,13 @@ export async function POST(req: Request) {
   if (authErr) return authErr;
 
   let docPath: string | null = null;
-  if (body.docFile) {
+  if (body.docPath) {
+    // Client uploaded straight to storage — just validate & store the path.
+    if (!isValidUploadedPath(body.docPath, body.employeeId, DOC_EXTS)) {
+      return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+    }
+    docPath = body.docPath;
+  } else if (body.docFile) {
     const path = await uploadDoc(supabase!, body.employeeId, body.docFile);
     if (path instanceof NextResponse) return path;
     docPath = path;
@@ -85,7 +93,7 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  let body: { id?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string; docFile?: string };
+  let body: { id?: string; type?: string; startDate?: string; endDate?: string | null; status?: string; note?: string; docFile?: string; docPath?: string };
   try {
     body = await req.json();
   } catch {
@@ -106,13 +114,20 @@ export async function PATCH(req: Request) {
   if (body.status !== undefined) updates.status = body.status === "ended" ? "ended" : "active";
   if (body.note !== undefined) updates.note = body.note?.trim() || null;
 
-  if (body.docFile) {
+  if (body.docPath || body.docFile) {
     // The storage path is keyed by employee; fetch it from the existing row.
     const { data: row } = await supabase!.from("employee_contracts").select("employee_id").eq("id", body.id).maybeSingle();
     if (!row) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
-    const path = await uploadDoc(supabase!, String(row.employee_id), body.docFile);
-    if (path instanceof NextResponse) return path;
-    updates.doc_path = path;
+    if (body.docPath) {
+      if (!isValidUploadedPath(body.docPath, String(row.employee_id), DOC_EXTS)) {
+        return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+      }
+      updates.doc_path = body.docPath;
+    } else {
+      const path = await uploadDoc(supabase!, String(row.employee_id), body.docFile!);
+      if (path instanceof NextResponse) return path;
+      updates.doc_path = path;
+    }
   }
 
   if (Object.keys(updates).length === 0) return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });

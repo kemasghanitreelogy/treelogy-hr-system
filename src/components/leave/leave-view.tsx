@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
-import { prepareUpload } from "@/lib/image";
+import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, formatTime } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
@@ -757,10 +757,11 @@ function LeaveForm({
     endDate: "",
     reason: "",
   });
-  // Optional proof attachment (image or PDF), read client-side into a data URL.
-  const [proof, setProof] = useState<{ dataUrl: string; name: string } | null>(null);
+  // Optional proof attachment (image or PDF). Kept as a File and uploaded
+  // straight to storage on submit (no request-body size limit).
+  const [proof, setProof] = useState<{ file: File; name: string } | null>(null);
 
-  async function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-picking the same file after removal
     if (!file) return;
@@ -768,17 +769,7 @@ function LeaveForm({
       toast.error(t.onlyImageOrPdf);
       return;
     }
-    // Images are compressed below, so only raw files (PDF) must respect the limit.
-    if (!file.type.startsWith("image/") && file.size > 5 * 1024 * 1024) {
-      toast.error(t.maxFileSize);
-      return;
-    }
-    try {
-      // Compress images (near-lossless WebP) in a Web Worker; PDFs pass through.
-      setProof({ dataUrl: await prepareUpload(file), name: file.name });
-    } catch {
-      toast.error(t.readFileFailed);
-    }
+    setProof({ file, name: file.name });
   }
 
   async function submit(e: React.FormEvent) {
@@ -798,6 +789,12 @@ function LeaveForm({
     }
     setSaving(true);
     try {
+      // Upload proof straight to storage (no body-size limit); send the path.
+      let attach: { proofPath?: string; proofFile?: string } = {};
+      if (proof) {
+        const up = await prepareFileForBucket("leave-proofs", form.employeeId, proof.file);
+        attach = up.path ? { proofPath: up.path } : { proofFile: up.dataUrl ?? undefined };
+      }
       const res = await fetch("/api/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -807,7 +804,7 @@ function LeaveForm({
           startDate: form.startDate,
           endDate: form.endDate,
           reason: form.reason,
-          proofFile: proof?.dataUrl,
+          ...attach,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -816,8 +813,8 @@ function LeaveForm({
         return;
       }
       onSubmit(data.request as LeaveRequest);
-    } catch {
-      toast.error(t.connectionError);
+    } catch (err) {
+      toast.error(apiErrorMessage(err instanceof Error ? err.message : undefined, locale));
     } finally {
       setSaving(false);
     }

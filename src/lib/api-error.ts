@@ -67,6 +67,11 @@ const MESSAGES: Record<string, Msg> = {
   invalid_doc_type: { id: "Dokumen harus PDF atau gambar.", en: "Document must be a PDF or image." },
   doc_too_large: { id: "Dokumen terlalu besar (maks 10MB).", en: "Document is too large (max 10MB)." },
   doc_upload_failed: { id: "Gagal mengunggah dokumen. Coba lagi.", en: "Failed to upload the document. Try again." },
+  invalid_path: { id: "Path file tidak valid.", en: "The file path is invalid." },
+
+  // --- client-side direct upload (lib/upload.ts) ---
+  file_too_large: { id: "File terlalu besar (maks 25MB).", en: "File is too large (max 25MB)." },
+  upload_failed: { id: "Gagal mengunggah file. Coba lagi.", en: "Failed to upload the file. Try again." },
 
   // --- attendance / push / misc server ---
   attendance_write_failed: { id: "Gagal menyimpan absensi. Coba lagi.", en: "Failed to save attendance. Try again." },

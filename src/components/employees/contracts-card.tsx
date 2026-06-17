@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, FileSignature, FileText, Loader2, Plus, Trash2, Upload } from "lucide-react";
 import type { EmployeeContract } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
-import { prepareUpload } from "@/lib/image";
+import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
@@ -204,7 +204,7 @@ function ContractForm({
     status: (initial?.status ?? "active") as EmployeeContract["status"],
     note: initial?.note ?? "",
   });
-  const [docFile, setDocFile] = useState<string | null>(null);
+  const [docBlob, setDocBlob] = useState<File | null>(null);
   const [docName, setDocName] = useState("");
 
   async function submit(e: React.FormEvent) {
@@ -212,9 +212,15 @@ function ContractForm({
     if (!form.startDate) return;
     setSaving(true);
     try {
+      // Upload the doc straight to storage (no body-size limit); send the path.
+      let doc: { docPath?: string; docFile?: string } = {};
+      if (docBlob) {
+        const up = await prepareFileForBucket("contract-docs", employeeId, docBlob);
+        doc = up.path ? { docPath: up.path } : { docFile: up.dataUrl ?? undefined };
+      }
       const payload = isEdit
-        ? { id: initial!.id, type: form.type, startDate: form.startDate, endDate: form.endDate || null, status: form.status, note: form.note, ...(docFile ? { docFile } : {}) }
-        : { employeeId, type: form.type, startDate: form.startDate, endDate: form.endDate || null, status: form.status, note: form.note, ...(docFile ? { docFile } : {}) };
+        ? { id: initial!.id, type: form.type, startDate: form.startDate, endDate: form.endDate || null, status: form.status, note: form.note, ...doc }
+        : { employeeId, type: form.type, startDate: form.startDate, endDate: form.endDate || null, status: form.status, note: form.note, ...doc };
       const res = await fetch("/api/contracts", {
         method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
@@ -223,7 +229,9 @@ function ContractForm({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.contract) { toast.error(apiErrorMessage(data?.error, locale, res.status)); return; }
       onSaved(data.contract as EmployeeContract);
-    } catch { toast.error(t.connection); } finally { setSaving(false); }
+    } catch (err) {
+      toast.error(apiErrorMessage(err instanceof Error ? err.message : undefined, locale));
+    } finally { setSaving(false); }
   }
 
   return (
@@ -246,7 +254,7 @@ function ContractForm({
       <Field label={t.noteLabel}><Textarea value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} /></Field>
       <Field label={t.docLabel} hint={t.docHint}>
         <div className="space-y-2">
-          {isEdit && initial!.docPath && !docFile && (
+          {isEdit && initial!.docPath && !docBlob && (
             <a href={docHref(initial!.docPath)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-sky hover:underline">
               <FileText className="h-3.5 w-3.5" /> {t.currentDoc}
             </a>
@@ -258,17 +266,13 @@ function ContractForm({
               type="file"
               accept="application/pdf,image/jpeg,image/png,image/webp"
               className="hidden"
-              onChange={async (e) => {
+              onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = ""; // allow re-picking the same file
                 if (!file) return;
-                try {
-                  // Compress images (near-lossless WebP); PDFs pass through.
-                  setDocFile(await prepareUpload(file));
-                  setDocName(file.name);
-                } catch {
-                  toast.error(t.connection);
-                }
+                // Keep the raw file; it's compressed + uploaded on submit.
+                setDocBlob(file);
+                setDocName(file.name);
               }}
             />
           </label>

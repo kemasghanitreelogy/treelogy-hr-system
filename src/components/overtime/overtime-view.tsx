@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
 import type { Employee, OvertimeRequest, RequestStatus, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
-import { prepareUpload } from "@/lib/image";
+import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { formatDate, formatTime, rupiah } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
@@ -535,7 +535,7 @@ function OvertimeForm({
     endTime: "",
     reason: "",
   });
-  const [proof, setProof] = useState<{ dataUrl: string; name: string } | null>(null);
+  const [proof, setProof] = useState<{ file: File; name: string } | null>(null);
 
   // Live duration + estimated pay (own salary only).
   const startMin = toMin(form.startTime);
@@ -543,7 +543,7 @@ function OvertimeForm({
   const hours = startMin != null && endMin != null && endMin > startMin ? (endMin - startMin) / 60 : 0;
   const showEstimate = form.employeeId === currentEmployeeId && selfRatePerHour > 0 && hours > 0;
 
-  async function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
@@ -551,17 +551,8 @@ function OvertimeForm({
       toast.error(t.onlyImageOrPdf);
       return;
     }
-    // Images are compressed below, so only raw files (PDF) must respect the limit.
-    if (!file.type.startsWith("image/") && file.size > 5 * 1024 * 1024) {
-      toast.error(t.maxFileSize);
-      return;
-    }
-    try {
-      // Compress images (near-lossless WebP) in a Web Worker; PDFs pass through.
-      setProof({ dataUrl: await prepareUpload(file), name: file.name });
-    } catch {
-      toast.error(t.readFileFailed);
-    }
+    // Kept as a File; compressed + uploaded straight to storage on submit.
+    setProof({ file, name: file.name });
   }
 
   async function submit(e: React.FormEvent) {
@@ -574,6 +565,12 @@ function OvertimeForm({
     }
     setSaving(true);
     try {
+      // Upload proof straight to storage (no body-size limit); send the path.
+      let attach: { proofPath?: string; proofFile?: string } = {};
+      if (proof) {
+        const up = await prepareFileForBucket("overtime-proofs", form.employeeId, proof.file);
+        attach = up.path ? { proofPath: up.path } : { proofFile: up.dataUrl ?? undefined };
+      }
       const res = await fetch("/api/overtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -583,7 +580,7 @@ function OvertimeForm({
           startTime: form.startTime,
           endTime: form.endTime,
           reason: form.reason,
-          proofFile: proof?.dataUrl,
+          ...attach,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -592,8 +589,8 @@ function OvertimeForm({
         return;
       }
       onSubmit(data.request as OvertimeRequest);
-    } catch {
-      toast.error(t.connectionError);
+    } catch (err) {
+      toast.error(apiErrorMessage(err instanceof Error ? err.message : undefined, locale));
     } finally {
       setSaving(false);
     }
