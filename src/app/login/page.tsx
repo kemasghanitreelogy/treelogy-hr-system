@@ -21,6 +21,12 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   function onSuccess() {
+    // Flag a fresh login so the dashboard can prompt to enable notifications.
+    try {
+      sessionStorage.setItem("treelogy-just-logged-in", "1");
+    } catch {
+      /* ignore */
+    }
     const next = new URLSearchParams(window.location.search).get("next") || "/dashboard";
     // Prefetch so the dashboard is ready the moment the checkmark finishes.
     router.prefetch(next);

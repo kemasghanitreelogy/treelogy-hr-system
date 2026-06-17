@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { LocaleProvider } from "@/components/layout/locale-context";
+import { NotifyPrompt } from "@/components/pwa/notify-prompt";
 import { getSessionUser } from "@/lib/auth";
 import { getActionCounts, getUnreadNotifCount } from "@/lib/data";
 import { LOCALE_COOKIE, normalizeLocale } from "@/lib/i18n";
@@ -38,6 +39,7 @@ export default async function DashboardLayout({
       >
         {children}
       </AppShell>
+      <NotifyPrompt />
     </LocaleProvider>
   );
 }
