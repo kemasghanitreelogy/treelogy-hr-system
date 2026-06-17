@@ -5,13 +5,14 @@ import {
   buildPayslip,
   getAttendanceSince,
   getEmployees,
+  getLeaveRequests,
   getOvertimeRequests,
   getPayrollRuns,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import { periodsBack } from "@/lib/utils";
-import type { AttendanceRecord, Employee, OvertimeRequest, Payslip } from "@/lib/types";
+import type { AttendanceRecord, Employee, LeaveRequest, OvertimeRequest, Payslip } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Payroll — Treelogy HR" };
@@ -42,11 +43,11 @@ const STR: Record<
 // Riwayat slip yang ditampilkan: 12 bulan terakhir (difilter lagi di UI).
 const HISTORY_MONTHS = 12;
 
-function buildHistory(emps: Employee[], attendance: AttendanceRecord[], overtime: OvertimeRequest[]): Payslip[] {
+function buildHistory(emps: Employee[], attendance: AttendanceRecord[], overtime: OvertimeRequest[], leave: LeaveRequest[]): Payslip[] {
   const periods = periodsBack(HISTORY_MONTHS, CURRENT_PERIOD);
   return periods.flatMap((p) => {
     const rows = attendance.filter((a) => a.date.startsWith(p));
-    return emps.map((e) => buildPayslip(e, p, "pr-" + p, rows, overtime));
+    return emps.map((e) => buildPayslip(e, p, "pr-" + p, rows, overtime, leave));
   });
 }
 
@@ -59,10 +60,11 @@ export default async function PayrollPage() {
   const isOps = can(user, "payroll.process") || can(user, "employees.manage");
 
   // Absensi hanya untuk jendela riwayat (bukan seluruh tabel) — lebih cepat.
-  const [employeesAll, attendance, overtime] = await Promise.all([
+  const [employeesAll, attendance, overtime, leave] = await Promise.all([
     getEmployees(),
     getAttendanceSince(`${oldest}-01`),
     getOvertimeRequests(),
+    getLeaveRequests(),
   ]);
 
   // Self-service: a plain employee sees ONLY their own payslips, built from
@@ -76,7 +78,7 @@ export default async function PayrollPage() {
         </div>
       );
     }
-    const slips = buildHistory([me], attendance, overtime);
+    const slips = buildHistory([me], attendance, overtime, leave);
     return (
       <div className="space-y-4 fade-up">
         <p className="text-sm text-muted">
@@ -88,7 +90,7 @@ export default async function PayrollPage() {
   }
 
   const employees = employeesAll.filter((e) => e.status === "active");
-  const [slips, runs] = [buildHistory(employees, attendance, overtime), await getPayrollRuns()];
+  const [slips, runs] = [buildHistory(employees, attendance, overtime, leave), await getPayrollRuns()];
 
   return (
     <div className="space-y-4">

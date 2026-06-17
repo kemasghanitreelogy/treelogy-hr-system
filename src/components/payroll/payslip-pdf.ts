@@ -16,6 +16,7 @@ const STR: Record<
     overtimeNote: string;
     overtimeLine: (hours: number) => string;
     absenceLine: (days: number) => string;
+    unpaidLeaveLine: (days: number) => string;
     deductionsTitle: string;
     bpjsDeductions: string;
     bpjsKes1: string;
@@ -45,6 +46,7 @@ const STR: Record<
     overtimeNote: "Lembur yang disetujui pada bulan ini sudah termasuk di gaji.",
     overtimeLine: (hours) => `Lembur (${hours} jam)`,
     absenceLine: (days) => `Potongan absen (${days} hari)`,
+    unpaidLeaveLine: (days) => `Cuti tanpa gaji (${days} hari)`,
     deductionsTitle: "Potongan",
     bpjsDeductions: "Potongan — BPJS (karyawan)",
     bpjsKes1: "BPJS Kesehatan (1%)",
@@ -73,6 +75,7 @@ const STR: Record<
     overtimeNote: "Approved overtime this month is already included in the salary.",
     overtimeLine: (hours) => `Overtime (${hours} h)`,
     absenceLine: (days) => `Absence deduction (${days} days)`,
+    unpaidLeaveLine: (days) => `Unpaid leave (${days} days)`,
     deductionsTitle: "Deductions",
     bpjsDeductions: "Deductions — BPJS (employee)",
     bpjsKes1: "BPJS Kesehatan (1%)",
@@ -197,10 +200,11 @@ async function buildPayslipPdf(slip: Payslip, emp: Employee, locale: Locale = "i
   line(t.gross, rp(slip.grossPay), { strong: true });
   note(t.overtimeNote);
 
-  // ---- Potongan absen (jika ada) ----
-  if (slip.absenceDeduction > 0) {
+  // ---- Potongan absen & cuti tanpa gaji (jika ada) ----
+  if (slip.absenceDeduction > 0 || slip.unpaidLeaveDeduction > 0) {
     section(t.deductionsTitle);
-    line(t.absenceLine(slip.workingDays - slip.presentDays), `- ${rp(slip.absenceDeduction)}`);
+    if (slip.absenceDeduction > 0) line(t.absenceLine(slip.workingDays - slip.presentDays), `- ${rp(slip.absenceDeduction)}`);
+    if (slip.unpaidLeaveDeduction > 0) line(t.unpaidLeaveLine(slip.unpaidLeaveDays), `- ${rp(slip.unpaidLeaveDeduction)}`);
     y += 2;
   }
 

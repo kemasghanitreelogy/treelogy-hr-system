@@ -634,6 +634,7 @@ export function buildPayslip(
   runId: string,
   periodRows: AttendanceRecord[],
   overtime: OvertimeRequest[] = [],
+  leave: LeaveRequest[] = [],
 ): Payslip {
   const recap = computeRecap(periodRows, employee.id, period);
   const ot = overtime.filter((o) => o.employeeId === employee.id && o.status === "approved" && o.date.startsWith(period));
@@ -641,20 +642,26 @@ export function buildPayslip(
   const overtimeHours = Math.round(ot.reduce((s, o) => s + o.hours, 0) * 10) / 10;
   const dailyRate = recap.workingDays > 0 ? employee.baseSalary / recap.workingDays : 0;
   const absenceDeduction = Math.round(dailyRate * recap.absentDays);
+  // Unpaid leave: approved 'unpaid' requests in this period, docked at the
+  // standard daily rate of baseSalary / 21 (avg. working days per month).
+  const unpaidLeaveDays = leave
+    .filter((l) => l.employeeId === employee.id && l.type === "unpaid" && l.status === "approved" && l.startDate.startsWith(period))
+    .reduce((s, l) => s + l.days, 0);
+  const unpaidLeaveDeduction = Math.round((employee.baseSalary / 21) * unpaidLeaveDays);
   const grossPay = employee.baseSalary + employee.allowance + overtimePay;
-  const netPay = grossPay - absenceDeduction;
+  const netPay = grossPay - absenceDeduction - unpaidLeaveDeduction;
   return {
     id: `${runId}-${employee.id}`, runId, employeeId: employee.id, period,
     workingDays: recap.workingDays, presentDays: recap.presentDays,
     baseSalary: employee.baseSalary, allowance: employee.allowance,
-    overtimePay, overtimeHours, absenceDeduction, grossPay, netPay,
+    overtimePay, overtimeHours, absenceDeduction, unpaidLeaveDays, unpaidLeaveDeduction, grossPay, netPay,
   };
 }
 
 export async function getPayslipsForRun(runId: string, period: string): Promise<Payslip[]> {
-  const [emps, att, overtime] = await Promise.all([getEmployees(), getAttendance(), getOvertimeRequests()]);
+  const [emps, att, overtime, leave] = await Promise.all([getEmployees(), getAttendance(), getOvertimeRequests(), getLeaveRequests()]);
   const periodRows = att.filter((a) => a.date.startsWith(period));
-  return emps.filter((e) => e.status === "active").map((e) => buildPayslip(e, period, runId, periodRows, overtime));
+  return emps.filter((e) => e.status === "active").map((e) => buildPayslip(e, period, runId, periodRows, overtime, leave));
 }
 
 // ---- Dashboard aggregate ----
@@ -702,7 +709,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const periodRows = monthRows;
   const payrollNet = active.reduce(
-    (s, e) => s + buildPayslip(e, CURRENT_PERIOD, "pr-" + CURRENT_PERIOD, periodRows, overtime).netPay,
+    (s, e) => s + buildPayslip(e, CURRENT_PERIOD, "pr-" + CURRENT_PERIOD, periodRows, overtime, leave).netPay,
     0,
   );
 

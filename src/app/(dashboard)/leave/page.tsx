@@ -1,6 +1,6 @@
 import { LeaveView } from "@/components/leave/leave-view";
 import { getAllContracts, getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries } from "@/lib/data";
-import { applyTenureQuota, earliestContractStart } from "@/lib/leave-policy";
+import { applyTenureQuota, earliestContractStart, tenureStart } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -35,7 +35,7 @@ export default async function LeavePage() {
   const starts = earliestContractStart(contracts);
   const tenureStarts: Record<string, string> = {};
   for (const e of employeesAll) {
-    const s = starts.get(e.id) ?? e.joinDate;
+    const s = tenureStart(e.joinDate, starts.get(e.id));
     if (s) tenureStarts[e.id] = s;
   }
   const employees = employeesAll

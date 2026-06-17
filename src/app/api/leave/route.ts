@@ -14,9 +14,10 @@ const LEAVE_LABEL: Record<LeaveType, string> = {
   sick: "Sakit",
   unpaid: "Cuti tanpa gaji",
   "tukar-libur": "Tukar libur",
+  company: "Cuti perusahaan",
 };
 
-const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "tukar-libur"];
+const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "tukar-libur", "company"];
 const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 

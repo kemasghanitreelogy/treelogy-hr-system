@@ -29,12 +29,14 @@ const LEAVE_LABEL: Record<Locale, Record<LeaveType, string>> = {
     sick: "Sakit",
     unpaid: "Tanpa gaji",
     "tukar-libur": "Tukar libur",
+    company: "Cuti perusahaan",
   },
   en: {
     annual: "Annual leave",
     sick: "Sick",
     unpaid: "Unpaid",
     "tukar-libur": "Day-off swap",
+    company: "Company leave",
   },
 };
 
@@ -405,7 +407,7 @@ export function LeaveView({
                 )}
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : "sky"}>
+                    <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : r.type === "company" ? "forest" : "sky"}>
                       {LEAVE_LABEL[locale][r.type]}
                     </Badge>
                     <span className="text-sm font-medium text-ink">{t.days(r.days)}</span>
@@ -519,7 +521,7 @@ function LeaveDetail({
 
       <div className="grid grid-cols-2 gap-3">
         <Info label={t.type}>
-          <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : "sky"}>
+          <Badge tone={r.type === "sick" ? "olive" : r.type === "tukar-libur" ? "matcha" : r.type === "company" ? "forest" : "sky"}>
             {LEAVE_LABEL[locale][r.type]}
           </Badge>
         </Info>
@@ -963,7 +965,7 @@ function LeaveForm({
       )}
       <Field label={t.type}>
         <Select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as LeaveType }))}>
-          {(["annual", "sick", "unpaid", "tukar-libur"] as LeaveType[]).map((lt) => (
+          {(["annual", "sick", "unpaid", "tukar-libur", "company"] as LeaveType[]).map((lt) => (
             <option key={lt} value={lt}>{LEAVE_LABEL[locale][lt]}</option>
           ))}
         </Select>

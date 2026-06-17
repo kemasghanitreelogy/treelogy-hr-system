@@ -100,6 +100,16 @@ export function earliestContractStart(contracts: EmployeeContract[]): Map<string
 }
 
 /**
+ * The tenure anchor: the EARLIEST known start (join date or earliest contract
+ * start). Using the earliest means an employee whose join date is over a year
+ * ago is eligible even if their current contract was signed/imported recently.
+ */
+export function tenureStart(joinDate?: string | null, contractStart?: string | null): string | null {
+  if (joinDate && contractStart) return joinDate < contractStart ? joinDate : contractStart;
+  return joinDate ?? contractStart ?? null;
+}
+
+/**
  * Re-derive each balance's annual quota from tenure. First-year employees get 0;
  * `annualUsed` is clamped to the quota so "remaining" never reads negative.
  */
@@ -112,7 +122,7 @@ export function applyTenureQuota(
   const starts = earliestContractStart(contracts);
   const joinById = new Map(employees.map((e) => [e.id, e.joinDate]));
   return balances.map((b) => {
-    const start = starts.get(b.employeeId) ?? joinById.get(b.employeeId) ?? null;
+    const start = tenureStart(joinById.get(b.employeeId), starts.get(b.employeeId));
     const annualQuota = annualQuotaFor(start, asOf);
     return { ...b, annualQuota, annualUsed: Math.min(b.annualUsed, annualQuota) };
   });

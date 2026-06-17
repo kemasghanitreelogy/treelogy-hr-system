@@ -31,6 +31,7 @@ const STR: Record<
     overtimeNote: string;
     overtimeLine: (hours: number) => string;
     absenceLine: (days: number) => string;
+    unpaidLeaveLine: (days: number) => string;
     bpjsDeductions: string;
     bpjsKes1: string;
     jht2: string;
@@ -66,6 +67,7 @@ const STR: Record<
     overtimeNote: "Lembur yang disetujui pada bulan ini sudah termasuk di gaji.",
     overtimeLine: (hours: number) => `Lembur (${hours} jam)`,
     absenceLine: (days: number) => `Potongan absen (${days} hari)`,
+    unpaidLeaveLine: (days: number) => `Cuti tanpa gaji (${days} hari)`,
     bpjsDeductions: "Potongan — BPJS (karyawan)",
     bpjsKes1: "BPJS Kesehatan (1%)",
     jht2: "JHT (2%)",
@@ -100,6 +102,7 @@ const STR: Record<
     overtimeNote: "Approved overtime this month is already included in the salary.",
     overtimeLine: (hours: number) => `Overtime (${hours} h)`,
     absenceLine: (days: number) => `Absence deduction (${days} days)`,
+    unpaidLeaveLine: (days: number) => `Unpaid leave (${days} days)`,
     bpjsDeductions: "Deductions — BPJS (employee)",
     bpjsKes1: "BPJS Kesehatan (1%)",
     jht2: "JHT (2%)",
@@ -203,9 +206,14 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
         <p className="pt-1 text-xs text-faint">{t.overtimeNote}</p>
       </Section>
 
-      {slip.absenceDeduction > 0 && (
+      {(slip.absenceDeduction > 0 || slip.unpaidLeaveDeduction > 0) && (
         <Section title={locale === "en" ? "Deductions" : "Potongan"}>
-          <Line label={t.absenceLine(slip.workingDays - slip.presentDays)} value={`- ${rupiah(slip.absenceDeduction)}`} />
+          {slip.absenceDeduction > 0 && (
+            <Line label={t.absenceLine(slip.workingDays - slip.presentDays)} value={`- ${rupiah(slip.absenceDeduction)}`} />
+          )}
+          {slip.unpaidLeaveDeduction > 0 && (
+            <Line label={t.unpaidLeaveLine(slip.unpaidLeaveDays)} value={`- ${rupiah(slip.unpaidLeaveDeduction)}`} />
+          )}
         </Section>
       )}
 

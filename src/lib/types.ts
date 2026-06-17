@@ -119,7 +119,7 @@ export interface ShiftAssignment {
   date: string;
 }
 
-export type LeaveType = "annual" | "sick" | "unpaid" | "tukar-libur";
+export type LeaveType = "annual" | "sick" | "unpaid" | "tukar-libur" | "company";
 export type RequestStatus = "pending" | "approved" | "rejected";
 
 export interface LeaveRequest {
@@ -262,8 +262,12 @@ export interface Payslip {
   overtimePay: number;
   overtimeHours: number;
   absenceDeduction: number;
+  /** Days of approved unpaid leave in the period. */
+  unpaidLeaveDays: number;
+  /** Deduction for unpaid leave = round(baseSalary / 21 × unpaidLeaveDays). */
+  unpaidLeaveDeduction: number;
   grossPay: number; // pokok + tunjangan + lembur
-  netPay: number; // grossPay − potongan absen
+  netPay: number; // grossPay − potongan absen − potongan cuti tanpa gaji
 }
 
 /** A clock-in geofence for one division (team). */
