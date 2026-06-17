@@ -17,6 +17,7 @@ import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-ta
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { Locale } from "@/lib/i18n";
 import { AttendanceDetail } from "./attendance-detail";
 
@@ -548,7 +549,7 @@ function ClockApprovalsCard({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        toast.error(t.processFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       setList((cur) => cur.filter((a) => a.id !== id));

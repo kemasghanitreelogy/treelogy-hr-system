@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, FileSignature, FileText, Loader2, Plus, Trash2, Upload } from "lucide-react";
 import type { EmployeeContract } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
+import { prepareUpload } from "@/lib/image";
+import { apiErrorMessage } from "@/lib/api-error";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +70,7 @@ export function ContractsCard({ employeeId, contracts, canManage }: { employeeId
     try {
       const res = await fetch("/api/contracts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) { setList(prev); toast.error(t.deleteFailed); return; }
+      if (!res.ok || !data.ok) { setList(prev); toast.error(apiErrorMessage(data?.error, locale, res.status)); return; }
       toast.success(t.deleted);
       router.refresh();
     } catch { setList(prev); toast.error(t.connection); }
@@ -219,7 +221,7 @@ function ContractForm({
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.contract) { toast.error(t.saveFailed); return; }
+      if (!res.ok || !data.contract) { toast.error(apiErrorMessage(data?.error, locale, res.status)); return; }
       onSaved(data.contract as EmployeeContract);
     } catch { toast.error(t.connection); } finally { setSaving(false); }
   }
@@ -256,12 +258,17 @@ function ContractForm({
               type="file"
               accept="application/pdf,image/jpeg,image/png,image/webp"
               className="hidden"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const file = e.target.files?.[0];
+                e.target.value = ""; // allow re-picking the same file
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => { setDocFile(String(reader.result)); setDocName(file.name); };
-                reader.readAsDataURL(file);
+                try {
+                  // Compress images (near-lossless WebP); PDFs pass through.
+                  setDocFile(await prepareUpload(file));
+                  setDocName(file.name);
+                } catch {
+                  toast.error(t.connection);
+                }
               }}
             />
           </label>

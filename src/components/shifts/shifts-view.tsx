@@ -6,6 +6,7 @@ import { CalendarRange, Check, Clock, Loader2, Pencil, Plus, Trash2, Users } fro
 import type { Employee, ScheduleTemplate, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { useLocale } from "@/components/layout/locale-context";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
@@ -384,7 +385,7 @@ function TemplatesSection({ templates, employees }: { templates: ScheduleTemplat
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        toast.error(t.deleteTemplateFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       setList((cur) => cur.filter((x) => x.id !== deleting.id));
@@ -529,7 +530,7 @@ function TemplateForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.template) {
-        toast.error(t.saveTemplateFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       onSaved(data.template as ScheduleTemplate, !template);
@@ -609,7 +610,7 @@ function ApplyTemplateForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        toast.error(t.applyFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       toast.success(t.applied(data.applied ?? picked.size));
@@ -751,7 +752,7 @@ function ScheduleForm({ emp, onDone, onCancel }: { emp: Emp; onDone: () => void;
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        toast.error(t.saveScheduleFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       toast.success(t.scheduleSaved);

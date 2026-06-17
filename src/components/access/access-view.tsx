@@ -6,6 +6,7 @@ import type { Role, SystemUser } from "@/lib/rbac";
 import type { Employee } from "@/lib/types";
 import { ALL_PERMISSION_IDS } from "@/lib/rbac";
 import { cn, formatDate } from "@/lib/utils";
+import { apiErrorMessage } from "@/lib/api-error";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,11 +75,7 @@ export function AccessView({
       if (!res.ok) {
         setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, roleId: prevRoleId } : u)));
         const data = await res.json().catch(() => ({}));
-        setAssignError(
-          data.error === "no_account"
-            ? "Karyawan ini belum punya akun login, jadi peran belum bisa ditetapkan."
-            : "Gagal menyimpan peran. Pastikan Anda punya hak akses pengguna.",
-        );
+        setAssignError(apiErrorMessage(data?.error, "id", res.status));
       } else {
         const roleName = roles.find((r) => r.id === roleId)?.name ?? "baru";
         toast.success(`Peran diubah ke "${roleName}" ✓`);

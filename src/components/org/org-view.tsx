@@ -29,6 +29,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
+import { apiErrorMessage } from "@/lib/api-error";
 
 /** A working copy of an employee; `_new` marks a not-yet-persisted addition. */
 type Draft = Employee & { _new?: boolean };
@@ -50,6 +51,8 @@ const ID_STR = {
   discarded: "Perubahan dibatalkan.",
   savedCount: (n: number) => `${n} perubahan tersimpan ✓`,
   saveFailed: "Sebagian perubahan gagal disimpan. Periksa dan coba lagi.",
+  createPrefix: "Gagal menambah",
+  updatePrefix: "Gagal memindahkan",
   statActive: "Karyawan aktif",
   statDivisions: "Divisi",
   statHeads: "Kepala divisi",
@@ -103,6 +106,8 @@ const STR: Record<Locale, typeof ID_STR> = {
     discarded: "Changes discarded.",
     savedCount: (n: number) => `${n} change${n === 1 ? "" : "s"} saved ✓`,
     saveFailed: "Some changes failed to save. Please review and try again.",
+    createPrefix: "Couldn't add",
+    updatePrefix: "Couldn't move",
     statActive: "Active employees",
     statDivisions: "Divisions",
     statHeads: "Division heads",
@@ -341,7 +346,9 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
           }),
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.employee) throw new Error("create_failed");
+        if (!res.ok || !data.employee) {
+          throw new Error(`${t.createPrefix} "${node.name}": ${apiErrorMessage(data?.error, locale, res.status)}`);
+        }
         const real = data.employee as Employee;
         idMap.set(node.id, real.id);
         nextBase.set(real.id, real);
@@ -361,17 +368,20 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: node.id, team: node.team, managerId: resolve(node.managerId) }),
         });
-        if (!res.ok) throw new Error("update_failed");
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(`${t.updatePrefix} "${node.name}": ${apiErrorMessage(data?.error, locale, res.status)}`);
+        }
         nextBase.set(node.id, { ...node, managerId: resolve(node.managerId) });
       }
       const saved = clone(work).map((e) => ({ ...e, _new: false }));
       setDraft(saved);
       setBase(clone(saved));
       toast.success(t.savedCount(changes.count));
-    } catch {
+    } catch (e) {
       setDraft(work);
       setBase(Array.from(nextBase.values()).map((e) => ({ ...e })));
-      toast.error(t.saveFailed);
+      toast.error(e instanceof Error && e.message ? e.message : t.saveFailed);
     } finally {
       setSaving(false);
     }

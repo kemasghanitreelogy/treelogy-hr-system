@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
-import { compressImageFile } from "@/lib/image";
+import { prepareUpload } from "@/lib/image";
+import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, formatTime } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
@@ -302,7 +303,7 @@ export function LeaveView({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
         setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
-        toast.error(t.decideFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       setList((cur) => cur.map((r) => (r.id === id ? data.request : r)));
@@ -767,20 +768,14 @@ function LeaveForm({
       toast.error(t.onlyImageOrPdf);
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+    // Images are compressed below, so only raw files (PDF) must respect the limit.
+    if (!file.type.startsWith("image/") && file.size > 5 * 1024 * 1024) {
       toast.error(t.maxFileSize);
       return;
     }
     try {
-      if (file.type.startsWith("image/")) {
-        // Kompres di Web Worker (EXIF aman, UI tidak macet) sebelum upload.
-        setProof({ dataUrl: await compressImageFile(file), name: file.name });
-      } else {
-        const reader = new FileReader();
-        reader.onload = () => setProof({ dataUrl: String(reader.result), name: file.name });
-        reader.onerror = () => toast.error(t.readFileFailed);
-        reader.readAsDataURL(file);
-      }
+      // Compress images (near-lossless WebP) in a Web Worker; PDFs pass through.
+      setProof({ dataUrl: await prepareUpload(file), name: file.name });
     } catch {
       toast.error(t.readFileFailed);
     }
@@ -817,13 +812,7 @@ function LeaveForm({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        const msg: Record<string, string> = {
-          end_before_start: t.endBeforeStart,
-          invalid_proof_type: t.invalidProofType,
-          proof_too_large: t.proofTooLarge,
-          proof_upload_failed: t.proofUploadFailed,
-        };
-        toast.error(msg[data.error as string] ?? t.submitFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       onSubmit(data.request as LeaveRequest);

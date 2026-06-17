@@ -12,6 +12,7 @@ import { PayrollBadge } from "@/components/ui/badge";
 import { StatCard } from "@/components/ui/stat-card";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
+import { apiErrorMessage } from "@/lib/api-error";
 import { PayslipList } from "./payslip-list";
 
 const STR: Record<
@@ -114,7 +115,7 @@ export function PayrollView({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.run) {
-        toast.error(t.processFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       setRunList((prev) => [data.run as PayrollRun, ...prev.filter((r) => r.period !== period)]);
@@ -138,7 +139,7 @@ export function PayrollView({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.run) {
-        toast.error(t.updateFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       setRunList((prev) => prev.map((r) => (r.id === run.id ? (data.run as PayrollRun) : r)));

@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { Locale } from "@/lib/i18n";
 import { GeofencePicker, type GeofencePickerLabels } from "./geofence-picker";
 
@@ -126,7 +127,11 @@ export function AttendanceSettingsCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
+        return;
+      }
       setBaseline(form); // changes are now the saved state → hide the bar
       toast.success(t.saved);
     } catch {

@@ -6,6 +6,7 @@ import { CalendarOff, Loader2, Plus, Trash2 } from "lucide-react";
 import type { Holiday, Religion } from "@/lib/types";
 import { cn, formatDate, monthLabel } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
+import { apiErrorMessage } from "@/lib/api-error";
 import type { Locale } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,7 @@ export function HolidaysView({ holidays, canManage }: { holidays: Holiday[]; can
     try {
       const res = await fetch("/api/holidays", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: deleting.id }) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) { toast.error(t.deleteFailed); return; }
+      if (!res.ok || !data.ok) { toast.error(apiErrorMessage(data?.error, locale, res.status)); return; }
       setList((cur) => cur.filter((h) => h.id !== deleting.id));
       toast.success(t.deleted);
       router.refresh();
@@ -266,7 +267,7 @@ function HolidayForm({ onSaved, onCancel }: { onSaved: (h: Holiday) => void; onC
         body: JSON.stringify({ date: form.date, name: form.name, type: form.type, religion: form.type === "religious" ? form.religion : null }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.holiday) { toast.error(t.saveFailed); return; }
+      if (!res.ok || !data.holiday) { toast.error(apiErrorMessage(data?.error, locale, res.status)); return; }
       onSaved(data.holiday as Holiday);
     } catch { toast.error(t.connection); } finally { setSaving(false); }
   }

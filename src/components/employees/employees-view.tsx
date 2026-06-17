@@ -12,6 +12,8 @@ const RELIGION_LABEL: Record<Locale, Record<Religion, string>> = {
   en: { islam: "Islam", kristen: "Christian", katolik: "Catholic", hindu: "Hindu", buddha: "Buddhist", konghucu: "Confucian" },
 };
 import { TEAMS, TEAM_META } from "@/lib/constants";
+import { prepareUpload } from "@/lib/image";
+import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, EmployeeStatusBadge } from "@/components/ui/badge";
@@ -84,7 +86,8 @@ const ID_STR = {
   ktpAddress: "Alamat KTP",
   ktpAddressPlaceholder: "Alamat sesuai KTP",
   ktpPhoto: "Foto KTP",
-  ktpPhotoHint: "JPG/PNG, maks 5MB",
+  ktpPhotoHint: "JPG/PNG — foto besar otomatis dikecilkan",
+  ktpReadFailed: "Gagal memproses foto. Coba lagi.",
   viewKtp: "Lihat foto",
   changeFile: "Ganti file",
   bpjsKes: "BPJS Kesehatan",
@@ -184,7 +187,8 @@ const STR: Record<Locale, typeof ID_STR> = {
     ktpAddress: "KTP address",
     ktpAddressPlaceholder: "Address as on KTP",
     ktpPhoto: "KTP photo",
-    ktpPhotoHint: "JPG/PNG, max 5MB",
+    ktpPhotoHint: "JPG/PNG — large photos are auto-compressed",
+    ktpReadFailed: "Couldn't process the photo. Try again.",
     viewKtp: "View photo",
     changeFile: "Change file",
     bpjsKes: "BPJS Kesehatan",
@@ -287,7 +291,7 @@ export function EmployeesView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: emp.id, status: next }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.employee) {
         upsertLocal(data.employee);
         setSelected((s) => (s && s.id === emp.id ? data.employee : s));
@@ -297,7 +301,7 @@ export function EmployeesView({
             : t.reactivated(emp.name),
         );
       } else {
-        toast.error(t.statusFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
       }
     } catch {
       toast.error(t.connection);
@@ -679,13 +683,7 @@ function RoleCard({
       if (!res.ok) {
         setRoleId(prev);
         const data = await res.json().catch(() => ({}));
-        setMsg({
-          ok: false,
-          text:
-            data.error === "no_account"
-              ? t.noAccountError
-              : t.roleSaveFailed,
-        });
+        setMsg({ ok: false, text: apiErrorMessage(data?.error, locale, res.status) });
         return;
       }
       onAssigned(emp.id, next); // success toast is raised by the parent
@@ -823,9 +821,9 @@ function EmployeeForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.employee) {
-        toast.error(isEdit ? t.saveEditFailed : t.saveCreateFailed);
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
       onSaved(data.employee as Employee);
@@ -908,15 +906,18 @@ function EmployeeForm({
               type="file"
               accept="image/jpeg,image/png,image/webp"
               className="hidden"
-              onChange={(e) => {
+              onChange={async (e) => {
                 const file = e.target.files?.[0];
+                e.target.value = ""; // allow re-picking the same file
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                  setKtpPhotoFile(String(reader.result));
+                try {
+                  // Compress in a web worker (EXIF-safe) so big phone photos
+                  // stay well under the request-body limit when uploaded.
+                  setKtpPhotoFile(await prepareUpload(file));
                   setKtpFileName(file.name);
-                };
-                reader.readAsDataURL(file);
+                } catch {
+                  toast.error(t.ktpReadFailed);
+                }
               }}
             />
           </label>
