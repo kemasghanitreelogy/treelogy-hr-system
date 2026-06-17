@@ -6,16 +6,12 @@ import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Lembur — Treelogy HR" };
 
-const STR: Record<Locale, { desc1: string; descPaid: string; desc2: string }> = {
+const STR: Record<Locale, { desc1: string }> = {
   id: {
-    desc1: "Ajukan & kelola lembur. Upah lembur = gaji ÷ 20 hari ÷ 8 jam × durasi, dan",
-    descPaid: "dibayar terpisah",
-    desc2: " dari gaji bulanan.",
+    desc1: "Ajukan & kelola lembur.",
   },
   en: {
-    desc1: "Request & manage overtime. Overtime pay = salary ÷ 20 days ÷ 8 hours × duration, and is",
-    descPaid: "paid separately",
-    desc2: " from the monthly salary.",
+    desc1: "Request & manage overtime.",
   },
 };
 
@@ -39,11 +35,7 @@ export default async function OvertimePage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {t.desc1}{" "}
-        <span className="font-medium text-ink">{t.descPaid}</span>
-        {t.desc2}
-      </p>
+      <p className="text-sm text-muted">{t.desc1}</p>
       <OvertimeView
         requests={requests}
         employees={employees}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Upload, UserX, Wallet } from "lucide-react";
+import { Building2, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Upload, UserX, Wallet } from "lucide-react";
 import type { Employee, EmployeeContract, Religion, Team } from "@/lib/types";
 import { ContractsCard } from "./contracts-card";
 import type { Locale } from "@/lib/i18n";
@@ -315,11 +315,6 @@ export function EmployeesView({
     toast.success(mode === "create" ? t.added(emp.name) : t.changesSaved);
   }
 
-  function applyHours(id: string, workStart: string, workEnd: string) {
-    setList((prev) => prev.map((e) => (e.id === id ? { ...e, workStart, workEnd } : e)));
-    setSelected((s) => (s && s.id === id ? { ...s, workStart, workEnd } : s));
-  }
-
   return (
     <div className="space-y-4 fade-up">
       {/* Controls */}
@@ -482,7 +477,6 @@ export function EmployeesView({
           <EmployeeDetail
             emp={selected}
             canManage={canManage}
-            onHours={applyHours}
             canAssignRoles={canAssignRoles}
             roles={roles}
             currentRoleId={roleMap[selected.id]}
@@ -551,7 +545,6 @@ function FilterChip({
 function EmployeeDetail({
   emp,
   canManage,
-  onHours,
   canAssignRoles,
   roles,
   currentRoleId,
@@ -560,7 +553,6 @@ function EmployeeDetail({
 }: {
   emp: Employee;
   canManage: boolean;
-  onHours: (id: string, workStart: string, workEnd: string) => void;
   canAssignRoles: boolean;
   roles: RoleLite[];
   currentRoleId?: string;
@@ -594,8 +586,6 @@ function EmployeeDetail({
       {canAssignRoles && roles.length > 0 && (
         <RoleCard emp={emp} roles={roles} currentRoleId={currentRoleId} onAssigned={onRoleAssigned} />
       )}
-
-      <WorkHoursCard emp={emp} canManage={canManage} onHours={onHours} />
 
       <ContractsCard employeeId={emp.id} contracts={contracts} canManage={canManage} />
 
@@ -727,78 +717,6 @@ function RoleCard({
       </div>
       {msg && (
         <p className={cn("mt-2 text-xs", msg.ok ? "text-forest-600" : "text-clay")}>{msg.text}</p>
-      )}
-    </div>
-  );
-}
-
-function WorkHoursCard({
-  emp,
-  canManage,
-  onHours,
-}: {
-  emp: Employee;
-  canManage: boolean;
-  onHours: (id: string, workStart: string, workEnd: string) => void;
-}) {
-  const [start, setStart] = useState(emp.workStart ?? "08:00");
-  const [end, setEnd] = useState(emp.workEnd ?? "17:00");
-  const [saving, setSaving] = useState(false);
-  const toast = useToast();
-  const locale = useLocale();
-  const t = STR[locale];
-
-  const dirty = start !== (emp.workStart ?? "08:00") || end !== (emp.workEnd ?? "17:00");
-
-  async function save() {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/employees/hours", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: emp.id, workStart: start, workEnd: end }),
-      });
-      if (!res.ok) {
-        toast.error(t.workHoursFailed);
-        return;
-      }
-      onHours(emp.id, start, end);
-      toast.success(t.workHoursSaved(emp.name));
-    } catch {
-      toast.error(t.connection);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="rounded-2xl border border-line bg-panel p-4">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
-        <Clock className="h-4 w-4 text-forest-600" /> {t.workHours}
-      </h3>
-      <p className="mt-1 text-xs text-muted">
-        {t.workHoursHintBase} {canManage ? t.workHoursHintManage : t.workHoursHintReadonly}
-      </p>
-
-      {canManage ? (
-        <>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <Field label={t.clockIn}>
-              <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
-            </Field>
-            <Field label={t.clockOut}>
-              <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-            </Field>
-          </div>
-          <Button className="mt-3 w-full" onClick={save} disabled={saving || !dirty}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-            {t.saveWorkHours}
-          </Button>
-        </>
-      ) : (
-        <p className="mt-3 font-display text-lg font-semibold tabular-nums text-ink">
-          {emp.workStart ?? "08:00"} – {emp.workEnd ?? "17:00"}
-        </p>
       )}
     </div>
   );

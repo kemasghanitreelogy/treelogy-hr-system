@@ -2,20 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownToLine, ArrowUpFromLine, CalendarRange, Check, Clock, Loader2, Pencil, PiggyBank, Plus, Trash2, Users, Wallet, X } from "lucide-react";
-import type { Employee, RequestStatus, ScheduleTemplate, TabunganEntry, TabunganKind, Team } from "@/lib/types";
+import { CalendarRange, Check, Clock, Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import type { Employee, ScheduleTemplate, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge, RequestBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
+import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
@@ -26,11 +25,6 @@ const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const WD2: Record<Locale, string[]> = {
   id: ["Mg", "Sn", "Sl", "Rb", "Km", "Jm", "Sb"],
   en: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
-};
-
-const KIND_LABEL: Record<Locale, Record<TabunganKind, string>> = {
-  id: { deposit: "Setor", withdrawal: "Cairkan" },
-  en: { deposit: "Deposit", withdrawal: "Withdraw" },
 };
 
 const STR: Record<
@@ -334,85 +328,21 @@ function DayToggle({ value, onChange, locale }: { value: number[]; onChange: (d:
 
 export function ShiftsView({
   templates,
-  entries,
   employees,
-  currentUserName = "HR",
   currentEmployeeId = null,
-  canRequestForOthers = true,
-  canApproveAll = false,
-  approverTeam = null,
   canManageShifts = false,
-  selfBalance = 0,
 }: {
   templates: ScheduleTemplate[];
-  entries: TabunganEntry[];
   employees: Emp[];
-  currentUserName?: string;
   currentEmployeeId?: string | null;
-  canRequestForOthers?: boolean;
-  canApproveAll?: boolean;
-  approverTeam?: Team | null;
   /** HR/admin atau pemegang shifts.manage: boleh kelola template & jadwal. */
   canManageShifts?: boolean;
-  selfBalance?: number;
 }) {
-  const locale = useLocale();
-  const t = STR[locale];
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
-  const [list, setList] = useState(entries);
-  const [adding, setAdding] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const toast = useToast();
-  const router = useRouter();
   // Scope: HR/pengelola → Semua/Data Saya (default Data Saya).
   const scopeOpts = scopeOptionsFor(canManageShifts, false);
   const [scope, setScope] = useStickyTab<Scope>("schedule.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
-  const matchScope = (employeeId: string) =>
-    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
-  const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
-
-  const canDecide = useMemo(
-    () => (e: TabunganEntry) => {
-      if (canApproveAll) return true;
-      if (!approverTeam) return false;
-      if (e.employeeId === currentEmployeeId) return false;
-      return empMap.get(e.employeeId)?.team === approverTeam;
-    },
-    [canApproveAll, approverTeam, currentEmployeeId, empMap],
-  );
-
-  async function decide(id: string, status: RequestStatus) {
-    const prev = list.find((e) => e.id === id);
-    if (!prev) return;
-    setBusyId(id);
-    setList((cur) => cur.map((e) => (e.id === id ? { ...e, status, approver: currentUserName } : e)));
-    try {
-      const res = await fetch("/api/tabungan", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status, approver: currentUserName }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.request) {
-        setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
-        toast.error(data.error === "insufficient_balance" ? t.insufficientBalanceEmployee : t.decideFailed);
-        return;
-      }
-      setList((cur) => cur.map((e) => (e.id === id ? (data.request as TabunganEntry) : e)));
-      toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
-      router.refresh();
-    } catch {
-      setList((cur) => cur.map((e) => (e.id === id ? prev : e)));
-      toast.error(t.connectionError);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  const pending = list.filter((e) => e.status === "pending" && canDecide(e)).length;
   const self = currentEmployeeId ? empMap.get(currentEmployeeId) : undefined;
-
-  const scopedList = list.filter((e) => matchScope(e.employeeId));
 
   return (
     <div className="space-y-5 fade-up">
@@ -426,103 +356,6 @@ export function ShiftsView({
       ) : (
         self && <MyScheduleCard emp={self} />
       )}
-
-      {/* Tabungan libur */}
-      <Card>
-        <CardHeader className="flex-wrap">
-          <div className="min-w-0">
-            <CardTitle>{t.leaveSavings}</CardTitle>
-            <p className="mt-0.5 text-sm text-muted">{t.leaveSavingsDesc}</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {pending > 0 && <Badge tone="gold" className="whitespace-nowrap">{t.pendingCount(pending)}</Badge>}
-            <Button size="sm" onClick={() => setAdding(true)}>
-              <Wallet className="h-4 w-4" /> {t.withdrawSavings}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {currentEmployeeId && (
-            <div className="flex items-center gap-3 rounded-2xl bg-bark px-4 py-3 text-cream">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-forest-700">
-                <PiggyBank className="h-5 w-5 text-lime" />
-              </span>
-              <p className="text-sm text-forest-100/70">{t.yourLeaveSavings}</p>
-              <p className="ml-auto font-display text-xl font-bold">{t.days(selfBalance)}</p>
-            </div>
-          )}
-
-          {scopedList.length === 0 && (
-            <div className="rounded-2xl border border-line bg-cream/40 px-5 py-10 text-center text-sm text-faint">
-              {t.noSavingsRecords}
-            </div>
-          )}
-
-          {scopedList.map((e) => {
-            const emp = empMap.get(e.employeeId);
-            const isDeposit = e.kind === "deposit";
-            return (
-              <div key={e.id} className="flex flex-col gap-3 rounded-2xl border border-line bg-cream/40 p-4 sm:flex-row sm:items-center">
-                {showEmployee && (
-                  <div className="flex items-center gap-3 sm:w-52">
-                    <Avatar name={emp?.name ?? "?"} size="sm" />
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-ink">{emp?.name}</p>
-                      <p className="truncate text-xs text-faint">{emp?.position}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={isDeposit ? "matcha" : "clay"}>
-                      {isDeposit ? <ArrowDownToLine className="h-3.5 w-3.5" /> : <ArrowUpFromLine className="h-3.5 w-3.5" />}
-                      {KIND_LABEL[locale][e.kind]}
-                    </Badge>
-                    <span className={cn("text-sm font-semibold", isDeposit ? "text-forest-700" : "text-[#8c3c1f]")}>
-                      {isDeposit ? "+" : "−"}{t.days(e.days)}
-                    </span>
-                    <span className="text-sm text-muted">{formatDate(e.eventDate, "short", locale)}</span>
-                    {e.source === "attendance" && (
-                      <span className="rounded-full bg-sand px-2 py-0.5 text-[10px] font-medium text-muted">{t.autoFromAttendance}</span>
-                    )}
-                  </div>
-                  {e.reason && <p className="mt-1 line-clamp-1 text-sm text-faint">{e.reason}</p>}
-                </div>
-                <div className="flex items-center gap-2 sm:w-auto">
-                  {e.status === "pending" && canDecide(e) ? (
-                    <>
-                      <Button size="sm" disabled={busyId === e.id} onClick={() => decide(e.id, "approved")} className="flex-1 sm:flex-none">
-                        <Check className="h-4 w-4" /> {t.approve}
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busyId === e.id} onClick={() => decide(e.id, "rejected")} className="flex-1 sm:flex-none">
-                        <X className="h-4 w-4" /> {t.reject}
-                      </Button>
-                    </>
-                  ) : (
-                    <RequestBadge status={e.status} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <Sheet open={adding} onClose={() => setAdding(false)} title={t.tabunganSheetTitle} description={t.tabunganSheetDesc}>
-        <TabunganForm
-          employees={employees}
-          currentEmployeeId={currentEmployeeId}
-          canRequestForOthers={canRequestForOthers}
-          selfBalance={selfBalance}
-          onSubmit={(entry) => {
-            setList((prev) => [entry, ...prev]);
-            setAdding(false);
-            toast.success(t.requestSent);
-            router.refresh();
-          }}
-          onCancel={() => setAdding(false)}
-        />
-      </Sheet>
     </div>
   );
 }
@@ -980,133 +813,5 @@ function MyScheduleCard({ emp }: { emp: Emp }) {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-/* ---------------- Form tabungan (cairkan / setor) ---------------- */
-
-function TabunganForm({
-  employees,
-  currentEmployeeId = null,
-  canRequestForOthers = true,
-  selfBalance = 0,
-  onSubmit,
-  onCancel,
-}: {
-  employees: Emp[];
-  currentEmployeeId?: string | null;
-  canRequestForOthers?: boolean;
-  selfBalance?: number;
-  onSubmit: (e: TabunganEntry) => void;
-  onCancel: () => void;
-}) {
-  const locale = useLocale();
-  const t = STR[locale];
-  const toast = useToast();
-  const [saving, setSaving] = useState(false);
-  const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
-  const lockToSelf = !canRequestForOthers && !!selfEmployee;
-  const [form, setForm] = useState({
-    employeeId: lockToSelf ? selfEmployee!.id : employees[0]?.id ?? "",
-    kind: "withdrawal" as TabunganKind,
-    eventDate: "",
-    days: 1,
-    reason: "",
-  });
-
-  const selfWithdraw = form.employeeId === currentEmployeeId && form.kind === "withdrawal";
-  const overBalance = selfWithdraw && form.days > selfBalance;
-
-  async function submit(ev: React.FormEvent) {
-    ev.preventDefault();
-    if (!form.employeeId) return toast.error(t.pickEmployeeFirst);
-    if (!form.eventDate) return toast.error(t.dateRequired);
-    if (form.days < 1) return toast.error(t.minOneDay);
-    if (overBalance) return toast.error(t.overBalanceError);
-    setSaving(true);
-    try {
-      const res = await fetch("/api/tabungan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          employeeId: form.employeeId,
-          kind: form.kind,
-          eventDate: form.eventDate,
-          days: form.days,
-          reason: form.reason,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.request) {
-        toast.error(data.error === "insufficient_balance" ? t.insufficientBalance : t.submitFailed);
-        return;
-      }
-      onSubmit(data.request as TabunganEntry);
-    } catch {
-      toast.error(t.connectionError);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="space-y-4">
-      {lockToSelf ? (
-        <Field label={t.employeeLabel}>
-          <div className="flex items-center gap-3 rounded-xl border border-line bg-sand px-3 py-2.5">
-            <Avatar name={selfEmployee!.name} size="sm" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">{selfEmployee!.name}</p>
-              <p className="truncate text-xs text-faint">{TEAM_META[selfEmployee!.team].label}</p>
-            </div>
-          </div>
-        </Field>
-      ) : (
-        <Field label={t.employeeLabel}>
-          <Select value={form.employeeId} onChange={(e) => setForm((f) => ({ ...f, employeeId: e.target.value }))}>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>{e.name} — {TEAM_META[e.team].label}</option>
-            ))}
-          </Select>
-        </Field>
-      )}
-
-      {canRequestForOthers && (
-        <Field label={t.kindLabel}>
-          <Select value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value as TabunganKind }))}>
-            <option value="withdrawal">{t.withdrawOption}</option>
-            <option value="deposit">{t.depositOption}</option>
-          </Select>
-        </Field>
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <Field label={form.kind === "deposit" ? t.workDateLabel : t.dayOffDateLabel}>
-          <Input type="date" value={form.eventDate} onChange={(e) => setForm((f) => ({ ...f, eventDate: e.target.value }))} required />
-        </Field>
-        <Field label={t.daysCountLabel}>
-          <Input type="number" min={1} value={form.days} onChange={(e) => setForm((f) => ({ ...f, days: Math.max(1, Number(e.target.value) || 1) }))} required />
-        </Field>
-      </div>
-
-      {selfWithdraw && (
-        <div className={cn("flex items-center justify-between rounded-xl px-3 py-2.5 text-sm", overBalance ? "bg-clay-soft text-[#8c3c1f]" : "bg-sand text-muted")}>
-          <span>{t.yourSavingsBalance}</span>
-          <span className="font-semibold">{t.days(selfBalance)}</span>
-        </div>
-      )}
-
-      <Field label={t.reasonLabel}>
-        <Textarea value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))} placeholder={t.reasonPlaceholder} />
-      </Field>
-
-      <div className="flex gap-2 pt-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>{t.cancel}</Button>
-        <Button type="submit" className="flex-1" disabled={saving || overBalance}>
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {t.submit}
-        </Button>
-      </div>
-    </form>
   );
 }

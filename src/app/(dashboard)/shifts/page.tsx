@@ -1,5 +1,5 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
-import { getEmployees, getLeaveBalances, getScheduleTemplates, getTabunganEntries } from "@/lib/data";
+import { getEmployees, getScheduleTemplates } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -8,18 +8,16 @@ export const metadata = { title: "Jadwal — Treelogy HR" };
 
 const STR: Record<Locale, { intro: string }> = {
   id: {
-    intro: "Atur jadwal kerja (hari & jam) lewat template atau per karyawan, dan kelola tabungan libur.",
+    intro: "Atur jadwal kerja (hari & jam) lewat template atau per karyawan.",
   },
   en: {
-    intro: "Manage work schedules (days & hours) via templates or per employee, and manage leave savings.",
+    intro: "Manage work schedules (days & hours) via templates or per employee.",
   },
 };
 
 export default async function ShiftsPage() {
-  const [templates, entries, balances, employeesAll, user] = await Promise.all([
+  const [templates, employeesAll, user] = await Promise.all([
     getScheduleTemplates(),
-    getTabunganEntries(),
-    getLeaveBalances(),
     getEmployees(),
     getSessionUser(),
   ]);
@@ -38,40 +36,17 @@ export default async function ShiftsPage() {
       scheduleTemplateId: e.scheduleTemplateId,
     }));
 
-  // Approval scope mirrors leave: HR/admin act org-wide; a manager with
-  // shifts.swap_approve is scoped to their own division.
-  const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
   const canApproveAll = can(user, "employees.manage");
-  const approverTeam = !canApproveAll && can(user, "shifts.swap_approve") ? me?.team ?? null : null;
   const canManageShifts = canApproveAll || can(user, "shifts.manage");
-  const selfBalance = user?.employeeId
-    ? balances.find((b) => b.employeeId === user.employeeId)?.tabunganLibur ?? 0
-    : 0;
-
-  // Visibility: HR/admin see everyone; a division manager sees their own team;
-  // everyone else sees only their own entries (RLS enforces the same on reads).
-  const teamOf = new Map(employeesAll.map((e) => [e.id, e.team]));
-  const visibleEntries = entries.filter((e) => {
-    if (canApproveAll) return true;
-    if (user?.employeeId && e.employeeId === user.employeeId) return true;
-    if (approverTeam) return teamOf.get(e.employeeId) === approverTeam;
-    return false;
-  });
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">{t.intro}</p>
       <ShiftsView
         templates={templates}
-        entries={visibleEntries}
         employees={employees}
-        currentUserName={user?.name ?? "HR"}
         currentEmployeeId={user?.employeeId ?? null}
-        canRequestForOthers={canApproveAll}
-        canApproveAll={canApproveAll}
-        approverTeam={approverTeam}
         canManageShifts={canManageShifts}
-        selfBalance={selfBalance}
       />
     </div>
   );
