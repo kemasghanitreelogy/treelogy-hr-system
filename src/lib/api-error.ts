@@ -52,6 +52,8 @@ const MESSAGES: Record<string, Msg> = {
   invalid_type: { id: "Jenis tidak valid.", en: "The selected type is invalid." },
   invalid_kind: { id: "Jenis transaksi tidak valid.", en: "The transaction kind is invalid." },
   invalid_status: { id: "Status tidak valid.", en: "The status is invalid." },
+  awaiting_manager: { id: "Menunggu persetujuan atasan dulu sebelum HR.", en: "Waiting for the manager's approval before HR." },
+  already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
 
   // --- tabungan ---
   insufficient_balance: { id: "Saldo tabungan tidak mencukupi.", en: "Insufficient savings balance." },

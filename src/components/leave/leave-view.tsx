@@ -6,19 +6,20 @@ import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, Histor
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { leaveHistory, type LeavePeriod } from "@/lib/leave-policy";
+import type { ApprovalAction } from "@/lib/approval";
+import { ApprovalStatus } from "@/components/ui/approval-status";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, formatTime } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge, RequestBadge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ChangeDecision } from "@/components/ui/change-decision";
 import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
@@ -46,6 +47,7 @@ const STR: Record<
     decideFailed: string;
     approvedToast: string;
     rejectedToast: string;
+    partialApproved: string;
     connectionError: string;
     requestSent: string;
     tabRequests: string;
@@ -121,6 +123,7 @@ const STR: Record<
     decideFailed: "Gagal memproses. Anda hanya bisa menyetujui karyawan di divisi Anda.",
     approvedToast: "Pengajuan disetujui ✓",
     rejectedToast: "Pengajuan ditolak ✓",
+    partialApproved: "Disetujui — menunggu persetujuan HR ✓",
     connectionError: "Koneksi bermasalah. Coba lagi.",
     requestSent: "Pengajuan cuti/izin terkirim ✓",
     tabRequests: "Permintaan",
@@ -195,6 +198,7 @@ const STR: Record<
     decideFailed: "Failed to process. You can only approve employees in your own division.",
     approvedToast: "Request approved ✓",
     rejectedToast: "Request rejected ✓",
+    partialApproved: "Approved — awaiting HR ✓",
     connectionError: "Connection problem. Please try again.",
     requestSent: "Leave request submitted ✓",
     tabRequests: "Requests",
@@ -315,41 +319,43 @@ export function LeaveView({
   // Tampilkan nama/identitas hanya saat melihat data lebih dari diri sendiri.
   const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
-  // Who may act on a given request: HR/admin on anyone; a division manager only on
-  // their own team's members, and never on their own request.
+  // Dual approval: manager (atasan) approves first, then HR. Nobody approves
+  // their own request. `amManagerOf` = a division manager for that request.
+  const amHR = canApproveAll;
+  const amManagerOf = (r: LeaveRequest) =>
+    !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.team === approverTeam;
+  // Can the current user act on this PENDING request right now?
   const canDecide = useMemo(
     () => (r: LeaveRequest) => {
-      if (canApproveAll) return true;
-      if (!approverTeam) return false;
-      if (r.employeeId === currentEmployeeId) return false;
-      return empMap.get(r.employeeId)?.team === approverTeam;
+      if (r.status !== "pending" || r.employeeId === currentEmployeeId) return false;
+      if (amHR) return true; // HR can reject anytime; approve is gated server-side (atasan first)
+      return amManagerOf(r) && !r.managerApprover; // manager's slot still open
     },
-    [canApproveAll, approverTeam, currentEmployeeId, empMap],
+    [amHR, approverTeam, currentEmployeeId, empMap],
   );
+  // HR may reset a decided request back to pending (correction).
+  const canReset = (r: LeaveRequest) => amHR && r.status !== "pending";
 
-  async function decide(id: string, status: RequestStatus) {
+  async function decide(id: string, action: ApprovalAction) {
     const prev = list.find((r) => r.id === id);
     if (!prev) return;
     setDecidingId(id);
-    // Optimistic — revert on failure.
-    setList((cur) => cur.map((r) => (r.id === id ? { ...r, status, approver: currentUserName } : r)));
     try {
       const res = await fetch("/api/leave", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status, approver: currentUserName }),
+        body: JSON.stringify({ id, action }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
         toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
-      setList((cur) => cur.map((r) => (r.id === id ? data.request : r)));
-      toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
+      setList((cur) => cur.map((r) => (r.id === id ? (data.request as LeaveRequest) : r)));
+      const st = (data.request as LeaveRequest).status;
+      toast.success(action === "reject" ? t.rejectedToast : st === "approved" ? t.approvedToast : t.partialApproved);
       router.refresh(); // sinkronkan saldo & halaman lain di latar belakang
     } catch {
-      setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
       toast.error(t.connectionError);
     } finally {
       setDecidingId(null);
@@ -429,17 +435,17 @@ export function LeaveView({
                   )}
                 </div>
                 <div className="flex items-center gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
-                  {r.status === "pending" && canDecide(r) ? (
+                  {canDecide(r) ? (
                     <>
-                      <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
+                      <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approve")} className="flex-1 sm:flex-none">
                         <Check className="h-4 w-4" /> {t.approve}
                       </Button>
-                      <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => decide(r.id, "rejected")} className="flex-1 sm:flex-none">
+                      <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => decide(r.id, "reject")} className="flex-1 sm:flex-none">
                         <X className="h-4 w-4" /> {t.reject}
                       </Button>
                     </>
                   ) : (
-                    <RequestBadge status={r.status} />
+                    <ApprovalStatus request={r} />
                   )}
                 </div>
               </div>
@@ -483,8 +489,9 @@ export function LeaveView({
               t={t}
               locale={locale}
               canDecide={canDecide(live)}
+              canReset={canReset(live)}
               deciding={decidingId === live.id}
-              onDecide={(status) => decide(live.id, status)}
+              onDecide={(action) => decide(live.id, action)}
             />
           );
         })()}
@@ -500,6 +507,7 @@ function LeaveDetail({
   t,
   locale,
   canDecide,
+  canReset,
   deciding,
   onDecide,
 }: {
@@ -508,8 +516,9 @@ function LeaveDetail({
   t: (typeof STR)["id"];
   locale: Locale;
   canDecide: boolean;
+  canReset: boolean;
   deciding: boolean;
-  onDecide: (status: RequestStatus) => void;
+  onDecide: (action: ApprovalAction) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -522,7 +531,7 @@ function LeaveDetail({
             {emp?.position ? ` · ${emp.position}` : ""}
           </p>
         </div>
-        <span className="ml-auto"><RequestBadge status={r.status} /></span>
+        <span className="ml-auto"><ApprovalStatus request={r} /></span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -539,11 +548,6 @@ function LeaveDetail({
         <Info label={t.requestedAtLabel}>
           <span className="text-sm text-ink">{formatDate(r.requestedAt, "short", locale)} · {formatTime(r.requestedAt)}</span>
         </Info>
-        {r.approver && (
-          <Info label={t.decidedByLabel}>
-            <span className="text-sm text-ink">{r.approver}</span>
-          </Info>
-        )}
       </div>
 
       <Info label={t.reason}>
@@ -555,18 +559,24 @@ function LeaveDetail({
         {r.proofPath ? <ProofPreview path={r.proofPath} t={t} /> : <p className="text-sm text-faint">{t.noProof}</p>}
       </div>
 
-      {r.status === "pending" && canDecide && (
+      {canDecide && (
         <div className="flex gap-2 border-t border-line pt-4">
-          <Button className="flex-1" disabled={deciding} onClick={() => onDecide("approved")}>
+          <Button className="flex-1" disabled={deciding} onClick={() => onDecide("approve")}>
             {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t.approve}
           </Button>
-          <Button variant="outline" className="flex-1" disabled={deciding} onClick={() => onDecide("rejected")}>
+          <Button variant="outline" className="flex-1" disabled={deciding} onClick={() => onDecide("reject")}>
             <X className="h-4 w-4" /> {t.reject}
           </Button>
         </div>
       )}
 
-      {r.status !== "pending" && canDecide && <ChangeDecision status={r.status} deciding={deciding} onDecide={onDecide} />}
+      {canReset && (
+        <div className="border-t border-line pt-4">
+          <Button variant="outline" className="w-full" disabled={deciding} onClick={() => onDecide("reset")}>
+            {deciding ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {t.changeDecision}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

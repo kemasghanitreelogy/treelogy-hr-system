@@ -4,11 +4,12 @@ import { mapOvertime } from "@/lib/data";
 import { notifyApprovers, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 import { isValidUploadedPath } from "@/lib/storage-path";
+import { applyApproval, type ApprovalAction } from "@/lib/approval";
+import { can, getSessionUser } from "@/lib/auth";
 import type { RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -50,8 +51,7 @@ interface CreatePayload {
 
 interface UpdatePayload {
   id?: string;
-  status?: RequestStatus;
-  approver?: string;
+  action?: ApprovalAction;
 }
 
 async function auth() {
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, request: mapOvertime(data) });
 }
 
-// ---- Approve / reject ----
+// ---- Dual approval: manager (atasan) first, then HR. RLS gates who may write. ----
 export async function PATCH(req: Request) {
   let body: UpdatePayload;
   try {
@@ -158,44 +158,96 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
-
-  const update: Record<string, unknown> = {};
-  if (body.status) {
-    if (!STATUSES.includes(body.status)) return NextResponse.json({ error: "invalid_status" }, { status: 400 });
-    update.status = body.status;
-    update.approver = body.approver?.trim() || null;
-  }
-  if (Object.keys(update).length === 0) {
-    return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
+  if (!body.action || !["approve", "reject", "reset"].includes(body.action)) {
+    return NextResponse.json({ error: "invalid_input" }, { status: 400 });
   }
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { data, error } = await supabase!
+  const { data: prev } = await supabase!
     .from("overtime_requests")
-    .update(update)
+    .select("status, employee_id, manager_approver, hr_approver, date, hours")
     .eq("id", body.id)
-    .select("*")
     .maybeSingle();
+  if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  if (error || !data) {
+  const { data: emp } = await supabase!.from("employees").select("team").eq("id", prev.employee_id).maybeSingle();
+
+  const isHR = can(user, "employees.manage");
+  let isManager = false;
+  if (!isHR) {
+    const { data: mgr } = await supabase!.rpc("is_team_manager_of", { target_employee: prev.employee_id });
+    isManager = mgr === true;
+  }
+  if (body.action === "reset" && !isHR) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  if (body.action !== "reset" && !isHR && !isManager) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
 
-  // Notify the requester of the approval decision.
+  let managerRequired = false;
+  if (emp?.team) {
+    const { data: hasMgr } = await supabase!.rpc("team_has_manager", { req_team: emp.team, exclude_emp: prev.employee_id });
+    managerRequired = hasMgr === true;
+  }
+
+  const result = applyApproval({
+    action: body.action,
+    role: isHR ? "hr" : "manager",
+    actorName: user.name,
+    managerRequired,
+    current: {
+      status: prev.status as RequestStatus,
+      managerApprover: (prev.manager_approver as string) ?? null,
+      hrApprover: (prev.hr_approver as string) ?? null,
+    },
+    nowIso: new Date().toISOString(),
+  });
+  if (result.error || !result.update) {
+    return NextResponse.json({ error: result.error ?? "forbidden_or_failed" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase!
+    .from("overtime_requests")
+    .update(result.update)
+    .eq("id", body.id)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
   const meta = `${formatDate(String(data.date))} · ${data.hours} jam`;
-  if (body.status === "approved" || body.status === "rejected") {
+  if (result.status === "approved" || result.status === "rejected") {
     await pushNotifications([
       {
         employeeId: String(data.employee_id),
         type: "overtime",
-        tone: body.status,
-        title: `Lembur ${body.status === "approved" ? "disetujui" : "ditolak"}`,
+        tone: result.status,
+        title: `Lembur ${result.status === "approved" ? "disetujui" : "ditolak"}`,
         body: `${meta}${data.approver ? ` · oleh ${data.approver}` : ""}`,
         href: "/overtime",
       },
     ]);
+  } else if (body.action === "approve" && !isHR) {
+    await pushNotifications([
+      {
+        employeeId: String(data.employee_id),
+        type: "overtime",
+        tone: "pending",
+        title: "Lembur disetujui atasan",
+        body: `${meta} · oleh ${user.name} — menunggu HR`,
+        href: "/overtime",
+      },
+    ]);
+    if (emp?.team) {
+      await notifyApprovers(String(data.employee_id), String(emp.team), {
+        type: "overtime",
+        title: "Lembur menunggu persetujuan HR",
+        body: `${meta} · sudah disetujui atasan`,
+        href: "/overtime",
+      });
+    }
   }
 
   return NextResponse.json({ ok: true, request: mapOvertime(data) });

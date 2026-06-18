@@ -186,6 +186,10 @@ export const mapLeave = (r: Row): LeaveRequest => ({
   reason: String(r.reason ?? ""),
   status: r.status as LeaveRequest["status"],
   approver: (r.approver as string) ?? null,
+  managerApprover: (r.manager_approver as string) ?? null,
+  managerApprovedAt: (r.manager_approved_at as string) ?? null,
+  hrApprover: (r.hr_approver as string) ?? null,
+  hrApprovedAt: (r.hr_approved_at as string) ?? null,
   requestedAt: String(r.requested_at),
   proofPath: (r.proof_path as string) ?? null,
 });
@@ -202,6 +206,10 @@ export const mapOvertime = (r: Row): OvertimeRequest => ({
   amount: n(r.amount),
   status: r.status as OvertimeRequest["status"],
   approver: (r.approver as string) ?? null,
+  managerApprover: (r.manager_approver as string) ?? null,
+  managerApprovedAt: (r.manager_approved_at as string) ?? null,
+  hrApprover: (r.hr_approver as string) ?? null,
+  hrApprovedAt: (r.hr_approved_at as string) ?? null,
   proofPath: (r.proof_path as string) ?? null,
   requestedAt: String(r.requested_at),
 });

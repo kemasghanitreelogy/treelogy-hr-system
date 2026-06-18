@@ -132,6 +132,11 @@ export interface LeaveRequest {
   reason: string;
   status: RequestStatus;
   approver?: string | null;
+  /** Dual approval: manager (atasan) approves first, then HR finalises. */
+  managerApprover?: string | null;
+  managerApprovedAt?: string | null;
+  hrApprover?: string | null;
+  hrApprovedAt?: string | null;
   requestedAt: string;
   /** Storage path of the optional proof file (image/PDF); null when none. */
   proofPath?: string | null;
@@ -149,6 +154,11 @@ export interface OvertimeRequest {
   amount: number; // ratePerHour * hours
   status: RequestStatus; // approval flow
   approver?: string | null;
+  /** Dual approval: manager (atasan) approves first, then HR finalises. */
+  managerApprover?: string | null;
+  managerApprovedAt?: string | null;
+  hrApprover?: string | null;
+  hrApprovedAt?: string | null;
   proofPath?: string | null;
   requestedAt: string;
 }

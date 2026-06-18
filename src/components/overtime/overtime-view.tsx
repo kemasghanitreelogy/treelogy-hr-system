@@ -3,19 +3,20 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
-import type { Employee, OvertimeRequest, RequestStatus, Team } from "@/lib/types";
+import type { Employee, OvertimeRequest, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
+import type { ApprovalAction } from "@/lib/approval";
+import { ApprovalStatus } from "@/components/ui/approval-status";
 import { formatDate, formatTime, rupiah } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge, RequestBadge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ChangeDecision } from "@/components/ui/change-decision";
 import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
@@ -29,6 +30,7 @@ const STR: Record<
     connectionError: string;
     approvedToast: string;
     rejectedToast: string;
+    partialApproved: string;
     needApproval: (n: number) => string;
     requestOvertime: string;
     emptyRequests: string;
@@ -70,6 +72,7 @@ const STR: Record<
     statusLabel: string;
     requestedAtLabel: string;
     decidedByLabel: string;
+    changeDecision: string;
     paymentLabel: string;
     amountLabel: string;
     proofLabel: string;
@@ -82,6 +85,7 @@ const STR: Record<
     connectionError: "Koneksi bermasalah. Coba lagi.",
     approvedToast: "Lembur disetujui ✓",
     rejectedToast: "Lembur ditolak ✓",
+    partialApproved: "Disetujui — menunggu persetujuan HR ✓",
     needApproval: (n: number) => `${n} perlu persetujuan`,
     requestOvertime: "Ajukan Lembur",
     emptyRequests: "Belum ada pengajuan lembur.",
@@ -123,6 +127,7 @@ const STR: Record<
     statusLabel: "Status",
     requestedAtLabel: "Diajukan",
     decidedByLabel: "Diputuskan oleh",
+    changeDecision: "Ubah keputusan",
     paymentLabel: "Pembayaran",
     amountLabel: "Upah lembur",
     proofLabel: "Bukti lampiran",
@@ -134,6 +139,7 @@ const STR: Record<
     connectionError: "Connection problem. Please try again.",
     approvedToast: "Overtime approved ✓",
     rejectedToast: "Overtime rejected ✓",
+    partialApproved: "Approved — awaiting HR ✓",
     needApproval: (n: number) => `${n} awaiting approval`,
     requestOvertime: "Request Overtime",
     emptyRequests: "No overtime requests yet.",
@@ -175,6 +181,7 @@ const STR: Record<
     statusLabel: "Status",
     requestedAtLabel: "Submitted",
     decidedByLabel: "Decided by",
+    changeDecision: "Change decision",
     paymentLabel: "Payment",
     amountLabel: "Overtime pay",
     proofLabel: "Attached proof",
@@ -219,48 +226,44 @@ export function OvertimeView({
     scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
   const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
+  // Dual approval: manager (atasan) first, then HR. Nobody decides their own.
+  const amHR = canApproveAll;
+  const amManagerOf = (r: OvertimeRequest) =>
+    !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.team === approverTeam;
   const canDecide = useMemo(
     () => (r: OvertimeRequest) => {
-      if (canApproveAll) return true;
-      if (!approverTeam) return false;
-      if (r.employeeId === currentEmployeeId) return false;
-      return empMap.get(r.employeeId)?.team === approverTeam;
+      if (r.status !== "pending" || r.employeeId === currentEmployeeId) return false;
+      if (amHR) return true;
+      return amManagerOf(r) && !r.managerApprover;
     },
-    [canApproveAll, approverTeam, currentEmployeeId, empMap],
+    [amHR, approverTeam, currentEmployeeId, empMap],
   );
+  const canReset = (r: OvertimeRequest) => amHR && r.status !== "pending";
 
-  async function patch(id: string, payload: Record<string, unknown>, optimistic: Partial<OvertimeRequest>) {
+  async function decide(id: string, action: ApprovalAction) {
     const prev = list.find((r) => r.id === id);
     if (!prev) return;
     setBusyId(id);
-    setList((cur) => cur.map((r) => (r.id === id ? { ...r, ...optimistic } : r)));
     try {
       const res = await fetch("/api/overtime", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, ...payload }),
+        body: JSON.stringify({ id, action }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
-        setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
         toast.error(apiErrorMessage(data?.error, locale, res.status));
-        return false;
+        return;
       }
       setList((cur) => cur.map((r) => (r.id === id ? (data.request as OvertimeRequest) : r)));
+      const st = (data.request as OvertimeRequest).status;
+      toast.success(action === "reject" ? t.rejectedToast : st === "approved" ? t.approvedToast : t.partialApproved);
       router.refresh(); // sinkronkan dashboard & halaman lain di latar belakang
-      return true;
     } catch {
-      setList((cur) => cur.map((r) => (r.id === id ? prev : r)));
       toast.error(t.connectionError);
-      return false;
     } finally {
       setBusyId(null);
     }
-  }
-
-  async function decide(id: string, status: RequestStatus) {
-    const ok = await patch(id, { status, approver: currentUserName }, { status, approver: currentUserName });
-    if (ok) toast.success(status === "approved" ? t.approvedToast : t.rejectedToast);
   }
 
   const pending = list.filter((r) => r.status === "pending" && canDecide(r)).length;
@@ -323,17 +326,17 @@ export function OvertimeView({
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
-                {r.status === "pending" && canDecide(r) ? (
+                {canDecide(r) ? (
                   <>
-                    <Button size="sm" disabled={busyId === r.id} onClick={() => decide(r.id, "approved")} className="flex-1 sm:flex-none">
+                    <Button size="sm" disabled={busyId === r.id} onClick={() => decide(r.id, "approve")} className="flex-1 sm:flex-none">
                       <Check className="h-4 w-4" /> {t.approve}
                     </Button>
-                    <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => decide(r.id, "rejected")} className="flex-1 sm:flex-none">
+                    <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => decide(r.id, "reject")} className="flex-1 sm:flex-none">
                       <X className="h-4 w-4" /> {t.reject}
                     </Button>
                   </>
                 ) : (
-                  <RequestBadge status={r.status} />
+                  <ApprovalStatus request={r} />
                 )}
 
                 {r.status === "approved" && (
@@ -379,8 +382,9 @@ export function OvertimeView({
               t={t}
               locale={locale}
               canDecide={canDecide(live)}
+              canReset={canReset(live)}
               busy={busyId === live.id}
-              onDecide={(status) => decide(live.id, status)}
+              onDecide={(action) => decide(live.id, action)}
             />
           );
         })()}
@@ -396,6 +400,7 @@ function OvertimeDetail({
   t,
   locale,
   canDecide,
+  canReset,
   busy,
   onDecide,
 }: {
@@ -404,8 +409,9 @@ function OvertimeDetail({
   t: (typeof STR)["id"];
   locale: Locale;
   canDecide: boolean;
+  canReset: boolean;
   busy: boolean;
-  onDecide: (status: RequestStatus) => void;
+  onDecide: (action: ApprovalAction) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -418,7 +424,7 @@ function OvertimeDetail({
             {emp?.position ? ` · ${emp.position}` : ""}
           </p>
         </div>
-        <span className="ml-auto"><RequestBadge status={r.status} /></span>
+        <span className="ml-auto"><ApprovalStatus request={r} /></span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -431,11 +437,6 @@ function OvertimeDetail({
         <OtInfo label={t.requestedAtLabel}>
           <span className="text-sm text-ink">{formatDate(r.requestedAt, "short", locale)} · {formatTime(r.requestedAt)}</span>
         </OtInfo>
-        {r.approver && (
-          <OtInfo label={t.decidedByLabel}>
-            <span className="text-sm text-ink">{r.approver}</span>
-          </OtInfo>
-        )}
         {r.status === "approved" && (
           <OtInfo label={t.paymentLabel}>
             <Badge tone="sky"><Wallet className="h-3.5 w-3.5" /> {t.viaPayroll}</Badge>
@@ -452,18 +453,24 @@ function OvertimeDetail({
         {r.proofPath ? <OtProofPreview path={r.proofPath} t={t} /> : <p className="text-sm text-faint">{t.noProof}</p>}
       </div>
 
-      {r.status === "pending" && canDecide ? (
+      {canDecide ? (
         <div className="flex gap-2 border-t border-line pt-4">
-          <Button className="flex-1" disabled={busy} onClick={() => onDecide("approved")}>
+          <Button className="flex-1" disabled={busy} onClick={() => onDecide("approve")}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {t.approve}
           </Button>
-          <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onDecide("rejected")}>
+          <Button variant="outline" className="flex-1" disabled={busy} onClick={() => onDecide("reject")}>
             <X className="h-4 w-4" /> {t.reject}
           </Button>
         </div>
       ) : null}
 
-      {r.status !== "pending" && canDecide && <ChangeDecision status={r.status} deciding={busy} onDecide={onDecide} />}
+      {canReset && (
+        <div className="border-t border-line pt-4">
+          <Button variant="outline" className="w-full" disabled={busy} onClick={() => onDecide("reset")}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {t.changeDecision}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

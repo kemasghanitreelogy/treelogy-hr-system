@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { mapLeave } from "@/lib/data";
 import { adjustLeaveUsage } from "@/lib/balance";
 import { notifyApprovers, pushNotifications } from "@/lib/notify";
+import { applyApproval, type ApprovalAction } from "@/lib/approval";
+import { can, getSessionUser } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import type { LeaveType, RequestStatus } from "@/lib/types";
@@ -18,7 +20,6 @@ const LEAVE_LABEL: Record<LeaveType, string> = {
 };
 
 const LEAVE_TYPES: LeaveType[] = ["annual", "sick", "unpaid", "tukar-libur", "company"];
-const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Optional proof attachment: image or PDF, up to ~5 MB.
@@ -54,8 +55,7 @@ function parseDataUrl(dataUrl: string | undefined): { mime: string; buffer: Buff
 
 interface UpdatePayload {
   id?: string;
-  status?: RequestStatus;
-  approver?: string;
+  action?: ApprovalAction;
 }
 
 function dayCount(start: string, end: string): number {
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, request: mapLeave(data) });
 }
 
-// ---- Approve / reject a request (HR only via RLS) ----
+// ---- Dual approval: manager (atasan) first, then HR. RLS gates who may write. ----
 export async function PATCH(req: Request) {
   let body: UpdatePayload;
   try {
@@ -166,60 +166,112 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
-  if (!body.status || !STATUSES.includes(body.status)) {
-    return NextResponse.json({ error: "invalid_status" }, { status: 400 });
+  if (!body.action || !["approve", "reject", "reset"].includes(body.action)) {
+    return NextResponse.json({ error: "invalid_input" }, { status: 400 });
   }
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Read the prior status so the balance moves only on a genuine transition.
+  // Prior state — balance moves only on a genuine approved↔not transition.
   const { data: prev } = await supabase!
     .from("leave_requests")
-    .select("status, type, days, employee_id")
+    .select("status, type, days, employee_id, manager_approver, hr_approver, start_date, end_date")
     .eq("id", body.id)
     .maybeSingle();
+  if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const update: Record<string, unknown> = { status: body.status };
-  if (body.status === "approved" || body.status === "rejected") {
-    update.approver = body.approver?.trim() || null;
+  const { data: emp } = await supabase!.from("employees").select("team").eq("id", prev.employee_id).maybeSingle();
+
+  // Acting capacity: HR/admin fill the HR slot; otherwise a team manager (verified
+  // by RLS-backed RPC) fills the manager slot. Reset is HR-only.
+  const isHR = can(user, "employees.manage");
+  let isManager = false;
+  if (!isHR) {
+    const { data: mgr } = await supabase!.rpc("is_team_manager_of", { target_employee: prev.employee_id });
+    isManager = mgr === true;
+  }
+  if (body.action === "reset" && !isHR) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  if (body.action !== "reset" && !isHR && !isManager) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+
+  // Is a manager step required? Only if the team actually has a (non-HR) manager.
+  let managerRequired = false;
+  if (emp?.team) {
+    const { data: hasMgr } = await supabase!.rpc("team_has_manager", { req_team: emp.team, exclude_emp: prev.employee_id });
+    managerRequired = hasMgr === true;
+  }
+
+  const result = applyApproval({
+    action: body.action,
+    role: isHR ? "hr" : "manager",
+    actorName: user.name,
+    managerRequired,
+    current: {
+      status: prev.status as RequestStatus,
+      managerApprover: (prev.manager_approver as string) ?? null,
+      hrApprover: (prev.hr_approver as string) ?? null,
+    },
+    nowIso: new Date().toISOString(),
+  });
+  if (result.error || !result.update) {
+    return NextResponse.json({ error: result.error ?? "forbidden_or_failed" }, { status: 400 });
   }
 
   const { data, error } = await supabase!
     .from("leave_requests")
-    .update(update)
+    .update(result.update)
     .eq("id", body.id)
     .select("*")
     .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
 
-  if (error || !data) {
-    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
-  }
+  // Keep annual_used / sick_used in sync — only when fully approved (or undone).
+  const wasApproved = prev.status === "approved";
+  const nowApproved = result.status === "approved";
+  const type = prev.type as LeaveType;
+  const days = Number(prev.days ?? 0);
+  if (!wasApproved && nowApproved) await adjustLeaveUsage(String(prev.employee_id), type, days);
+  else if (wasApproved && !nowApproved) await adjustLeaveUsage(String(prev.employee_id), type, -days);
 
-  // Keep the leave balance (annual_used / sick_used) in sync with approvals.
-  if (prev) {
-    const wasApproved = prev.status === "approved";
-    const nowApproved = body.status === "approved";
-    const type = prev.type as LeaveType;
-    const days = Number(prev.days ?? 0);
-    if (!wasApproved && nowApproved) {
-      await adjustLeaveUsage(String(prev.employee_id), type, days);
-    } else if (wasApproved && !nowApproved) {
-      await adjustLeaveUsage(String(prev.employee_id), type, -days);
+  // Notifications: final decision → requester; manager's partial approval →
+  // requester + nudge HR that it's their turn.
+  const label = LEAVE_LABEL[data.type as LeaveType];
+  const range = `${formatDate(String(data.start_date))}–${formatDate(String(data.end_date))}`;
+  if (result.status === "approved" || result.status === "rejected") {
+    await pushNotifications([
+      {
+        employeeId: String(data.employee_id),
+        type: "leave",
+        tone: result.status,
+        title: `${label} ${result.status === "approved" ? "disetujui" : "ditolak"}`,
+        body: `${range}${data.approver ? ` · oleh ${data.approver}` : ""}`,
+        href: "/leave",
+      },
+    ]);
+  } else if (body.action === "approve" && !isHR) {
+    await pushNotifications([
+      {
+        employeeId: String(data.employee_id),
+        type: "leave",
+        tone: "pending",
+        title: `${label} disetujui atasan`,
+        body: `${range} · oleh ${user.name} — menunggu HR`,
+        href: "/leave",
+      },
+    ]);
+    if (emp?.team) {
+      await notifyApprovers(String(data.employee_id), String(emp.team), {
+        type: "leave",
+        title: `${label} menunggu persetujuan HR`,
+        body: `${range} · sudah disetujui atasan`,
+        href: "/leave",
+      });
     }
   }
-
-  // Notify the requester of the decision.
-  await pushNotifications([
-    {
-      employeeId: String(data.employee_id),
-      type: "leave",
-      tone: body.status,
-      title: `${LEAVE_LABEL[data.type as LeaveType]} ${body.status === "approved" ? "disetujui" : "ditolak"}`,
-      body: `${formatDate(String(data.start_date))}–${formatDate(String(data.end_date))}${data.approver ? ` · oleh ${data.approver}` : ""}`,
-      href: "/leave",
-    },
-  ]);
 
   return NextResponse.json({ ok: true, request: mapLeave(data) });
 }
