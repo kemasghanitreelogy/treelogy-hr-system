@@ -145,7 +145,7 @@ export async function POST(req: Request) {
     try {
       const base64 = body.photo.split(",")[1];
       const buffer = Buffer.from(base64, "base64");
-      const path = `${user.id}/${new Date().toISOString().slice(0, 10)}-${direction}${body.confirmOutOfRange ? "-oor" : ""}.jpg`;
+      const path = `${user.id}/${witaDateStr(new Date())}-${direction}${body.confirmOutOfRange ? "-oor" : ""}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("attendance-selfies")
         .upload(path, buffer, { contentType: "image/jpeg", upsert: true });
@@ -159,7 +159,7 @@ export async function POST(req: Request) {
   // pengajuan pending; HR menyetujui → absensi ditulis dengan waktu pengajuan.
   if (outOfRange) {
     if (!profile?.employee_id) return NextResponse.json({ error: "no_employee" }, { status: 400 });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = witaDateStr(new Date());
     const { error: reqErr } = await supabase.from("clock_approval_requests").insert({
       employee_id: profile.employee_id,
       date: today,
@@ -185,7 +185,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, pending: true, distance });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = witaDateStr(new Date());
   const nowIso = new Date().toISOString();
 
   // HARI LIBUR → TAHAN: jangan tulis absensi. Jadikan pengajuan konfirmasi HR
