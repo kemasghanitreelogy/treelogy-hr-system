@@ -39,7 +39,7 @@ async function auth() {
 
 // ---- Setujui / tolak clock di luar area (HR via RLS) ----
 export async function PATCH(req: Request) {
-  let body: { id?: string; status?: RequestStatus; approver?: string };
+  let body: { id?: string; status?: RequestStatus; approver?: string; reason?: string };
   try {
     body = await req.json();
   } catch {
@@ -48,6 +48,9 @@ export async function PATCH(req: Request) {
   if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
   if (!body.status || !STATUSES.includes(body.status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
+  }
+  if (body.status === "rejected" && !body.reason?.trim()) {
+    return NextResponse.json({ error: "reason_required" }, { status: 400 });
   }
 
   const { supabase, error: authErr } = await auth();
@@ -65,6 +68,7 @@ export async function PATCH(req: Request) {
     .update({
       status: body.status,
       approver: body.approver?.trim() || null,
+      rejection_reason: body.status === "rejected" ? body.reason!.trim() : null,
       decided_at: body.status === "pending" ? null : new Date().toISOString(),
     })
     .eq("id", body.id)
@@ -210,13 +214,14 @@ export async function PATCH(req: Request) {
       data.kind === "off_day"
         ? `Kerja di hari libur ${verb}`
         : `Clock-${data.direction} di luar area ${verb}`;
+    const reasonNote = body.status === "rejected" && data.rejection_reason ? ` · "${data.rejection_reason}"` : "";
     await pushNotifications([
       {
         employeeId: String(data.employee_id),
         type: "attendance",
         tone: body.status,
         title,
-        body: `${formatDate(String(data.date))}${data.approver ? ` · oleh ${data.approver}` : ""}`,
+        body: `${formatDate(String(data.date))}${data.approver ? ` · oleh ${data.approver}` : ""}${reasonNote}`,
         href: "/attendance",
       },
     ]);

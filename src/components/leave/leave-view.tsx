@@ -8,6 +8,8 @@ import { TEAM_META } from "@/lib/constants";
 import { leaveHistory, type LeavePeriod } from "@/lib/leave-policy";
 import type { ApprovalAction } from "@/lib/approval";
 import { ApprovalStatus } from "@/components/ui/approval-status";
+import { RejectDialog } from "@/components/ui/reject-dialog";
+import { RejectionNote } from "@/components/ui/rejection-note";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, formatTime } from "@/lib/utils";
@@ -304,6 +306,8 @@ export function LeaveView({
   const [adding, setAdding] = useState(false);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<LeaveRequest | null>(null);
+  // Id of the request awaiting a rejection reason (drives the RejectDialog).
+  const [rejectId, setRejectId] = useState<string | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
@@ -336,7 +340,7 @@ export function LeaveView({
   // HR may reset a decided request back to pending (correction).
   const canReset = (r: LeaveRequest) => amHR && r.status !== "pending";
 
-  async function decide(id: string, action: ApprovalAction) {
+  async function decide(id: string, action: ApprovalAction, reason?: string) {
     const prev = list.find((r) => r.id === id);
     if (!prev) return;
     setDecidingId(id);
@@ -344,7 +348,7 @@ export function LeaveView({
       const res = await fetch("/api/leave", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
+        body: JSON.stringify({ id, action, ...(reason ? { reason } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
@@ -354,6 +358,7 @@ export function LeaveView({
       setList((cur) => cur.map((r) => (r.id === id ? (data.request as LeaveRequest) : r)));
       const st = (data.request as LeaveRequest).status;
       toast.success(action === "reject" ? t.rejectedToast : st === "approved" ? t.approvedToast : t.partialApproved);
+      setRejectId(null);
       router.refresh(); // sinkronkan saldo & halaman lain di latar belakang
     } catch {
       toast.error(t.connectionError);
@@ -440,7 +445,7 @@ export function LeaveView({
                       <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approve")} className="flex-1 sm:flex-none">
                         <Check className="h-4 w-4" /> {t.approve}
                       </Button>
-                      <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => decide(r.id, "reject")} className="flex-1 sm:flex-none">
+                      <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => setRejectId(r.id)} className="flex-1 sm:flex-none">
                         <X className="h-4 w-4" /> {t.reject}
                       </Button>
                     </>
@@ -491,11 +496,18 @@ export function LeaveView({
               canDecide={canDecide(live)}
               canReset={canReset(live)}
               deciding={decidingId === live.id}
-              onDecide={(action) => decide(live.id, action)}
+              onDecide={(action) => (action === "reject" ? setRejectId(live.id) : decide(live.id, action))}
             />
           );
         })()}
       </Sheet>
+
+      <RejectDialog
+        open={rejectId !== null}
+        busy={decidingId !== null && decidingId === rejectId}
+        onCancel={() => setRejectId(null)}
+        onConfirm={(reason) => rejectId && decide(rejectId, "reject", reason)}
+      />
     </div>
   );
 }
@@ -533,6 +545,8 @@ function LeaveDetail({
         </div>
         <span className="ml-auto"><ApprovalStatus request={r} /></span>
       </div>
+
+      {r.status === "rejected" && <RejectionNote reason={r.rejectionReason} by={r.approver} />}
 
       <div className="grid grid-cols-2 gap-3">
         <Info label={t.type}>

@@ -52,6 +52,8 @@ interface CreatePayload {
 interface UpdatePayload {
   id?: string;
   action?: ApprovalAction;
+  /** Required when action === "reject": why the request is being rejected. */
+  reason?: string;
 }
 
 async function auth() {
@@ -161,6 +163,9 @@ export async function PATCH(req: Request) {
   if (!body.action || !["approve", "reject", "reset"].includes(body.action)) {
     return NextResponse.json({ error: "invalid_input" }, { status: 400 });
   }
+  if (body.action === "reject" && !body.reason?.trim()) {
+    return NextResponse.json({ error: "reason_required" }, { status: 400 });
+  }
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
@@ -204,6 +209,7 @@ export async function PATCH(req: Request) {
       hrApprover: (prev.hr_approver as string) ?? null,
     },
     nowIso: new Date().toISOString(),
+    reason: body.reason,
   });
   if (result.error || !result.update) {
     return NextResponse.json({ error: result.error ?? "forbidden_or_failed" }, { status: 400 });
@@ -219,13 +225,14 @@ export async function PATCH(req: Request) {
 
   const meta = `${formatDate(String(data.date))} · ${data.hours} jam`;
   if (result.status === "approved" || result.status === "rejected") {
+    const reasonNote = result.status === "rejected" && data.rejection_reason ? ` · "${data.rejection_reason}"` : "";
     await pushNotifications([
       {
         employeeId: String(data.employee_id),
         type: "overtime",
         tone: result.status,
         title: `Lembur ${result.status === "approved" ? "disetujui" : "ditolak"}`,
-        body: `${meta}${data.approver ? ` · oleh ${data.approver}` : ""}`,
+        body: `${meta}${data.approver ? ` · oleh ${data.approver}` : ""}${reasonNote}`,
         href: "/overtime",
       },
     ]);

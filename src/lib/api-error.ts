@@ -54,6 +54,7 @@ const MESSAGES: Record<string, Msg> = {
   invalid_status: { id: "Status tidak valid.", en: "The status is invalid." },
   awaiting_manager: { id: "Menunggu persetujuan atasan dulu sebelum HR.", en: "Waiting for the manager's approval before HR." },
   already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
+  reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
   // --- tabungan ---
   insufficient_balance: { id: "Saldo tabungan tidak mencukupi.", en: "Insufficient savings balance." },

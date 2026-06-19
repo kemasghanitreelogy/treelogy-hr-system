@@ -38,8 +38,10 @@ export function applyApproval(opts: {
   managerRequired: boolean;
   current: ApprovalCurrent;
   nowIso: string;
+  /** Required when action === "reject": the approver's reason, shown to the requester. */
+  reason?: string | null;
 }): ApprovalResult {
-  const { action, role, actorName, managerRequired, current, nowIso } = opts;
+  const { action, role, actorName, managerRequired, current, nowIso, reason } = opts;
 
   // Reset: HR/admin only (enforced by the caller) → clear back to pending.
   if (action === "reset") {
@@ -48,6 +50,7 @@ export function applyApproval(opts: {
       update: {
         status: "pending",
         approver: null,
+        rejection_reason: null,
         manager_approver: null,
         manager_approved_at: null,
         hr_approver: null,
@@ -62,7 +65,12 @@ export function applyApproval(opts: {
   }
 
   if (action === "reject") {
-    return { status: "rejected", update: { status: "rejected", approver: actorName } };
+    const trimmed = (reason ?? "").trim();
+    if (!trimmed) return { error: "reason_required", status: "pending" };
+    return {
+      status: "rejected",
+      update: { status: "rejected", approver: actorName, rejection_reason: trimmed },
+    };
   }
 
   // --- approve ---

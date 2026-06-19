@@ -12,6 +12,7 @@ import { AttendanceBadge, Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
+import { RejectDialog } from "@/components/ui/reject-dialog";
 import { Sheet } from "@/components/ui/sheet";
 import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
@@ -556,10 +557,12 @@ function ClockApprovalsCard({
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const [list, setList] = useState(approvals);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Id of the approval awaiting a rejection reason (drives the RejectDialog).
+  const [rejectId, setRejectId] = useState<string | null>(null);
   const toast = useToast();
   const router = useRouter();
 
-  async function decide(id: string, status: RequestStatus) {
+  async function decide(id: string, status: RequestStatus, reason?: string) {
     const prev = list.find((a) => a.id === id);
     if (!prev) return;
     setBusyId(id);
@@ -567,7 +570,7 @@ function ClockApprovalsCard({
       const res = await fetch("/api/attendance/approvals", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status, approver: currentUserName }),
+        body: JSON.stringify({ id, status, approver: currentUserName, ...(reason ? { reason } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
@@ -576,6 +579,7 @@ function ClockApprovalsCard({
       }
       setList((cur) => cur.filter((a) => a.id !== id));
       toast.success(status === "approved" ? t.approvedOk : t.rejectedOk);
+      setRejectId(null);
       router.refresh();
     } catch {
       toast.error(t.connectionProblem);
@@ -587,6 +591,7 @@ function ClockApprovalsCard({
   if (list.length === 0) return null;
 
   return (
+    <>
     <Card className="border-2 border-gold/40">
       <CardHeader className="flex-wrap">
         <div className="flex items-center gap-2">
@@ -647,7 +652,7 @@ function ClockApprovalsCard({
                 <Button size="sm" disabled={busyId === a.id} onClick={() => decide(a.id, "approved")} className="flex-1 sm:flex-none">
                   <Check className="h-4 w-4" /> {t.approve}
                 </Button>
-                <Button size="sm" variant="outline" disabled={busyId === a.id} onClick={() => decide(a.id, "rejected")} className="flex-1 sm:flex-none">
+                <Button size="sm" variant="outline" disabled={busyId === a.id} onClick={() => setRejectId(a.id)} className="flex-1 sm:flex-none">
                   <X className="h-4 w-4" /> {t.reject}
                 </Button>
               </div>
@@ -656,6 +661,14 @@ function ClockApprovalsCard({
         })}
       </CardContent>
     </Card>
+
+      <RejectDialog
+        open={rejectId !== null}
+        busy={busyId !== null && busyId === rejectId}
+        onCancel={() => setRejectId(null)}
+        onConfirm={(reason) => rejectId && decide(rejectId, "rejected", reason)}
+      />
+    </>
   );
 }
 

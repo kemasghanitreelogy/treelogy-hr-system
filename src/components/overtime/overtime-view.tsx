@@ -9,6 +9,8 @@ import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import type { ApprovalAction } from "@/lib/approval";
 import { ApprovalStatus } from "@/components/ui/approval-status";
+import { RejectDialog } from "@/components/ui/reject-dialog";
+import { RejectionNote } from "@/components/ui/rejection-note";
 import { formatDate, formatTime, rupiah } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
@@ -214,6 +216,8 @@ export function OvertimeView({
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<OvertimeRequest | null>(null);
+  // Id of the request awaiting a rejection reason (drives the RejectDialog).
+  const [rejectId, setRejectId] = useState<string | null>(null);
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
   const router = useRouter();
@@ -240,7 +244,7 @@ export function OvertimeView({
   );
   const canReset = (r: OvertimeRequest) => amHR && r.status !== "pending";
 
-  async function decide(id: string, action: ApprovalAction) {
+  async function decide(id: string, action: ApprovalAction, reason?: string) {
     const prev = list.find((r) => r.id === id);
     if (!prev) return;
     setBusyId(id);
@@ -248,7 +252,7 @@ export function OvertimeView({
       const res = await fetch("/api/overtime", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
+        body: JSON.stringify({ id, action, ...(reason ? { reason } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.request) {
@@ -258,6 +262,7 @@ export function OvertimeView({
       setList((cur) => cur.map((r) => (r.id === id ? (data.request as OvertimeRequest) : r)));
       const st = (data.request as OvertimeRequest).status;
       toast.success(action === "reject" ? t.rejectedToast : st === "approved" ? t.approvedToast : t.partialApproved);
+      setRejectId(null);
       router.refresh(); // sinkronkan dashboard & halaman lain di latar belakang
     } catch {
       toast.error(t.connectionError);
@@ -331,7 +336,7 @@ export function OvertimeView({
                     <Button size="sm" disabled={busyId === r.id} onClick={() => decide(r.id, "approve")} className="flex-1 sm:flex-none">
                       <Check className="h-4 w-4" /> {t.approve}
                     </Button>
-                    <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => decide(r.id, "reject")} className="flex-1 sm:flex-none">
+                    <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => setRejectId(r.id)} className="flex-1 sm:flex-none">
                       <X className="h-4 w-4" /> {t.reject}
                     </Button>
                   </>
@@ -384,11 +389,18 @@ export function OvertimeView({
               canDecide={canDecide(live)}
               canReset={canReset(live)}
               busy={busyId === live.id}
-              onDecide={(action) => decide(live.id, action)}
+              onDecide={(action) => (action === "reject" ? setRejectId(live.id) : decide(live.id, action))}
             />
           );
         })()}
       </Sheet>
+
+      <RejectDialog
+        open={rejectId !== null}
+        busy={busyId !== null && busyId === rejectId}
+        onCancel={() => setRejectId(null)}
+        onConfirm={(reason) => rejectId && decide(rejectId, "reject", reason)}
+      />
     </div>
   );
 }
@@ -426,6 +438,8 @@ function OvertimeDetail({
         </div>
         <span className="ml-auto"><ApprovalStatus request={r} /></span>
       </div>
+
+      {r.status === "rejected" && <RejectionNote reason={r.rejectionReason} by={r.approver} />}
 
       <div className="grid grid-cols-2 gap-3">
         <OtInfo label={`${formatDate(r.date, "short", locale)}`}>

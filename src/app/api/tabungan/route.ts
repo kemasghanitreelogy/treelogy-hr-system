@@ -41,6 +41,8 @@ interface UpdatePayload {
   id?: string;
   status?: RequestStatus;
   approver?: string;
+  /** Required when status === "rejected": why the entry is being rejected. */
+  reason?: string;
 }
 
 async function auth() {
@@ -155,6 +157,9 @@ export async function PATCH(req: Request) {
   if (!body.status || !STATUSES.includes(body.status)) {
     return NextResponse.json({ error: "invalid_status" }, { status: 400 });
   }
+  if (body.status === "rejected" && !body.reason?.trim()) {
+    return NextResponse.json({ error: "reason_required" }, { status: 400 });
+  }
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
@@ -185,6 +190,7 @@ export async function PATCH(req: Request) {
   const update: Record<string, unknown> = {
     status: body.status,
     approver: body.approver?.trim() || null,
+    rejection_reason: body.status === "rejected" ? body.reason!.trim() : null,
     decided_at: body.status === "pending" ? null : new Date().toISOString(),
   };
 
@@ -208,13 +214,14 @@ export async function PATCH(req: Request) {
 
   // Notify the requester of the decision.
   if (body.status === "approved" || body.status === "rejected") {
+    const reasonNote = body.status === "rejected" && data.rejection_reason ? ` · "${data.rejection_reason}"` : "";
     await pushNotifications([
       {
         employeeId,
         type: "tabungan",
         tone: body.status,
         title: `${kind === "deposit" ? "Setoran" : "Pencairan"} tabungan libur ${body.status === "approved" ? "disetujui" : "ditolak"}`,
-        body: `${formatDate(String(data.event_date))} · ${days} hari${data.approver ? ` · oleh ${data.approver}` : ""}`,
+        body: `${formatDate(String(data.event_date))} · ${days} hari${data.approver ? ` · oleh ${data.approver}` : ""}${reasonNote}`,
         href: "/shifts",
       },
     ]);

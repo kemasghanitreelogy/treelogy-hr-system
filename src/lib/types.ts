@@ -132,6 +132,8 @@ export interface LeaveRequest {
   reason: string;
   status: RequestStatus;
   approver?: string | null;
+  /** Why the request was rejected — written by the approver, shown to the requester. */
+  rejectionReason?: string | null;
   /** Dual approval: manager (atasan) approves first, then HR finalises. */
   managerApprover?: string | null;
   managerApprovedAt?: string | null;
@@ -154,6 +156,8 @@ export interface OvertimeRequest {
   amount: number; // ratePerHour * hours
   status: RequestStatus; // approval flow
   approver?: string | null;
+  /** Why the request was rejected — written by the approver, shown to the requester. */
+  rejectionReason?: string | null;
   /** Dual approval: manager (atasan) approves first, then HR finalises. */
   managerApprover?: string | null;
   managerApprovedAt?: string | null;
@@ -180,6 +184,8 @@ export interface ClockApprovalRequest {
   note?: string | null; // catatan opsional dari karyawan untuk HR
   status: RequestStatus;
   approver?: string | null;
+  /** Alasan penolakan dari HR — ditampilkan ke karyawan pengaju. */
+  rejectionReason?: string | null;
   decidedAt?: string | null;
   /** 'out_of_area' = clock di luar geofence; 'off_day' = kerja di hari libur. */
   kind: "out_of_area" | "off_day";
@@ -242,6 +248,8 @@ export interface TabunganEntry {
   sourceId?: string | null; // attendance record id when source='attendance'
   status: RequestStatus;
   approver?: string | null;
+  /** Alasan penolakan dari HR — ditampilkan ke karyawan pengaju. */
+  rejectionReason?: string | null;
   proofPath?: string | null;
   requestedAt: string;
   decidedAt?: string | null;
