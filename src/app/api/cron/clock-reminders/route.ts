@@ -53,13 +53,19 @@ const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
  * Skips off-days/public holidays; deduped per (employee, date, kind).
  */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
   const admin = createAdminClient();
   if (!admin) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  // Authorized if the bearer matches the Vercel CRON_SECRET env OR the DB-stored
+  // token that Supabase pg_cron sends (the self-contained scheduler).
+  const auth = req.headers.get("authorization") ?? "";
+  const envSecret = process.env.CRON_SECRET;
+  let authorized = Boolean(envSecret) && auth === `Bearer ${envSecret}`;
+  if (!authorized) {
+    const { data: row } = await admin.from("cron_secrets").select("token").eq("name", "clock-reminders").maybeSingle();
+    authorized = Boolean(row?.token) && auth === `Bearer ${row!.token}`;
+  }
+  if (!authorized) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const today = witaToday();
   const dow = witaDow();
