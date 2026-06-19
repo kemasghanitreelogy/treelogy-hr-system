@@ -26,7 +26,7 @@ import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { CameraCapture } from "./camera-capture";
 
-type Phase = "out" | "in";
+type Phase = "out" | "in" | "done";
 type Flow = "idle" | "locating" | "camera" | "submitting";
 
 const STR: Record<
@@ -48,7 +48,10 @@ const STR: Record<
     status: string;
     working: string;
     notClockedIn: string;
+    doneToday: string;
     clockedInAt: string;
+    clockedOutAt: string;
+    doneNote: string;
     workDuration: string;
     hm: (h: number, m: number) => string;
     geoChip: (distance: string, label: string, accuracy: number) => string;
@@ -103,7 +106,10 @@ const STR: Record<
     status: "Status",
     working: "Sedang Bekerja",
     notClockedIn: "Belum Clock-In",
+    doneToday: "Selesai Bekerja",
     clockedInAt: "Masuk pukul",
+    clockedOutAt: "Pulang pukul",
+    doneNote: "Absensi hari ini selesai. Sampai jumpa besok! 🌿",
     workDuration: "Durasi kerja",
     hm: (h, m) => `${h}j ${m}m`,
     geoChip: (distance, label, accuracy) => `${distance} dari ${label} · ±${accuracy} m`,
@@ -157,7 +163,10 @@ const STR: Record<
     status: "Status",
     working: "Currently Working",
     notClockedIn: "Not Clocked In",
+    doneToday: "Done for Today",
     clockedInAt: "Clocked in at",
+    clockedOutAt: "Clocked out at",
+    doneNote: "You're done for today. See you tomorrow! 🌿",
     workDuration: "Work duration",
     hm: (h, m) => `${h}h ${m}m`,
     geoChip: (distance, label, accuracy) => `${distance} from ${label} · ±${accuracy} m`,
@@ -268,12 +277,15 @@ export function ClockWidget({
   const offDayToday = holidayToday || !workDays.includes(witaDowNow());
   const [now, setNow] = useState<Date | null>(null);
   const router = useRouter();
-  // Seed from today's server record so a refresh keeps the clocked-in state:
-  // clocked in (and not yet out) → "in"; otherwise "out".
-  const workingNow = !!todayRecord?.clockIn && !todayRecord?.clockOut;
-  const [phase, setPhase] = useState<Phase>(workingNow ? "in" : "out");
+  // Seed from today's server record so a refresh keeps state: clocked in (no out
+  // yet) → "in"; clocked in AND out → "done"; nothing yet → "out".
+  const initialPhase: Phase = todayRecord?.clockIn ? (todayRecord.clockOut ? "done" : "in") : "out";
+  const [phase, setPhase] = useState<Phase>(initialPhase);
   const [clockInAt, setClockInAt] = useState<Date | null>(
-    workingNow && todayRecord?.clockIn ? new Date(todayRecord.clockIn) : null,
+    todayRecord?.clockIn ? new Date(todayRecord.clockIn) : null,
+  );
+  const [clockOutAt, setClockOutAt] = useState<Date | null>(
+    todayRecord?.clockOut ? new Date(todayRecord.clockOut) : null,
   );
   const [flow, setFlow] = useState<Flow>("idle");
   const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
@@ -297,11 +309,12 @@ export function ClockWidget({
   }, []);
 
   const intlLocale = locale === "en" ? "en-GB" : "id-ID";
+  // Pin the clock to WITA so it's correct on any device timezone (label says WITA).
   const time = now
-    ? now.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+    ? now.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Makassar" })
     : "--:--:--";
   const dateStr = now
-    ? now.toLocaleDateString(intlLocale, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    ? now.toLocaleDateString(intlLocale, { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Makassar" })
     : "";
 
   async function start() {
@@ -454,7 +467,8 @@ export function ClockWidget({
           text: offDayChoice === "swap" ? t.swapSent : offDayChoice === "overtime" ? t.overtimeSent : t.clockInOk,
         });
       } else {
-        setPhase("out");
+        setClockOutAt(new Date());
+        setPhase("done");
         setNotice({ tone: "ok", text: t.clockOutOk });
       }
       // Sinkronkan ulang data server di latar belakang (riwayat absensi, dashboard)
@@ -500,15 +514,15 @@ export function ClockWidget({
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="text-sm text-muted">{t.status}</p>
-              <p className={cn("font-display text-lg font-semibold", phase === "in" ? "text-forest-600" : "text-faint")}>
-                {phase === "in" ? t.working : t.notClockedIn}
+              <p className={cn("font-display text-lg font-semibold", phase === "out" ? "text-faint" : "text-forest-600")}>
+                {phase === "in" ? t.working : phase === "done" ? t.doneToday : t.notClockedIn}
               </p>
             </div>
-            {phase === "in" && clockInAt && (
+            {(phase === "in" || phase === "done") && clockInAt && (
               <div className="text-right">
-                <p className="text-sm text-muted">{t.clockedInAt}</p>
+                <p className="text-sm text-muted">{phase === "done" ? t.clockedOutAt : t.clockedInAt}</p>
                 <p className="font-display text-lg font-semibold text-ink">
-                  {clockInAt.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", hour12: false })}
+                  {(phase === "done" && clockOutAt ? clockOutAt : clockInAt).toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Makassar" })}
                 </p>
               </div>
             )}
@@ -549,30 +563,36 @@ export function ClockWidget({
             </div>
           )}
 
-          <Button
-            onClick={start}
-            size="lg"
-            variant={phase === "in" ? "danger" : "primary"}
-            className="h-14 w-full text-base"
-            disabled={busy}
-          >
-            {busy ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                {flow === "locating" ? t.checkingLocation : t.processing}
-              </>
-            ) : phase === "in" ? (
-              <>
-                <LogOut className="h-5 w-5" /> {t.clockOut}
-              </>
-            ) : (
-              <>
-                <LogIn className="h-5 w-5" /> {t.clockInNow}
-              </>
-            )}
-          </Button>
+          {phase === "done" ? (
+            <div className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#e9f0d8] text-base font-semibold text-forest-700">
+              <CheckCircle2 className="h-5 w-5" /> {t.doneToday}
+            </div>
+          ) : (
+            <Button
+              onClick={start}
+              size="lg"
+              variant={phase === "in" ? "danger" : "primary"}
+              className="h-14 w-full text-base"
+              disabled={busy}
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  {flow === "locating" ? t.checkingLocation : t.processing}
+                </>
+              ) : phase === "in" ? (
+                <>
+                  <LogOut className="h-5 w-5" /> {t.clockOut}
+                </>
+              ) : (
+                <>
+                  <LogIn className="h-5 w-5" /> {t.clockInNow}
+                </>
+              )}
+            </Button>
+          )}
           <p className="mt-2.5 text-center text-xs text-faint">
-            {t.verifyNote}
+            {phase === "done" ? t.doneNote : t.verifyNote}
           </p>
         </div>
       </div>

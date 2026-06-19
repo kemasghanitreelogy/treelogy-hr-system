@@ -79,7 +79,8 @@ export function formatTime(input?: string | null): string {
   if (!input) return "—";
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return input;
-  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+  // Always WITA — attendance times must read the same regardless of device tz.
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Makassar" });
 }
 
 export function initials(name: string): string {

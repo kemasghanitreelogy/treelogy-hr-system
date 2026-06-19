@@ -77,6 +77,7 @@ const MESSAGES: Record<string, Msg> = {
 
   // --- attendance / push / misc server ---
   attendance_write_failed: { id: "Gagal menyimpan absensi. Coba lagi.", en: "Failed to save attendance. Try again." },
+  not_clocked_in: { id: "Belum ada clock-in hari ini untuk di-clock-out.", en: "No clock-in today to clock out from." },
   push_not_configured: { id: "Notifikasi push belum dikonfigurasi (VAPID key kosong).", en: "Push notifications aren't configured (VAPID key missing)." },
   missing_subscription: { id: "Data langganan notifikasi hilang.", en: "Notification subscription data is missing." },
   missing_endpoint: { id: "Endpoint notifikasi hilang.", en: "Notification endpoint is missing." },

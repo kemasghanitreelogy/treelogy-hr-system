@@ -253,6 +253,14 @@ export async function POST(req: Request) {
           clock_in_lng: body.lng ?? null,
           clock_in_distance_m: distance,
           clock_in_photo: photoPath,
+          // A fresh clock-in starts a clean session: never inherit a stale
+          // clock-out (which would make clock_out < clock_in).
+          clock_out: null,
+          clock_out_lat: null,
+          clock_out_lng: null,
+          clock_out_distance_m: null,
+          clock_out_photo: null,
+          overtime_minutes: 0,
         },
         { onConflict: "employee_id,date" },
       );
@@ -264,7 +272,9 @@ export async function POST(req: Request) {
       const [eh, em] = workEnd.split(":").map(Number);
       const overtimeMinutes = Math.max(0, ch * 60 + cm - (eh * 60 + em));
 
-      const { error } = await supabase
+      // Clock-out only completes an existing clock-in for today. .select() lets us
+      // detect "no row updated" (never clocked in) instead of faking success.
+      const { data: updated, error } = await supabase
         .from("attendance")
         .update({
           clock_out: nowIso,
@@ -275,8 +285,14 @@ export async function POST(req: Request) {
           clock_out_photo: photoPath,
         })
         .eq("employee_id", profile.employee_id)
-        .eq("date", today);
-      recorded = !error;
+        .eq("date", today)
+        .not("clock_in", "is", null)
+        .select("id");
+      if (error) return NextResponse.json({ error: "attendance_write_failed" }, { status: 403 });
+      if (!updated || updated.length === 0) {
+        return NextResponse.json({ error: "not_clocked_in" }, { status: 400 });
+      }
+      recorded = true;
     }
   }
 
