@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "./supabase/admin";
+import { sendPushToEmployees } from "./push/send";
 import type { NotifTone } from "./types";
 
 export interface NewNotification {
@@ -11,11 +12,18 @@ export interface NewNotification {
   href?: string;
 }
 
-/** Insert notifications using the service-role client (bypasses RLS). Best-effort. */
-export async function pushNotifications(rows: NewNotification[]): Promise<void> {
-  if (rows.length === 0) return;
+/**
+ * Deliver a notification two ways (both best-effort, never fail the request):
+ *  1. in-app bell row (notifications table)
+ *  2. real web push to the recipient's subscribed devices (so it reaches the phone)
+ * Returns the web-push send counts.
+ */
+export async function pushNotifications(rows: NewNotification[]): Promise<{ sent: number; failed: number }> {
+  if (rows.length === 0) return { sent: 0, failed: 0 };
   const admin = createAdminClient();
-  if (!admin) return;
+  if (!admin) return { sent: 0, failed: 0 };
+
+  // 1) In-app bell.
   try {
     await admin.from("notifications").insert(
       rows.map((r) => ({
@@ -28,8 +36,26 @@ export async function pushNotifications(rows: NewNotification[]): Promise<void> 
       })),
     );
   } catch {
-    /* notifications are non-critical — never fail the main request */
+    /* non-critical */
   }
+
+  // 2) Web push to the device(s), tailored per recipient row.
+  let sent = 0;
+  let failed = 0;
+  try {
+    const results = await Promise.all(
+      rows.map((r) =>
+        sendPushToEmployees(admin, [r.employeeId], { title: r.title, body: r.body, url: r.href, tag: r.type }),
+      ),
+    );
+    for (const res of results) {
+      sent += res.sent;
+      failed += res.failed;
+    }
+  } catch {
+    /* non-critical */
+  }
+  return { sent, failed };
 }
 
 /** Notify the people who can act on a request: HR/admin + the requester's division manager. */

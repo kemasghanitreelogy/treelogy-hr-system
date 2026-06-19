@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { brandedEmail, isSmtpConfigured, sendEmail } from "@/lib/email";
-import { sendPushToEmployees } from "@/lib/push/send";
 import { pushNotifications, type NewNotification } from "@/lib/notify";
 
 export const runtime = "nodejs";
@@ -110,16 +109,9 @@ export async function GET(req: Request) {
       ...hrIds.map((id) => ({ employeeId: id, type: "contract", tone: "pending" as const, title: hrTitle, body: hrBody, href: "/employees" })),
     ];
     if (c.employee_id) notifs.push({ employeeId: c.employee_id, type: "contract", tone: "pending", title: empTitle, body: empBody, href: "/profile" });
-    await pushNotifications(notifs);
-
-    // 2) Web push (HR + employee, tailored).
-    const [hrPush, empPush] = await Promise.all([
-      sendPushToEmployees(admin, hrIds, { title: hrTitle, body: hrBody, url: "/employees", tag: `contract-${c.id}` }),
-      c.employee_id
-        ? sendPushToEmployees(admin, [c.employee_id], { title: empTitle, body: empBody, url: "/profile", tag: `contract-${c.id}` })
-        : Promise.resolve({ sent: 0, failed: 0 }),
-    ]);
-    pushSent += hrPush.sent + empPush.sent;
+    // In-app bell + web push (pushNotifications now delivers both).
+    const res = await pushNotifications(notifs);
+    pushSent += res.sent;
 
     // 3) Email (best-effort; failures don't block the run).
     if (isSmtpConfigured) {
