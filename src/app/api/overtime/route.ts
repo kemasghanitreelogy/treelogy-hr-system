@@ -192,11 +192,10 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
 
-  let managerRequired = false;
-  if (emp?.team) {
-    const { data: hasMgr } = await supabase!.rpc("team_has_manager", { req_team: emp.team, exclude_emp: prev.employee_id });
-    managerRequired = hasMgr === true;
-  }
+  // Manager step is required only when the requester has a direct atasan
+  // (manager_id) who can approve. No atasan → HR finalises directly.
+  const { data: needMgr } = await supabase!.rpc("employee_requires_manager", { emp: prev.employee_id });
+  const managerRequired = needMgr === true;
 
   const result = applyApproval({
     action: body.action,
