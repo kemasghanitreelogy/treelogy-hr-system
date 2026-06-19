@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Building2, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Upload, UserX, Wallet } from "lucide-react";
-import type { Employee, EmployeeContract, Religion, Team } from "@/lib/types";
+import type { ContractType, Employee, EmployeeContract, Religion, Team } from "@/lib/types";
 import { ContractsCard } from "./contracts-card";
 import type { Locale } from "@/lib/i18n";
 
@@ -124,6 +124,7 @@ const ID_STR = {
   emailHint: "Wajib — akun login dibuat otomatis (sandi awal = email).",
   baseSalaryRp: "Gaji pokok (Rp)",
   allowanceRp: "Tunjangan (Rp)",
+  contractType: "Tipe kontrak",
   clockInHint: "Patokan telat (WITA)",
   bank: "Bank",
   bankAccount: "No. rekening",
@@ -221,6 +222,7 @@ const STR: Record<Locale, typeof ID_STR> = {
     emailPlaceholder: "name@treelogy.com",
     baseSalaryRp: "Base salary (Rp)",
     allowanceRp: "Allowance (Rp)",
+    contractType: "Contract type",
     clockInHint: "Late benchmark (WITA)",
     bank: "Bank",
     bankAccount: "Account number",
@@ -634,6 +636,7 @@ function EmployeeDetail({
         <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
           <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
           <Stat label={t.allowance} value={rupiah(emp.allowance)} />
+          <Stat label={t.contractType} value={emp.contractType ? emp.contractType.toUpperCase() : "PKWT"} />
           <Stat label={t.religion} value={emp.religion ? RELIGION_LABEL[locale][emp.religion] : "—"} />
           <Stat label={t.npwp} value={emp.npwp ?? "—"} />
           <Stat label={t.bpjsKes} value={emp.bpjsKes ? t.activeLabel : "—"} />
@@ -770,6 +773,7 @@ function EmployeeForm({
     phone: initial?.phone ?? "",
     baseSalary: String(initial?.baseSalary ?? "3500000"),
     allowance: String(initial?.allowance ?? "500000"),
+    contractType: (initial?.contractType ?? "pkwt") as ContractType,
     religion: (initial?.religion ?? "") as Religion | "",
     birthPlace: initial?.birthPlace ?? "",
     dateOfBirth: initial?.dateOfBirth ?? "",
@@ -805,6 +809,7 @@ function EmployeeForm({
         phone: form.phone,
         baseSalary: Number(form.baseSalary) || 0,
         allowance: Number(form.allowance) || 0,
+        contractType: form.contractType,
         religion: form.religion || null,
         birthPlace: form.birthPlace || null,
         dateOfBirth: form.dateOfBirth || null,
@@ -868,6 +873,12 @@ function EmployeeForm({
           <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
         </Field>
       </div>
+      <Field label={t.contractType}>
+        <Select value={form.contractType} onChange={(e) => set("contractType", e.target.value as ContractType)}>
+          <option value="pkwt">PKWT</option>
+          <option value="pkwtt">PKWTT</option>
+        </Select>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.religion}>
           <Select value={form.religion} onChange={(e) => set("religion", e.target.value as Religion)}>

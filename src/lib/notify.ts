@@ -58,18 +58,16 @@ export async function pushNotifications(rows: NewNotification[]): Promise<{ sent
   return { sent, failed };
 }
 
-/** Notify the people who can act on a request: HR/admin + the requester's division manager. */
+/** Notify the people who can act on a request: HR/admin + the requester's direct atasan. */
 export async function notifyApprovers(
   requesterEmployeeId: string,
-  team: string,
   content: { type: string; title: string; body?: string; href?: string },
 ): Promise<void> {
   const admin = createAdminClient();
   if (!admin) return;
   try {
     const { data } = await admin.rpc("approver_employees", {
-      req_team: team,
-      exclude_emp: requesterEmployeeId,
+      req_employee: requesterEmployeeId,
     });
     const ids: string[] = (data ?? []).map((r: { employee_id: string }) => r.employee_id);
     await pushNotifications(

@@ -158,6 +158,10 @@ const MANAGER: Record<string, string> = {
 };
 for (const e of employees) e.managerId = MANAGER[e.id] ?? null;
 
+// Default contract type PKWT; a couple of division heads are permanent (PKWTT).
+const PKWTT_IDS = new Set(["e03", "e09"]);
+for (const e of employees) e.contractType = PKWTT_IDS.has(e.id) ? "pkwtt" : "pkwt";
+
 export const shifts: Shift[] = [
   { id: "s1", name: "Factory Pagi", team: "factory", startTime: "07:00", endTime: "15:00", breakMinutes: 60, overtimeAfter: "15:00", color: "#3d5a2e" },
   { id: "s2", name: "Factory Siang", team: "factory", startTime: "15:00", endTime: "23:00", breakMinutes: 60, overtimeAfter: "23:00", color: "#6b7548" },

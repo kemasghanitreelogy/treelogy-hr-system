@@ -36,7 +36,12 @@ export interface Employee {
   scheduleTemplateId?: string | null;
   /** Direct supervisor (employee id); null = top of their division. Drives the org tree. */
   managerId?: string | null;
+  /** Employment contract type — governs overtime pay (PKWT flat, PKWTT 1.5×/2×). */
+  contractType?: ContractType;
 }
+
+/** Employment contract type: PKWT (fixed-term) vs PKWTT (permanent). */
+export type ContractType = "pkwt" | "pkwtt";
 
 /** Hari libur: 'public' = semua off; 'religious' = hanya karyawan seagama off. */
 export interface Holiday {
@@ -153,7 +158,9 @@ export interface OvertimeRequest {
   hours: number; // duration in hours (decimal)
   reason: string;
   ratePerHour: number; // baseSalary / 20 / 8, snapshotted at request time
-  amount: number; // ratePerHour * hours
+  amount: number; // total pay per contract type (PKWT flat; PKWTT 1.5×/2×)
+  /** Contract type snapshotted at request time, so `amount` stays explainable. */
+  contractType?: ContractType;
   status: RequestStatus; // approval flow
   approver?: string | null;
   /** Why the request was rejected — written by the approver, shown to the requester. */

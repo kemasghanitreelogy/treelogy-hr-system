@@ -175,7 +175,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "request_failed" }, { status: 403 });
     }
     if (!reqErr && emp?.team) {
-      await notifyApprovers(profile.employee_id, String(emp.team), {
+      await notifyApprovers(profile.employee_id, {
         type: "attendance",
         title: `${emp.name ?? "Karyawan"} clock-${direction} di luar area`,
         body: `${formatDate(today)} · ${distance == null ? "" : `${Math.round(distance)} m dari lokasi · `}perlu konfirmasi Anda`,
@@ -211,7 +211,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "request_failed" }, { status: 403 });
       }
       if (!error && emp?.team) {
-        await notifyApprovers(profile.employee_id, String(emp.team), {
+        await notifyApprovers(profile.employee_id, {
           type: "attendance",
           title: `${emp.name ?? "Karyawan"} kerja di hari libur`,
           body: `${formatDate(today)} · ${choice === "swap" ? "tukar libur" : "lembur"} · perlu konfirmasi Anda`,

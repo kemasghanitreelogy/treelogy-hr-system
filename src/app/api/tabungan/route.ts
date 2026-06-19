@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     .eq("id", body.employeeId)
     .maybeSingle();
   if (emp?.team) {
-    await notifyApprovers(body.employeeId, String(emp.team), {
+    await notifyApprovers(body.employeeId, {
       type: "tabungan",
       title: `${emp.name ?? "Karyawan"} mengajukan ${KIND_LABEL[body.kind]}`,
       body: `${formatDate(body.eventDate)} · ${days} hari · perlu persetujuan Anda`,

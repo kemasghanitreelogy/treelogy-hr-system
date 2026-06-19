@@ -5,16 +5,14 @@ import { notifyApprovers, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { applyApproval, type ApprovalAction } from "@/lib/approval";
+import { overtimePay, overtimeRatePerHour } from "@/lib/overtime";
 import { can, getSessionUser } from "@/lib/auth";
-import type { RequestStatus } from "@/lib/types";
+import type { ContractType, RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-// Hourly overtime rate = monthly base salary / 20 working days / 8 hours.
-const OVERTIME_DIVISOR = 20 * 8;
 
 const PROOF_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -87,14 +85,17 @@ export async function POST(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
-  // Snapshot the hourly rate from the employee's current base salary.
+  // Snapshot the hourly rate + contract type from the employee. PKWT is paid
+  // flat; PKWTT pays 1.5× the first hour then 2× the rest.
   const { data: emp } = await supabase!
     .from("employees")
-    .select("base_salary, name, team")
+    .select("base_salary, name, team, contract_type")
     .eq("id", body.employeeId)
     .maybeSingle();
-  const ratePerHour = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
-  const amount = Math.round(ratePerHour * hours);
+  const baseSalary = Number(emp?.base_salary) || 0;
+  const contractType: ContractType = emp?.contract_type === "pkwtt" ? "pkwtt" : "pkwt";
+  const ratePerHour = overtimeRatePerHour(baseSalary);
+  const amount = overtimePay(baseSalary, hours, contractType);
 
   // Optional proof file. Preferred: client uploaded straight to storage and
   // sent the path. Fallback: base64 data URL uploaded here (demo / no Supabase).
@@ -129,6 +130,7 @@ export async function POST(req: Request) {
     reason: body.reason?.trim() || null,
     rate_per_hour: ratePerHour,
     amount,
+    contract_type: contractType,
     status: "pending",
     proof_path: proofPath,
   };
@@ -140,7 +142,7 @@ export async function POST(req: Request) {
 
   // Notify the approvers (HR/admin + division manager).
   if (emp?.team) {
-    await notifyApprovers(body.employeeId, String(emp.team), {
+    await notifyApprovers(body.employeeId, {
       type: "overtime",
       title: `${emp.name ?? "Karyawan"} mengajukan lembur`,
       body: `${formatDate(body.date)} · ${hours} jam · perlu persetujuan Anda`,
@@ -184,7 +186,7 @@ export async function PATCH(req: Request) {
   const isHR = can(user, "employees.manage");
   let isManager = false;
   if (!isHR) {
-    const { data: mgr } = await supabase!.rpc("is_team_manager_of", { target_employee: prev.employee_id });
+    const { data: mgr } = await supabase!.rpc("is_manager_of", { target_employee: prev.employee_id });
     isManager = mgr === true;
   }
   if (body.action === "reset" && !isHR) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
@@ -247,7 +249,7 @@ export async function PATCH(req: Request) {
       },
     ]);
     if (emp?.team) {
-      await notifyApprovers(String(data.employee_id), String(emp.team), {
+      await notifyApprovers(String(data.employee_id), {
         type: "overtime",
         title: "Lembur menunggu persetujuan HR",
         body: `${meta} · sudah disetujui atasan`,

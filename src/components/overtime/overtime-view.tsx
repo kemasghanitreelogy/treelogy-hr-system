@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
-import type { Employee, OvertimeRequest, Team } from "@/lib/types";
+import type { ContractType, Employee, OvertimeRequest, Team } from "@/lib/types";
+import { overtimePayEstimate } from "@/lib/overtime";
 import { TEAM_META } from "@/lib/constants";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -23,7 +24,7 @@ import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
-type Emp = Pick<Employee, "id" | "name" | "team" | "position">;
+type Emp = Pick<Employee, "id" | "name" | "team" | "position" | "managerId">;
 
 const STR: Record<
   Locale,
@@ -201,6 +202,7 @@ export function OvertimeView({
   canApproveAll = false,
   approverTeam = null,
   selfRatePerHour = 0,
+  selfContractType = "pkwt",
 }: {
   requests: OvertimeRequest[];
   employees: Emp[];
@@ -211,6 +213,8 @@ export function OvertimeView({
   approverTeam?: Team | null;
   /** Hourly rate of the logged-in user (own salary only) for the live estimate. */
   selfRatePerHour?: number;
+  /** Contract type of the logged-in user — drives the live estimate formula. */
+  selfContractType?: ContractType;
 }) {
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
@@ -227,13 +231,13 @@ export function OvertimeView({
   const scopeOpts = scopeOptionsFor(canApproveAll, approverTeam != null);
   const [scope, setScope] = useStickyTab<Scope>("overtime.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
   const matchScope = (employeeId: string) =>
-    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
+    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.managerId, currentEmployeeId);
   const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
   // Dual approval: manager (atasan) first, then HR. Nobody decides their own.
   const amHR = canApproveAll;
   const amManagerOf = (r: OvertimeRequest) =>
-    !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.team === approverTeam;
+    !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.managerId === currentEmployeeId;
   const canDecide = useMemo(
     () => (r: OvertimeRequest) => {
       if (r.status !== "pending" || r.employeeId === currentEmployeeId) return false;
@@ -361,6 +365,7 @@ export function OvertimeView({
           currentEmployeeId={currentEmployeeId}
           canRequestForOthers={canRequestForOthers}
           selfRatePerHour={selfRatePerHour}
+          selfContractType={selfContractType}
           onSubmit={(r) => {
             setList((prev) => [r, ...prev]);
             setAdding(false);
@@ -533,6 +538,7 @@ function OvertimeForm({
   currentEmployeeId = null,
   canRequestForOthers = true,
   selfRatePerHour = 0,
+  selfContractType = "pkwt",
   onSubmit,
   onCancel,
 }: {
@@ -540,6 +546,7 @@ function OvertimeForm({
   currentEmployeeId?: string | null;
   canRequestForOthers?: boolean;
   selfRatePerHour?: number;
+  selfContractType?: ContractType;
   onSubmit: (r: OvertimeRequest) => void;
   onCancel: () => void;
 }) {
@@ -661,7 +668,7 @@ function OvertimeForm({
       {showEstimate && (
         <div className="flex items-center justify-between rounded-xl bg-[#e9f0d8] px-3 py-2.5 text-sm">
           <span className="text-forest-700">{t.estimatedPay}</span>
-          <span className="font-semibold text-forest-700">{rupiah(Math.round(selfRatePerHour * hours))}</span>
+          <span className="font-semibold text-forest-700">{rupiah(overtimePayEstimate(selfRatePerHour, hours, selfContractType))}</span>
         </div>
       )}
 

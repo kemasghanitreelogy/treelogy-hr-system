@@ -20,16 +20,20 @@ export function scopeOptionsFor(canApproveAll: boolean, hasTeam: boolean): Scope
   return [];
 }
 
-/** Apakah satu record masuk scope terpilih. */
+/**
+ * Apakah satu record masuk scope terpilih.
+ * - "mine": milik sendiri
+ * - "team": bawahan LANGSUNG (manager_id record menunjuk ke user ini)
+ * - "all": semua (HR/admin)
+ */
 export function inScope(
   scope: Scope,
   employeeId: string,
-  team: string | undefined,
+  managerId: string | null | undefined,
   currentEmployeeId: string | null,
-  approverTeam: string | null,
 ): boolean {
   if (scope === "mine") return employeeId === currentEmployeeId;
-  if (scope === "team") return team != null && team === approverTeam;
+  if (scope === "team") return managerId != null && managerId === currentEmployeeId;
   return true; // all
 }
 

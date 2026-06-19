@@ -148,7 +148,7 @@ export async function POST(req: Request) {
     .eq("id", body.employeeId)
     .maybeSingle();
   if (emp?.team) {
-    await notifyApprovers(body.employeeId, String(emp.team), {
+    await notifyApprovers(body.employeeId, {
       type: "leave",
       title: `${emp.name ?? "Karyawan"} mengajukan ${LEAVE_LABEL[body.type].toLowerCase()}`,
       body: `${formatDate(body.startDate)}–${formatDate(body.endDate)} · perlu persetujuan Anda`,
@@ -195,7 +195,7 @@ export async function PATCH(req: Request) {
   const isHR = can(user, "employees.manage");
   let isManager = false;
   if (!isHR) {
-    const { data: mgr } = await supabase!.rpc("is_team_manager_of", { target_employee: prev.employee_id });
+    const { data: mgr } = await supabase!.rpc("is_manager_of", { target_employee: prev.employee_id });
     isManager = mgr === true;
   }
   if (body.action === "reset" && !isHR) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
@@ -269,7 +269,7 @@ export async function PATCH(req: Request) {
       },
     ]);
     if (emp?.team) {
-      await notifyApprovers(String(data.employee_id), String(emp.team), {
+      await notifyApprovers(String(data.employee_id), {
         type: "leave",
         title: `${label} menunggu persetujuan HR`,
         body: `${range} · sudah disetujui atasan`,

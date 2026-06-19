@@ -40,7 +40,7 @@ export default async function LeavePage() {
   }
   const employees = employeesAll
     .filter((e) => e.status === "active")
-    .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position }));
+    .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position, managerId: e.managerId ?? null }));
 
   // Approval scope: HR/admin (employees.manage) act org-wide; a manager with
   // leave.approve is scoped to their own division (team). Plain staff: neither.

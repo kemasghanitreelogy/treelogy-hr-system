@@ -290,7 +290,7 @@ export function LeaveView({
   requests: LeaveRequest[];
   balances: LeaveBalance[];
   tabungan?: TabunganEntry[];
-  employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  employees: Pick<Employee, "id" | "name" | "team" | "position" | "managerId">[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
   /** employeeId → tenure-anchor ISO date (earliest contract start / join date). */
@@ -298,7 +298,8 @@ export function LeaveView({
   canRequestForOthers?: boolean;
   /** HR/admin: may approve any request, any division. */
   canApproveAll?: boolean;
-  /** Division a manager heads; may approve only this team's requests (not their own). */
+  /** Non-HR approver flag: set (to the manager's own team) when the user is an
+   *  atasan. Visibility/authority is by DIRECT report (manager_id), not team. */
   approverTeam?: Team | null;
 }) {
   const [tab, setTab] = useStickyTab<Tab>("leave.primary", "requests", ["requests", "balances"]);
@@ -319,15 +320,15 @@ export function LeaveView({
   const scopeOpts = scopeOptionsFor(canApproveAll, approverTeam != null);
   const [scope, setScope] = useStickyTab<Scope>("leave.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
   const matchScope = (employeeId: string) =>
-    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.team, currentEmployeeId, approverTeam);
+    scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.managerId, currentEmployeeId);
   // Tampilkan nama/identitas hanya saat melihat data lebih dari diri sendiri.
   const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);
 
   // Dual approval: manager (atasan) approves first, then HR. Nobody approves
-  // their own request. `amManagerOf` = a division manager for that request.
+  // their own request. `amManagerOf` = the requester's DIRECT atasan.
   const amHR = canApproveAll;
   const amManagerOf = (r: LeaveRequest) =>
-    !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.team === approverTeam;
+    !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.managerId === currentEmployeeId;
   // Can the current user act on this PENDING request right now?
   const canDecide = useMemo(
     () => (r: LeaveRequest) => {

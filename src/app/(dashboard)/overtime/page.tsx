@@ -25,7 +25,7 @@ export default async function OvertimePage() {
   const t = STR[locale];
   const employees = employeesAll
     .filter((e) => e.status === "active")
-    .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position }));
+    .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position, managerId: e.managerId ?? null }));
 
   // Same approval scope as leave: HR/admin org-wide; a manager (leave.approve)
   // scoped to their division. Marking PAID is a payroll action.
@@ -45,6 +45,7 @@ export default async function OvertimePage() {
         canApproveAll={canApproveAll}
         approverTeam={approverTeam}
         selfRatePerHour={me ? Math.round(me.baseSalary / (20 * 8)) : 0}
+        selfContractType={me?.contractType ?? "pkwt"}
       />
     </div>
   );

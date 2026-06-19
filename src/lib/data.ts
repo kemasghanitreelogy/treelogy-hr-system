@@ -107,6 +107,7 @@ export const mapEmployee = (r: Row): Employee => ({
   workDays: Array.isArray(r.work_days) ? (r.work_days as number[]).map(Number) : [1, 2, 3, 4, 5],
   scheduleTemplateId: (r.schedule_template_id as string) ?? null,
   managerId: (r.manager_id as string) ?? null,
+  contractType: (r.contract_type as Employee["contractType"]) ?? "pkwt",
 });
 
 export const mapHoliday = (r: Row): Holiday => ({
@@ -205,6 +206,7 @@ export const mapOvertime = (r: Row): OvertimeRequest => ({
   reason: String(r.reason ?? ""),
   ratePerHour: n(r.rate_per_hour),
   amount: n(r.amount),
+  contractType: (r.contract_type as OvertimeRequest["contractType"]) ?? "pkwt",
   status: r.status as OvertimeRequest["status"],
   approver: (r.approver as string) ?? null,
   rejectionReason: (r.rejection_reason as string) ?? null,

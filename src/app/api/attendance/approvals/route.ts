@@ -3,13 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { mapClockApproval } from "@/lib/data";
 import { adjustTabungan } from "@/lib/balance";
 import { pushNotifications } from "@/lib/notify";
+import { overtimePay, overtimeRatePerHour } from "@/lib/overtime";
 import { formatDate } from "@/lib/utils";
-import type { RequestStatus } from "@/lib/types";
+import type { ContractType, RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 const STATUSES: RequestStatus[] = ["pending", "approved", "rejected"];
-const OVERTIME_DIVISOR = 20 * 8; // gaji pokok / 20 hari / 8 jam
 
 /** HH:MM WITA (Asia/Makassar) dari sebuah timestamp. */
 function witaHHMM(iso: string): string {
@@ -85,7 +85,7 @@ export async function PATCH(req: Request) {
     const requestedAt = String(prev.requested_at);
     const { data: emp } = await supabase!
       .from("employees")
-      .select("work_start, work_end, base_salary")
+      .select("work_start, work_end, base_salary, contract_type")
       .eq("id", employeeId)
       .maybeSingle();
 
@@ -137,7 +137,8 @@ export async function PATCH(req: Request) {
             .maybeSingle();
           if (!existing) {
             const hours = Math.round((mins / 60) * 100) / 100;
-            const rate = Math.round((Number(emp?.base_salary) || 0) / OVERTIME_DIVISOR);
+            const baseSalary = Number(emp?.base_salary) || 0;
+            const contractType: ContractType = emp?.contract_type === "pkwtt" ? "pkwtt" : "pkwt";
             await supabase!.from("overtime_requests").insert({
               employee_id: employeeId,
               date,
@@ -145,8 +146,9 @@ export async function PATCH(req: Request) {
               end_time: witaHHMM(clockOutAt),
               hours,
               reason: "Kerja di hari libur (disetujui HR)",
-              rate_per_hour: rate,
-              amount: Math.round(rate * hours),
+              rate_per_hour: overtimeRatePerHour(baseSalary),
+              amount: overtimePay(baseSalary, hours, contractType),
+              contract_type: contractType,
               status: "approved",
               approver: body.approver?.trim() || null,
               paid: false,
