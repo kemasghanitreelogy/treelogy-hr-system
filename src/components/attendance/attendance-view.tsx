@@ -27,6 +27,8 @@ const STR: Record<
     myHistory: string;
     myHistoryHint: string;
     pickDate: string;
+    allDates: string;
+    showAll: string;
     exportRecap: string;
     present: string;
     late: string;
@@ -78,6 +80,8 @@ const STR: Record<
     myHistory: "Riwayat absensi saya",
     myHistoryHint: "Ketuk satu baris untuk melihat foto, jarak, dan detail jam.",
     pickDate: "Pilih tanggal",
+    allDates: "Semua tanggal",
+    showAll: "Tampilkan semua",
     exportRecap: "Ekspor rekap",
     present: "Hadir",
     late: "Terlambat",
@@ -128,6 +132,8 @@ const STR: Record<
     myHistory: "My attendance history",
     myHistoryHint: "Tap a row to see the photo, distance, and time details.",
     pickDate: "Choose a date",
+    allDates: "All dates",
+    showAll: "Show all",
     exportRecap: "Export summary",
     present: "Present",
     late: "Late",
@@ -211,7 +217,8 @@ export function AttendanceView({
 }) {
   const locale = useLocale();
   const t = STR[locale];
-  const [date, setDate] = useState(defaultDate);
+  // Empty = show ALL records; pick a date to filter to that day.
+  const [date, setDate] = useState("");
   const [team, setTeam] = useState<"all" | Team>("all");
   // Filter ketepatan waktu: "ontime" = hadir tanpa telat, "late" = terlambat.
   const [punct, setPunct] = useState<"all" | "ontime" | "late">("all");
@@ -232,14 +239,15 @@ export function AttendanceView({
 
   const rows: Row[] = useMemo(() => {
     return records
-      .filter((r) => r.date === date)
+      .filter((r) => !date || r.date === date)
       .filter((r) => reviewing || !currentEmployeeId || r.employeeId === currentEmployeeId)
       .map((r) => ({ ...r, emp: empMap.get(r.employeeId)! }))
       .filter((r) => r.emp && (team === "all" || r.emp.team === team))
       .filter((r) =>
         punct === "all" ? true : punct === "late" ? r.status === "late" : r.status === "present",
       )
-      .sort((a, b) => a.emp.name.localeCompare(b.emp.name));
+      // Newest day first, then by name within a day.
+      .sort((a, b) => b.date.localeCompare(a.date) || a.emp.name.localeCompare(b.emp.name));
   }, [records, date, team, punct, empMap, reviewing, currentEmployeeId]);
 
   const summary = useMemo(() => {
@@ -311,17 +319,30 @@ export function AttendanceView({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {scopeOpts.length > 0 && <ScopeTabs options={scopeOpts} value={scope} onChange={setScope} />}
-          <div className="relative sm:max-w-[220px]">
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
-            <Input
-              type="date"
-              value={date}
-              min={dates[0]}
-              max={dates[dates.length - 1]}
-              onChange={(e) => setDate(e.target.value)}
-              className="pl-9"
-              aria-label={t.pickDate}
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative sm:max-w-[220px]">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+              <Input
+                type="date"
+                value={date}
+                min={dates[0]}
+                max={dates[dates.length - 1]}
+                onChange={(e) => setDate(e.target.value)}
+                className="pl-9"
+                aria-label={t.pickDate}
+              />
+            </div>
+            {date ? (
+              <button
+                type="button"
+                onClick={() => setDate("")}
+                className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition-colors hover:bg-sand"
+              >
+                <X className="h-3.5 w-3.5" /> {t.showAll}
+              </button>
+            ) : (
+              <span className="shrink-0 text-xs font-medium text-faint">{t.allDates}</span>
+            )}
           </div>
         </div>
         {reviewing && (
@@ -336,8 +357,8 @@ export function AttendanceView({
         <ClockApprovalsCard approvals={approvals} employees={employees} currentUserName={currentUserName} />
       )}
 
-      {/* Summary */}
-      {reviewing && (
+      {/* Summary — per-day roster figures; only meaningful for a single date. */}
+      {reviewing && date && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <SummaryChip label={t.present} value={summary.present} className="text-forest-600" />
           <SummaryChip label={t.late} value={summary.late} className="text-[#8a6512]" />
@@ -371,13 +392,12 @@ export function AttendanceView({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-cream/50 text-left text-xs font-semibold uppercase tracking-wide text-faint">
-                {reviewing ? (
+                <th className="px-5 py-3">{t.thDate}</th>
+                {reviewing && (
                   <>
                     <th className="px-5 py-3">{t.thEmployee}</th>
                     <th className="px-5 py-3">{t.thTeam}</th>
                   </>
-                ) : (
-                  <th className="px-5 py-3">{t.thDate}</th>
                 )}
                 <th className="px-5 py-3">{t.thIn}</th>
                 <th className="px-5 py-3">{t.thOut}</th>
@@ -395,7 +415,8 @@ export function AttendanceView({
                   onClick={() => setSelected(r)}
                   className="cursor-pointer transition-colors hover:bg-cream/60"
                 >
-                  {reviewing ? (
+                  <td className="px-5 py-3 whitespace-nowrap font-medium text-ink">{formatDate(r.date, "short", locale)}</td>
+                  {reviewing && (
                     <>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
@@ -412,8 +433,6 @@ export function AttendanceView({
                         </span>
                       </td>
                     </>
-                  ) : (
-                    <td className="px-5 py-3 font-medium text-ink">{formatDate(r.date, "short", locale)}</td>
                   )}
                   <td className="px-5 py-3 tabular-nums text-muted">{formatTime(r.clockIn)}</td>
                   <td className="px-5 py-3 tabular-nums text-muted">{formatTime(r.clockOut)}</td>
@@ -464,7 +483,10 @@ export function AttendanceView({
               ) : (
                 <p className="min-w-0 flex-1 truncate font-medium text-ink">{formatDate(r.date, "short", locale)}</p>
               )}
-              <AttendanceBadge status={r.status} />
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                {reviewing && <span className="text-xs text-faint">{formatDate(r.date, "short", locale)}</span>}
+                <AttendanceBadge status={r.status} />
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
               <Mini label={t.thIn} value={formatTime(r.clockIn)} />
