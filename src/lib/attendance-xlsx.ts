@@ -37,7 +37,7 @@ const C = {
   ink: "FF1F3D2B", // hijau tua (judul)
   slate: "FF334155", // teks utama
   muted: "FF64748B", // teks sekunder
-  line: "FFE2E8F0", // garis grid
+  line: "FF000000", // garis grid (hitam, tegas)
   headBg: "FF14532D", // header gelap
   headText: "FFFFFFFF",
   zebra: "FFF8FAF7", // baris selang-seling
