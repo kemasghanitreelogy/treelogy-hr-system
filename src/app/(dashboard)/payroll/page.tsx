@@ -40,11 +40,17 @@ const STR: Record<
   },
 };
 
-// Riwayat slip yang ditampilkan: 12 bulan terakhir (difilter lagi di UI).
+// Batas fetch absensi (agar tidak menarik seluruh tabel); slip-nya sendiri hanya
+// dibuat untuk bulan yang BENAR-BENAR punya data tersimpan (lihat buildHistory).
 const HISTORY_MONTHS = 12;
 
 function buildHistory(emps: Employee[], attendance: AttendanceRecord[], overtime: OvertimeRequest[], leave: LeaveRequest[]): Payslip[] {
-  const periods = periodsBack(HISTORY_MONTHS, CURRENT_PERIOD);
+  // Hanya bulan yang memiliki data absensi tersimpan — jangan mengarang slip untuk
+  // bulan kosong sebelum sistem berjalan (mis. Jan–Mei 2026 / 2025).
+  const periods = [...new Set(attendance.map((a) => a.date.slice(0, 7)))]
+    .filter((p) => p <= CURRENT_PERIOD)
+    .sort()
+    .reverse(); // terbaru dulu
   return periods.flatMap((p) => {
     const rows = attendance.filter((a) => a.date.startsWith(p));
     return emps.map((e) => buildPayslip(e, p, "pr-" + p, rows, overtime, leave));
