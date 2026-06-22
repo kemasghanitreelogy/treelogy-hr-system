@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LogIn, LogOut, PartyPopper, X } from "lucide-react";
-import type { AttendanceRecord, AttendanceStatus, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
+import type { AttendanceRecord, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
+import { exportAttendanceXlsx } from "@/lib/attendance-xlsx";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
 import { formatDistance } from "@/lib/geo";
 import { Avatar } from "@/components/ui/avatar";
@@ -116,10 +117,10 @@ const STR: Record<
     emptyTitle: "Tidak ada data absensi",
     emptyHint: "Pilih tanggal lain atau ubah filter tim / ketepatan waktu.",
     exportTitle: "Ekspor Rekap Absensi",
-    exportDesc: "Pilih rentang tanggal. File CSV berisi data informatif (tanpa foto).",
+    exportDesc: "Pilih rentang tanggal. File Excel (.xlsx) berisi grid kalender berwarna, Daftar Lembur, dan sheet Ringkasan.",
     exportFrom: "Dari tanggal",
     exportTo: "Sampai tanggal",
-    exportBtn: "Unduh CSV",
+    exportBtn: "Unduh Excel",
     exportEmpty: "Tidak ada data pada rentang ini.",
     cName: "Nama",
     cTeam: "Tim",
@@ -168,10 +169,10 @@ const STR: Record<
     emptyTitle: "No attendance data",
     emptyHint: "Pick another date or change the team / punctuality filter.",
     exportTitle: "Export Attendance Summary",
-    exportDesc: "Pick a date range. The CSV contains informative data only (no photos).",
+    exportDesc: "Pick a date range. The Excel (.xlsx) file contains a colour-coded calendar grid, Overtime List, and a Summary sheet.",
     exportFrom: "From date",
     exportTo: "To date",
-    exportBtn: "Download CSV",
+    exportBtn: "Download Excel",
     exportEmpty: "No data in this range.",
     cName: "Name",
     cTeam: "Team",
@@ -183,13 +184,7 @@ const STR: Record<
   },
 };
 
-type EmpLite = Pick<Employee, "id" | "nik" | "name" | "team" | "position" | "workStart" | "workEnd">;
-
-/** Label status untuk ekspor CSV (data informatif). */
-const STATUS_CSV: Record<Locale, Record<AttendanceStatus, string>> = {
-  id: { present: "Hadir", late: "Terlambat", absent: "Alpa", leave: "Cuti", sick: "Sakit", off: "Libur", holiday: "Hari libur" },
-  en: { present: "Present", late: "Late", absent: "Absent", leave: "Leave", sick: "Sick", off: "Day off", holiday: "Holiday" },
-};
+type EmpLite = Pick<Employee, "id" | "nik" | "name" | "team" | "position" | "workStart" | "workEnd" | "workDays">;
 
 interface Row extends AttendanceRecord {
   emp: EmpLite;
@@ -202,6 +197,7 @@ export function AttendanceView({
   defaultDate,
   canReviewAll = true,
   approvals = [],
+  overtime = [],
   currentUserName = "HR",
   currentEmployeeId = null,
 }: {
@@ -213,6 +209,8 @@ export function AttendanceView({
   canReviewAll?: boolean;
   /** Pengajuan clock di luar area (pending) — panel konfirmasi HR. */
   approvals?: ClockApprovalRequest[];
+  /** Lembur disetujui (untuk bagian "Daftar Lembur" pada ekspor XLSX). */
+  overtime?: { employeeId: string; date: string; hours: number }[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
 }) {
@@ -264,46 +262,30 @@ export function AttendanceView({
     return s;
   }, [rows]);
 
-  function exportCsv() {
-    const inRange = records
-      .filter((r) => r.date >= exportFrom && r.date <= exportTo)
-      .map((r) => ({ r, emp: empMap.get(r.employeeId) }))
-      .filter((x) => x.emp && (team === "all" || x.emp.team === team))
-      .sort((a, b) => a.r.date.localeCompare(b.r.date) || a.emp!.name.localeCompare(b.emp!.name));
-    if (inRange.length === 0) {
-      toast.error(t.exportEmpty);
-      return;
+  const [exporting, setExporting] = useState(false);
+  async function exportXlsx() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const count = await exportAttendanceXlsx({
+        records,
+        employees,
+        overtime,
+        from: exportFrom,
+        to: exportTo,
+        team,
+        locale,
+      });
+      if (count === 0) {
+        toast.error(t.exportEmpty);
+        return;
+      }
+      setExportOpen(false);
+    } catch {
+      toast.error(t.connectionProblem);
+    } finally {
+      setExporting(false);
     }
-    const cell = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const header = ["NIK", t.cName, t.cTeam, t.cDate, t.thIn, t.thOut, t.cLateMin, t.cOtMin, t.cDistance, t.cStatus]
-      .map(cell)
-      .join(",");
-    const lines = inRange.map(({ r, emp }) =>
-      [
-        emp!.nik,
-        emp!.name,
-        TEAM_META[emp!.team].label,
-        r.date,
-        r.clockIn ? formatTime(r.clockIn) : "",
-        r.clockOut ? formatTime(r.clockOut) : "",
-        r.lateMinutes || 0,
-        r.overtimeMinutes || 0,
-        r.clockInDistanceM ?? "",
-        STATUS_CSV[locale][r.status],
-      ]
-        .map(cell)
-        .join(","),
-    );
-    // BOM agar Excel mengenali UTF-8 (huruf Indonesia tampil benar).
-    const csv = "﻿" + [header, ...lines].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `rekap-absensi-${exportFrom}_${exportTo}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setExportOpen(false);
   }
 
   return (
@@ -533,8 +515,8 @@ export function AttendanceView({
               />
             </Field>
           </div>
-          <Button className="w-full" onClick={exportCsv}>
-            <Download className="h-4 w-4" /> {t.exportBtn}
+          <Button className="w-full" onClick={exportXlsx} disabled={exporting}>
+            <Download className="h-4 w-4" /> {exporting ? "…" : t.exportBtn}
           </Button>
         </div>
       </Sheet>

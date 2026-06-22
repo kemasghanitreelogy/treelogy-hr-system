@@ -9,6 +9,7 @@ import {
   getClockApprovals,
   getEmployees,
   getHolidayToday,
+  getOvertimeRequests,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
@@ -17,15 +18,22 @@ import { witaToday } from "@/lib/utils";
 export const metadata = { title: "Absensi — Treelogy HR" };
 
 export default async function AttendancePage() {
-  const [all, employeesAll, settings, user, approvalsAll] = await Promise.all([
+  const [all, employeesAll, settings, user, approvalsAll, overtimeAll] = await Promise.all([
     getAttendance(),
     getEmployees(),
     getAttendanceSettings(),
     getSessionUser(),
     getClockApprovals(),
+    getOvertimeRequests(),
   ]);
   const pendingApprovals = approvalsAll.filter((a) => a.status === "pending");
   const canManage = can(user, "attendance.manage");
+  // Lembur disetujui pada periode berjalan → bagian "Daftar Lembur" pada ekspor XLSX (HR saja).
+  const overtime = canManage
+    ? overtimeAll
+        .filter((o) => o.status === "approved" && o.date.startsWith(CURRENT_PERIOD))
+        .map((o) => ({ employeeId: o.employeeId, date: o.date, hours: o.hours }))
+    : [];
   // Selain HR/admin hanya melihat absensinya sendiri (RLS sudah membatasi di
   // Supabase; filter ini menjaga perilaku yang sama di mode seed/offline).
   const records = all
@@ -39,6 +47,7 @@ export default async function AttendancePage() {
     position: e.position,
     workStart: e.workStart ?? "08:00",
     workEnd: e.workEnd ?? "17:00",
+    workDays: e.workDays ?? [1, 2, 3, 4, 5],
   }));
   const dates = Array.from(new Set(records.map((r) => r.date))).sort();
 
@@ -64,6 +73,7 @@ export default async function AttendancePage() {
       defaultDate={dates.includes(TODAY) ? TODAY : dates[dates.length - 1] ?? TODAY}
       canReviewAll={canManage}
       approvals={canManage ? pendingApprovals : []}
+      overtime={overtime}
       currentUserName={user?.name ?? "HR"}
       currentEmployeeId={user?.employeeId ?? null}
     />
