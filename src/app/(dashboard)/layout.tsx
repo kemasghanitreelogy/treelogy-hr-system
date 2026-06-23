@@ -20,22 +20,23 @@ export default async function DashboardLayout({
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  // Badge "perlu aksi" + jumlah notifikasi — paralel.
-  const [unreadCount, actionCounts] = await Promise.all([getUnreadNotifCount(), getActionCounts(user)]);
 
-  // Petakan jumlah ke href menu untuk badge nav.
-  const navCounts: Record<string, number> = {
-    "/leave": actionCounts.leave,
-    "/overtime": actionCounts.overtime,
-    "/attendance": actionCounts.attendance,
-  };
+  // Badge "perlu aksi" + notifikasi di-stream (TIDAK di-await) → shell langsung
+  // tampil; angka badge menyusul setelah paint pertama. Mempercepat splash PWA.
+  const countsPromise = (async () => {
+    try {
+      const [unread, ac] = await Promise.all([getUnreadNotifCount(), getActionCounts(user)]);
+      return { unread, counts: { "/leave": ac.leave, "/overtime": ac.overtime, "/attendance": ac.attendance } };
+    } catch {
+      return { unread: 0, counts: {} as Record<string, number> };
+    }
+  })();
 
   return (
     <LocaleProvider locale={locale}>
       <AppShell
         user={{ name: user.name, roleName: user.roleName, permissions: user.permissions }}
-        unreadCount={unreadCount}
-        actionCounts={navCounts}
+        countsPromise={countsPromise}
         locale={locale}
       >
         {children}

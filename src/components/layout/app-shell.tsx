@@ -119,15 +119,13 @@ function SidebarInner({
 export function AppShell({
   children,
   user,
-  unreadCount = 0,
-  actionCounts = {},
+  countsPromise,
   locale = "id",
 }: {
   children: React.ReactNode;
   user: ShellUser;
-  unreadCount?: number;
-  /** Jumlah "perlu aksi" per href menu (badge nav). */
-  actionCounts?: Record<string, number>;
+  /** Badge counts di-stream (di-resolve di klien) supaya tidak memblok paint pertama. */
+  countsPromise?: Promise<{ unread: number; counts: Record<string, number> }>;
   locale?: Locale;
 }) {
   const dict = shellDict(locale);
@@ -136,6 +134,25 @@ export function AppShell({
   const [loggingOut, setLoggingOut] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+
+  // Badge nav & lonceng diisi setelah shell tampil (tidak memblok splash/first paint).
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [actionCounts, setActionCounts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!countsPromise) return;
+    let live = true;
+    countsPromise
+      .then((c) => {
+        if (live) {
+          setUnreadCount(c.unread);
+          setActionCounts(c.counts);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [countsPromise]);
 
   const hasUnread = unreadCount > 0;
 
