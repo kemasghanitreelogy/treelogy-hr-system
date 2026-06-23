@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Check, PaintBucket, RotateCcw, Undo2, X } from "lucide-react";
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, witaToday } from "@/lib/utils";
+import type { Locale } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
@@ -23,7 +24,7 @@ interface Emp {
 // Bentuk minimal record yang dipakai grid (dari prop awal & fetch per-rentang).
 type Rec = { employeeId: string; date: string; status: string; clockIn?: string | null };
 
-const MAX_DAYS = 62; // batasi lebar grid (≈2 bulan) agar tetap nyaman & ringan
+const MAX_DAYS = 366; // batas atas grid (≈1 tahun); render dioptimasi per-baris.
 
 // Palet warna sengaja dibuat identik dengan ekspor XLSX (src/lib/attendance-xlsx.ts).
 const UI: Record<Brush, { id: string; en: string; letter: string; cell: string; chip: string; ring: string }> = {
@@ -54,6 +55,7 @@ const STR = {
     empName: "Karyawan",
     saved: (u: number, d: number) => `Tersimpan ✓ (${u} diisi, ${d} dikosongkan)`,
     failed: "Gagal menyimpan. Coba lagi.",
+    loadFailed: "Gagal memuat data.",
     discardTitle: "Buang perubahan?",
     discardMsg: "Ada perubahan yang belum disimpan. Buang dan tutup?",
     discardYes: "Buang",
@@ -65,6 +67,7 @@ const STR = {
     touchTip: "Di HP: ketuk sel (seret hanya di desktop).",
     loading: "Memuat…",
     tooWide: `Rentang terlalu lebar (maks ${MAX_DAYS} hari). Persempit tanggal.`,
+    holiday: "Libur nasional",
   },
   en: {
     title: "Bulk Edit Attendance",
@@ -83,6 +86,7 @@ const STR = {
     empName: "Employee",
     saved: (u: number, d: number) => `Saved ✓ (${u} set, ${d} cleared)`,
     failed: "Failed to save. Try again.",
+    loadFailed: "Failed to load data.",
     discardTitle: "Discard changes?",
     discardMsg: "You have unsaved changes. Discard and close?",
     discardYes: "Discard",
@@ -94,6 +98,7 @@ const STR = {
     touchTip: "On phone: tap cells (drag is desktop-only).",
     loading: "Loading…",
     tooWide: `Range too wide (max ${MAX_DAYS} days). Narrow the dates.`,
+    holiday: "Public holiday",
   },
 };
 
@@ -101,6 +106,7 @@ const WD = { id: ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"], en: ["Sun", 
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const dow = (d: string) => new Date(`${d}T00:00:00Z`).getUTCDay();
+const keyOf = (empId: string, date: string) => `${empId}|${date}`;
 function monthEnd(period: string): string {
   const [y, m] = period.split("-").map(Number);
   return `${period}-${pad(new Date(Date.UTC(y, m, 0)).getUTCDate())}`;
@@ -112,7 +118,7 @@ function eachDay(from: string, to: string): string[] {
   const [ty, tm, td] = to.split("-").map(Number);
   let cur = Date.UTC(fy, fm - 1, fd);
   const end = Date.UTC(ty, tm - 1, td);
-  while (cur <= end) {
+  while (cur <= end && out.length <= MAX_DAYS + 1) {
     const dt = new Date(cur);
     out.push(`${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`);
     cur += 86_400_000;
@@ -120,7 +126,13 @@ function eachDay(from: string, to: string): string[] {
   return out;
 }
 
-const keyOf = (empId: string, date: string) => `${empId}|${date}`;
+interface CellView {
+  date: string;
+  status: Brush;
+  dirty: boolean;
+  scheduled: boolean;
+  holiday: boolean;
+}
 
 export function BulkEditAttendance({
   open,
@@ -156,10 +168,10 @@ export function BulkEditAttendance({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<{ title: string; message: string; yes: string; danger?: boolean; onYes: () => void } | null>(null);
+
   const painting = useRef(false);
   const history = useRef<Map<string, Brush>[]>([]);
 
-  // Baseline status sel & jejak clock-in asli (untuk peringatan hapus).
   const { recMap, clockInKeys } = useMemo(() => {
     const m = new Map<string, Brush>();
     const ev = new Set<string>();
@@ -178,6 +190,79 @@ export function BulkEditAttendance({
     () => employees.filter((e) => team === "all" || e.team === team).sort((a, b) => a.team.localeCompare(b.team) || a.name.localeCompare(b.name)),
     [employees, team],
   );
+
+  // Refs supaya handler bisa stabil (useCallback []) tanpa stale closure → memoisasi
+  // per-baris efektif saat drag.
+  const editsRef = useRef(edits);
+  const brushRef = useRef(brush);
+  const baseOfRef = useRef(baseOf);
+  const empsRef = useRef(emps);
+  const daysRef = useRef(days);
+  const holidayRef = useRef(holidaySet);
+  editsRef.current = edits;
+  brushRef.current = brush;
+  baseOfRef.current = baseOf;
+  empsRef.current = emps;
+  daysRef.current = days;
+  holidayRef.current = holidaySet;
+
+  const snapshot = useCallback((cur: Map<string, Brush>) => {
+    history.current.push(new Map(cur));
+    if (history.current.length > 120) history.current.shift();
+  }, []);
+  const undo = useCallback(() => {
+    const prev = history.current.pop();
+    if (prev) setEdits(prev);
+  }, []);
+
+  const currentStatus = useCallback((empId: string, date: string): Brush => editsRef.current.get(keyOf(empId, date)) ?? baseOfRef.current(empId, date), []);
+  const isEmptyScheduled = useCallback(
+    (empId: string, date: string) => {
+      const wd = empsRef.current.find((e) => e.id === empId)?.workDays ?? [];
+      return wd.includes(dow(date)) && !holidayRef.current.has(date) && currentStatus(empId, date) === "off";
+    },
+    [currentStatus],
+  );
+
+  // Mutasi murni; baca brush/baseline lewat ref agar identitas callback stabil.
+  const paintCells = useCallback((cells: { empId: string; date: string }[]) => {
+    if (cells.length === 0) return;
+    setEdits((prev) => {
+      const next = new Map(prev);
+      const b = brushRef.current;
+      const base = baseOfRef.current;
+      for (const { empId, date } of cells) {
+        const k = keyOf(empId, date);
+        if (b === base(empId, date)) next.delete(k);
+        else next.set(k, b);
+      }
+      return next;
+    });
+  }, []);
+
+  const onStart = useCallback((empId: string, date: string) => {
+    painting.current = true;
+    snapshot(editsRef.current); // satu undo per goresan
+    paintCells([{ empId, date }]);
+  }, [snapshot, paintCells]);
+  const onDrag = useCallback((empId: string, date: string) => {
+    if (painting.current) paintCells([{ empId, date }]);
+  }, [paintCells]);
+
+  // Header & "Isi kosong": HANYA isi sel kosong hari kerja (tak menimpa/menghapus).
+  const onFillRow = useCallback((empId: string) => {
+    const cells = daysRef.current.filter((d) => isEmptyScheduled(empId, d)).map((date) => ({ empId, date }));
+    if (cells.length) { snapshot(editsRef.current); paintCells(cells); }
+  }, [isEmptyScheduled, snapshot, paintCells]);
+  const onFillCol = useCallback((date: string) => {
+    const cells = empsRef.current.filter((e) => isEmptyScheduled(e.id, date)).map((e) => ({ empId: e.id, date }));
+    if (cells.length) { snapshot(editsRef.current); paintCells(cells); }
+  }, [isEmptyScheduled, snapshot, paintCells]);
+  const fillAll = () => {
+    const cells: { empId: string; date: string }[] = [];
+    for (const e of emps) for (const d of days) if (isEmptyScheduled(e.id, d)) cells.push({ empId: e.id, date: d });
+    if (cells.length) { snapshot(edits); paintCells(cells); }
+  };
 
   // Reset draft + riwayat saat ditutup.
   useEffect(() => {
@@ -200,24 +285,14 @@ export function BulkEditAttendance({
         if (Array.isArray(d?.records)) setLoaded(d.records as Rec[]);
       })
       .catch((e) => {
-        if (e?.name !== "AbortError") toast.error(locale === "id" ? "Gagal memuat data." : "Failed to load data.");
+        if (e?.name !== "AbortError") toast.error(t.loadFailed);
       })
       .finally(() => setLoading(false));
     return () => ctrl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, from, to, tooWide]);
 
-  const snapshot = useCallback((cur: Map<string, Brush>) => {
-    history.current.push(new Map(cur));
-    if (history.current.length > 80) history.current.shift();
-  }, []);
-
-  const undo = useCallback(() => {
-    const prev = history.current.pop();
-    if (prev) setEdits(prev);
-  }, []);
-
-  // Pointer release global; ESC menutup; Ctrl/Cmd+Z undo; kunci scroll body.
+  // Pointer release global; ESC; Ctrl/Cmd+Z; kunci scroll body.
   useEffect(() => {
     if (!open) return;
     const up = () => (painting.current = false);
@@ -241,50 +316,6 @@ export function BulkEditAttendance({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, edits.size, confirm, undo]);
-
-  // Mutasi edits (functional, murni) dengan prune: status == baseline → bukan
-  // perubahan. Snapshot undo diambil di pemanggil (di luar updater) agar tidak
-  // ganda saat React StrictMode menjalankan updater dua kali.
-  const paint = useCallback(
-    (cells: { empId: string; date: string }[], b: Brush) => {
-      if (cells.length === 0) return;
-      setEdits((prev) => {
-        const next = new Map(prev);
-        for (const { empId, date } of cells) {
-          const k = keyOf(empId, date);
-          if (b === baseOf(empId, date)) next.delete(k);
-          else next.set(k, b);
-        }
-        return next;
-      });
-    },
-    [baseOf],
-  );
-  // Aksi diskret (klik sel, isi baris/kolom): catat undo lalu cat.
-  const stroke = (cells: { empId: string; date: string }[]) => {
-    if (cells.length === 0) return;
-    snapshot(edits);
-    paint(cells, brush);
-  };
-
-  const statusOf = (empId: string, date: string): Brush => edits.get(keyOf(empId, date)) ?? baseOf(empId, date);
-  const isDirty = (empId: string, date: string) => edits.has(keyOf(empId, date));
-
-  // Header & "Isi kosong": HANYA mengisi sel kosong (off) di hari kerja terjadwal —
-  // tidak pernah menimpa/menghapus data yang sudah ada.
-  const emptyScheduled = useCallback(
-    (cells: { empId: string; date: string }[], wd: (e: string) => number[]) =>
-      cells.filter(
-        ({ empId, date }) => wd(empId).includes(dow(date)) && !holidaySet.has(date) && statusOf(empId, date) === "off",
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [edits, baseOf, holidaySet],
-  );
-  const wdOf = (empId: string) => emps.find((e) => e.id === empId)?.workDays ?? [];
-
-  const fillRow = (empId: string) => stroke(emptyScheduled(days.map((date) => ({ empId, date })), wdOf));
-  const fillCol = (date: string) => stroke(emptyScheduled(emps.map((e) => ({ empId: e.id, date })), wdOf));
-  const fillAll = () => stroke(emptyScheduled(emps.flatMap((e) => days.map((date) => ({ empId: e.id, date }))), wdOf));
 
   function attemptClose() {
     if (edits.size > 0) {
@@ -324,13 +355,7 @@ export function BulkEditAttendance({
     if (edits.size === 0 || saving) return;
     const realDeletes = [...edits].filter(([k, s]) => s === "off" && clockInKeys.has(k)).length;
     if (realDeletes > 0) {
-      setConfirm({
-        title: t.delTitle,
-        message: t.delMsg(realDeletes),
-        yes: t.delYes,
-        danger: true,
-        onYes: () => { setConfirm(null); void doSave(); },
-      });
+      setConfirm({ title: t.delTitle, message: t.delMsg(realDeletes), yes: t.delYes, danger: true, onYes: () => { setConfirm(null); void doSave(); } });
       return;
     }
     void doSave();
@@ -395,70 +420,25 @@ export function BulkEditAttendance({
 
       {/* Grid */}
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3 sm:px-6">
-        {tooWide && <p className="py-10 text-center text-sm text-faint">{t.tooWide}</p>}
-        {!tooWide && (
-        <table className="border-separate border-spacing-0 select-none text-center text-sm">
-          <thead>
-            <tr>
-              <th className="sticky left-0 top-0 z-30 min-w-[190px] border-b border-r border-line bg-forest-700 px-3 py-2 text-left text-xs font-semibold text-white">{t.empName}</th>
-              {days.map((d) => {
-                const wknd = dow(d) === 0 || dow(d) === 6;
-                return (
-                  <th key={d} onClick={() => fillCol(d)} title={d} className={cn("sticky top-0 z-20 min-w-[38px] cursor-pointer border-b border-r border-line px-1 py-1 text-[11px] font-semibold leading-tight transition-[filter]", wknd ? "bg-[#7d2b2b] text-[#fde8e8]" : "bg-forest-700 text-white", "hover:brightness-110")}>
-                    <div className="opacity-80">{WD[locale][dow(d)]}</div>
-                    <div>{Number(d.slice(8, 10))}</div>
-                  </th>
-                );
+        {tooWide ? (
+          <p className="py-10 text-center text-sm text-faint">{t.tooWide}</p>
+        ) : (
+          <table className="border-separate border-spacing-0 select-none text-center text-sm">
+            <GridHeader days={days} locale={locale} holidaySet={holidaySet} empLabel={t.empName} onFillCol={onFillCol} />
+            <tbody>
+              {emps.map((e, ri) => {
+                const cells: CellView[] = days.map((d) => ({
+                  date: d,
+                  status: edits.get(keyOf(e.id, d)) ?? baseOf(e.id, d),
+                  dirty: edits.has(keyOf(e.id, d)),
+                  scheduled: e.workDays.includes(dow(d)),
+                  holiday: holidaySet.has(d),
+                }));
+                const sig = cells.map((c) => `${c.date}${c.status}${c.dirty ? "*" : ""}`).join("|");
+                return <EmpRow key={e.id} emp={e} ri={ri} cells={cells} sig={sig} holidayTitle={t.holiday} onStart={onStart} onDrag={onDrag} onFillRow={onFillRow} />;
               })}
-            </tr>
-          </thead>
-          <tbody>
-            {emps.map((e, ri) => (
-              <tr key={e.id}>
-                <th onClick={() => fillRow(e.id)} className={cn("sticky left-0 z-10 min-w-[190px] cursor-pointer border-b border-r border-line px-3 py-1.5 text-left transition-colors hover:bg-sand", ri % 2 ? "bg-[#f8faf7]" : "bg-white")}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-4 shrink-0 text-[11px] font-medium text-faint">{ri + 1}</span>
-                    <span className="truncate text-[13px] font-medium text-ink">{e.name}</span>
-                  </div>
-                  <span className="ml-6 text-[10px] text-muted">{TEAM_META[e.team].label}</span>
-                </th>
-                {days.map((d) => {
-                  const st = statusOf(e.id, d);
-                  const dirty = isDirty(e.id, d);
-                  const scheduled = e.workDays.includes(dow(d));
-                  const isHoliday = holidaySet.has(d);
-                  const isOff = st === "off";
-                  const offBg = isHoliday
-                    ? "bg-[#f6e9e9] hover:bg-[#efdada]" // libur nasional
-                    : scheduled
-                      ? "bg-white hover:bg-sand"
-                      : "bg-[#eef1f4] hover:bg-[#e3e7ec]"; // bukan jadwal / weekend
-                  return (
-                    <td key={d} className="border-b border-r border-line p-0">
-                      <div
-                        role="button"
-                        tabIndex={-1}
-                        title={isHoliday ? "Libur nasional" : undefined}
-                        onPointerDown={(ev) => {
-                          ev.preventDefault();
-                          painting.current = true;
-                          snapshot(edits); // satu undo per goresan
-                          paint([{ empId: e.id, date: d }], brush);
-                        }}
-                        onPointerEnter={() => {
-                          if (painting.current) paint([{ empId: e.id, date: d }], brush);
-                        }}
-                        className={cn("flex h-8 w-full cursor-pointer items-center justify-center text-[11px] font-bold transition-colors", isOff ? offBg : cn(UI[st].cell, "hover:brightness-95"), dirty && "ring-2 ring-inset ring-forest-600")}
-                      >
-                        {!isOff && UI[st].letter}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
         )}
         {!tooWide && emps.length === 0 && <p className="py-10 text-center text-sm text-faint">—</p>}
       </div>
@@ -507,6 +487,93 @@ export function BulkEditAttendance({
     document.body,
   );
 }
+
+// Header memo: props stabil saat drag (days/holidaySet/onFillCol semua stabil).
+const GridHeader = memo(function GridHeader({
+  days,
+  locale,
+  holidaySet,
+  empLabel,
+  onFillCol,
+}: {
+  days: string[];
+  locale: Locale;
+  holidaySet: Set<string>;
+  empLabel: string;
+  onFillCol: (date: string) => void;
+}) {
+  return (
+    <thead>
+      <tr>
+        <th className="sticky left-0 top-0 z-30 min-w-[190px] border-b border-r border-line bg-forest-700 px-3 py-2 text-left text-xs font-semibold text-white">{empLabel}</th>
+        {days.map((d) => {
+          const wknd = dow(d) === 0 || dow(d) === 6;
+          const hol = holidaySet.has(d);
+          return (
+            <th key={d} onClick={() => onFillCol(d)} title={d} className={cn("sticky top-0 z-20 min-w-[38px] cursor-pointer border-b border-r border-line px-1 py-1 text-[11px] font-semibold leading-tight transition-[filter] hover:brightness-110", wknd || hol ? "bg-[#7d2b2b] text-[#fde8e8]" : "bg-forest-700 text-white")}>
+              <div className="opacity-80">{WD[locale][dow(d)]}</div>
+              <div>{Number(d.slice(8, 10))}</div>
+            </th>
+          );
+        })}
+      </tr>
+    </thead>
+  );
+});
+
+// Baris memo: hanya re-render saat signature selnya berubah (saat drag, cuma
+// baris di bawah pointer). `sig` dipakai di komparator, bukan di body.
+const EmpRow = memo(
+  function EmpRow({
+    emp,
+    ri,
+    cells,
+    holidayTitle,
+    onStart,
+    onDrag,
+    onFillRow,
+  }: {
+    emp: Emp;
+    ri: number;
+    cells: CellView[];
+    sig: string;
+    holidayTitle: string;
+    onStart: (empId: string, date: string) => void;
+    onDrag: (empId: string, date: string) => void;
+    onFillRow: (empId: string) => void;
+  }) {
+    return (
+      <tr>
+        <th onClick={() => onFillRow(emp.id)} className={cn("sticky left-0 z-10 min-w-[190px] cursor-pointer border-b border-r border-line px-3 py-1.5 text-left transition-colors hover:bg-sand", ri % 2 ? "bg-[#f8faf7]" : "bg-white")}>
+          <div className="flex items-center gap-2">
+            <span className="w-4 shrink-0 text-[11px] font-medium text-faint">{ri + 1}</span>
+            <span className="truncate text-[13px] font-medium text-ink">{emp.name}</span>
+          </div>
+          <span className="ml-6 text-[10px] text-muted">{TEAM_META[emp.team].label}</span>
+        </th>
+        {cells.map((c) => {
+          const isOff = c.status === "off";
+          const offBg = c.holiday ? "bg-[#f6e9e9] hover:bg-[#efdada]" : c.scheduled ? "bg-white hover:bg-sand" : "bg-[#eef1f4] hover:bg-[#e3e7ec]";
+          return (
+            <td key={c.date} className="border-b border-r border-line p-0">
+              <div
+                role="button"
+                tabIndex={-1}
+                title={c.holiday ? holidayTitle : undefined}
+                onPointerDown={(ev) => { ev.preventDefault(); onStart(emp.id, c.date); }}
+                onPointerEnter={() => onDrag(emp.id, c.date)}
+                className={cn("flex h-8 w-full cursor-pointer items-center justify-center text-[11px] font-bold transition-colors", isOff ? offBg : cn(UI[c.status].cell, "hover:brightness-95"), c.dirty && "ring-2 ring-inset ring-forest-600")}
+              >
+                {!isOff && UI[c.status].letter}
+              </div>
+            </td>
+          );
+        })}
+      </tr>
+    );
+  },
+  (prev, next) => prev.sig === next.sig && prev.ri === next.ri && prev.emp.id === next.emp.id && prev.holidayTitle === next.holidayTitle,
+);
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
