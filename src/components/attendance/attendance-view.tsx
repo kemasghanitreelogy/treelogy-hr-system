@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LogIn, LogOut, PartyPopper, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LayoutGrid, LogIn, LogOut, PartyPopper, X } from "lucide-react";
 import type { AttendanceRecord, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { exportAttendanceXlsx } from "@/lib/attendance-xlsx";
+import { BulkEditAttendance } from "./bulk-edit";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
 import { formatDistance } from "@/lib/geo";
 import { Avatar } from "@/components/ui/avatar";
@@ -32,6 +33,7 @@ const STR: Record<
     allDates: string;
     showAll: string;
     exportRecap: string;
+    bulkEdit: string;
     present: string;
     late: string;
     leaveSick: string;
@@ -85,6 +87,7 @@ const STR: Record<
     allDates: "Semua tanggal",
     showAll: "Tampilkan semua",
     exportRecap: "Ekspor rekap",
+    bulkEdit: "Edit massal",
     present: "Hadir",
     late: "Terlambat",
     leaveSick: "Cuti/Sakit",
@@ -137,6 +140,7 @@ const STR: Record<
     allDates: "All dates",
     showAll: "Show all",
     exportRecap: "Export summary",
+    bulkEdit: "Bulk edit",
     present: "Present",
     late: "Late",
     leaveSick: "Leave/Sick",
@@ -226,6 +230,8 @@ export function AttendanceView({
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFrom, setExportFrom] = useState(dates[0] ?? defaultDate);
   const [exportTo, setExportTo] = useState(dates[dates.length - 1] ?? defaultDate);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const period = useMemo(() => ((dates[dates.length - 1] ?? defaultDate) || "").slice(0, 7), [dates, defaultDate]);
   const toast = useToast();
 
   // Scope: HR → Semua/Data Saya (default Data Saya). Karyawan: hanya datanya.
@@ -329,9 +335,14 @@ export function AttendanceView({
           </div>
         </div>
         {reviewing && (
-          <Button variant="outline" className="shrink-0" onClick={() => setExportOpen(true)}>
-            <Download className="h-4 w-4" /> {t.exportRecap}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button variant="outline" onClick={() => setBulkOpen(true)}>
+              <LayoutGrid className="h-4 w-4" /> {t.bulkEdit}
+            </Button>
+            <Button variant="outline" onClick={() => setExportOpen(true)}>
+              <Download className="h-4 w-4" /> {t.exportRecap}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -492,6 +503,16 @@ export function AttendanceView({
         scheduleEnd={selected?.emp.workEnd ?? "17:00"}
         onClose={() => setSelected(null)}
       />
+
+      {reviewing && (
+        <BulkEditAttendance
+          open={bulkOpen}
+          onClose={() => setBulkOpen(false)}
+          employees={employees}
+          records={records}
+          period={period}
+        />
+      )}
 
       <Sheet open={exportOpen} onClose={() => setExportOpen(false)} title={t.exportTitle} description={t.exportDesc}>
         <div className="space-y-4">
