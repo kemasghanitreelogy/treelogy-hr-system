@@ -119,13 +119,10 @@ function SidebarInner({
 export function AppShell({
   children,
   user,
-  countsPromise,
   locale = "id",
 }: {
   children: React.ReactNode;
   user: ShellUser;
-  /** Badge counts di-stream (di-resolve di klien) supaya tidak memblok paint pertama. */
-  countsPromise?: Promise<{ unread: number; counts: Record<string, number> }>;
   locale?: Locale;
 }) {
   const dict = shellDict(locale);
@@ -135,24 +132,25 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
 
-  // Badge nav & lonceng diisi setelah shell tampil (tidak memblok splash/first paint).
+  // Badge nav & lonceng diambil dari klien SETELAH shell tampil (tidak memblok
+  // splash/first paint). Di-refresh tiap pindah halaman agar tetap segar.
   const [unreadCount, setUnreadCount] = useState(0);
   const [actionCounts, setActionCounts] = useState<Record<string, number>>({});
   useEffect(() => {
-    if (!countsPromise) return;
     let live = true;
-    countsPromise
-      .then((c) => {
+    fetch("/api/nav-counts")
+      .then((r) => r.json())
+      .then((d) => {
         if (live) {
-          setUnreadCount(c.unread);
-          setActionCounts(c.counts);
+          setUnreadCount(d?.unread ?? 0);
+          setActionCounts(d?.counts ?? {});
         }
       })
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [countsPromise]);
+  }, [pathname]);
 
   const hasUnread = unreadCount > 0;
 
