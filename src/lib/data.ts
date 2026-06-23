@@ -460,12 +460,14 @@ export async function getActionCounts(
   const canManageAttendance = canApproveAll || perms.has("attendance.manage");
   if (!canApproveLeave && !canManageAttendance) return none;
 
+  const t0 = performance.now();
   const [employees, leave, overtime, approvals] = await Promise.all([
     getEmployees(),
     canApproveLeave ? getLeaveRequests() : Promise.resolve([]),
     canApproveLeave ? getOvertimeRequests() : Promise.resolve([]),
     canManageAttendance ? getClockApprovals() : Promise.resolve([]),
   ]);
+  console.log(`[perf] getActionCounts ${Math.round(performance.now() - t0)}ms`);
   const me = user.employeeId ? employees.find((e) => e.id === user.employeeId) : undefined;
   const team = me?.team;
   const teamOf = new Map(employees.map((e) => [e.id, e.team]));
@@ -702,13 +704,17 @@ export interface DashboardData {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
+  const t0 = performance.now();
+  // Hanya tarik absensi bulan berjalan (bukan seluruh tabel) — dashboard hanya
+  // butuh "hari ini" + bulan ini + tren beberapa hari terakhir.
   const [employees, attendanceRows, leave, dayOff, overtime] = await Promise.all([
     getEmployees(),
-    getAttendance(),
+    getAttendanceSince(`${CURRENT_PERIOD}-01`),
     getLeaveRequests(),
     getDayOffInLieu(),
     getOvertimeRequests(),
   ]);
+  const tFetch = performance.now();
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const active = employees.filter((e) => e.status === "active");
   const todayRows = attendanceRows.filter((r) => r.date === TODAY);
@@ -767,5 +773,6 @@ export async function getDashboardData(): Promise<DashboardData> {
     .slice(0, 4)
     .map((request) => ({ request, employee: empMap.get(request.employeeId) }));
 
+  console.log(`[perf] getDashboardData fetch=${Math.round(tFetch - t0)}ms total=${Math.round(performance.now() - t0)}ms attRows=${attendanceRows.length}`);
   return { stats, trend, today, pending };
 }

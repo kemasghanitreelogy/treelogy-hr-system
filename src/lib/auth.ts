@@ -30,9 +30,11 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
   const supabase = await createClient();
   if (!supabase) return SEED_USER;
 
+  const t0 = performance.now();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const tAuth = performance.now();
   if (!user) return null;
 
   const { data: profile } = await supabase
@@ -62,6 +64,7 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
   let name = local.replace(/\b\w/g, (c) => c.toUpperCase());
   if (empRes.data?.name) name = empRes.data.name;
 
+  console.log(`[perf] getSessionUser authGetUser=${Math.round(tAuth - t0)}ms total=${Math.round(performance.now() - t0)}ms`);
   return {
     id: user.id,
     email: user.email ?? "",
