@@ -20,6 +20,11 @@ interface Emp {
   workDays: number[];
 }
 
+// Bentuk minimal record yang dipakai grid (dari prop awal & fetch per-rentang).
+type Rec = { employeeId: string; date: string; status: string; clockIn?: string | null };
+
+const MAX_DAYS = 62; // batasi lebar grid (≈2 bulan) agar tetap nyaman & ringan
+
 // Palet warna sengaja dibuat identik dengan ekspor XLSX (src/lib/attendance-xlsx.ts).
 const UI: Record<Brush, { id: string; en: string; letter: string; cell: string; chip: string; ring: string }> = {
   present: { id: "Hadir", en: "Present", letter: "", cell: "bg-[#cdead2] text-[#166534]", chip: "bg-[#cdead2] text-[#166534]", ring: "ring-[#166534]" },
@@ -58,6 +63,8 @@ const STR = {
     delYes: "Ya, hapus & simpan",
     brush: "Kuas",
     touchTip: "Di HP: ketuk sel (seret hanya di desktop).",
+    loading: "Memuat…",
+    tooWide: `Rentang terlalu lebar (maks ${MAX_DAYS} hari). Persempit tanggal.`,
   },
   en: {
     title: "Bulk Edit Attendance",
@@ -85,6 +92,8 @@ const STR = {
     delYes: "Yes, delete & save",
     brush: "Brush",
     touchTip: "On phone: tap cells (drag is desktop-only).",
+    loading: "Loading…",
+    tooWide: `Range too wide (max ${MAX_DAYS} days). Narrow the dates.`,
   },
 };
 
@@ -141,6 +150,10 @@ export function BulkEditAttendance({
   const [team, setTeam] = useState<"all" | Team>("all");
   const [brush, setBrush] = useState<Brush>("present");
   const [edits, setEdits] = useState<Map<string, Brush>>(new Map());
+  const [loaded, setLoaded] = useState<Rec[]>(() =>
+    records.map((r) => ({ employeeId: r.employeeId, date: r.date, status: r.status, clockIn: r.clockIn })),
+  );
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState<{ title: string; message: string; yes: string; danger?: boolean; onYes: () => void } | null>(null);
   const painting = useRef(false);
@@ -150,16 +163,17 @@ export function BulkEditAttendance({
   const { recMap, clockInKeys } = useMemo(() => {
     const m = new Map<string, Brush>();
     const ev = new Set<string>();
-    for (const r of records) {
+    for (const r of loaded) {
       m.set(keyOf(r.employeeId, r.date), r.status === "holiday" ? "off" : (r.status as Brush));
       if (r.clockIn) ev.add(keyOf(r.employeeId, r.date));
     }
     return { recMap: m, clockInKeys: ev };
-  }, [records]);
+  }, [loaded]);
   const baseOf = useCallback((empId: string, date: string): Brush => recMap.get(keyOf(empId, date)) ?? "off", [recMap]);
   const holidaySet = useMemo(() => new Set(holidays), [holidays]);
 
   const days = useMemo(() => eachDay(from, to), [from, to]);
+  const tooWide = days.length > MAX_DAYS;
   const emps = useMemo(
     () => employees.filter((e) => team === "all" || e.team === team).sort((a, b) => a.team.localeCompare(b.team) || a.name.localeCompare(b.name)),
     [employees, team],
@@ -173,6 +187,25 @@ export function BulkEditAttendance({
       setConfirm(null);
     }
   }, [open]);
+
+  // Ambil absensi sesuai rentang terpilih (mendukung lintas bulan). Edit yang
+  // belum disimpan tetap dipertahankan walau pindah bulan.
+  useEffect(() => {
+    if (!open || from > to || tooWide) return;
+    const ctrl = new AbortController();
+    setLoading(true);
+    fetch(`/api/attendance/bulk?from=${from}&to=${to}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("load_failed"))))
+      .then((d) => {
+        if (Array.isArray(d?.records)) setLoaded(d.records as Rec[]);
+      })
+      .catch((e) => {
+        if (e?.name !== "AbortError") toast.error(locale === "id" ? "Gagal memuat data." : "Failed to load data.");
+      })
+      .finally(() => setLoading(false));
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, from, to, tooWide]);
 
   const snapshot = useCallback((cur: Map<string, Brush>) => {
     history.current.push(new Map(cur));
@@ -323,12 +356,13 @@ export function BulkEditAttendance({
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-muted">
             {t.from}
-            <input type="date" value={from} min={`${period}-01`} max={to} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink" />
+            <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink" />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-muted">
             {t.to}
-            <input type="date" value={to} min={from} max={monthLast} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink" />
+            <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink" />
           </label>
+          {loading && <span className="pb-2 text-xs text-faint">{t.loading}</span>}
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip active={team === "all"} onClick={() => setTeam("all")}>{t.allTeams}</Chip>
             {TEAMS.map((tm) => (
@@ -361,6 +395,8 @@ export function BulkEditAttendance({
 
       {/* Grid */}
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3 sm:px-6">
+        {tooWide && <p className="py-10 text-center text-sm text-faint">{t.tooWide}</p>}
+        {!tooWide && (
         <table className="border-separate border-spacing-0 select-none text-center text-sm">
           <thead>
             <tr>
@@ -423,7 +459,8 @@ export function BulkEditAttendance({
             ))}
           </tbody>
         </table>
-        {emps.length === 0 && <p className="py-10 text-center text-sm text-faint">—</p>}
+        )}
+        {!tooWide && emps.length === 0 && <p className="py-10 text-center text-sm text-faint">—</p>}
       </div>
 
       {/* Footer */}

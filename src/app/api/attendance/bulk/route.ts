@@ -15,6 +15,39 @@ interface Change {
   status?: string;
 }
 
+/** Baca absensi untuk rentang tanggal apa pun (grid edit-massal lintas bulan). */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+  if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to) || from > to) {
+    return NextResponse.json({ error: "bad_range" }, { status: 400 });
+  }
+
+  const user = await getSessionUser();
+  if (!can(user, "attendance.manage")) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  const { data, error } = await admin
+    .from("attendance")
+    .select("employee_id, date, status, clock_in")
+    .gte("date", from)
+    .lte("date", to);
+  if (error) return NextResponse.json({ error: "read_failed" }, { status: 500 });
+
+  const records = (data ?? []).map((r) => ({
+    employeeId: String(r.employee_id),
+    date: String(r.date),
+    status: r.status as string,
+    clockIn: (r.clock_in as string) ?? null,
+  }));
+  return NextResponse.json({ ok: true, records });
+}
+
 /**
  * Bulk-edit absensi (HR/superadmin). Terima daftar perubahan sel grid:
  *  - status record (present/late/sick/leave/absent) → upsert (employee_id,date)
