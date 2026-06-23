@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Check, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Check, PaintBucket, RotateCcw, Undo2, X } from "lucide-react";
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, witaToday } from "@/lib/utils";
@@ -34,7 +34,7 @@ const BRUSHES: Brush[] = ["present", "late", "sick", "leave", "absent", "off"];
 const STR = {
   id: {
     title: "Edit Massal Absensi",
-    help: "Pilih status sebagai kuas, lalu klik atau seret sel. Klik nama untuk satu baris, klik tanggal untuk satu kolom.",
+    help: "Klik/seret sel untuk mengecat dengan kuas aktif. Klik nama atau tanggal hanya MENGISI sel kosong di hari kerja (tidak menimpa data yang sudah ada).",
     from: "Dari",
     to: "Sampai",
     allTeams: "Semua tim",
@@ -42,16 +42,26 @@ const STR = {
     save: "Simpan",
     saving: "Menyimpan…",
     reset: "Reset",
+    undo: "Urungkan",
+    fillEmpty: "Isi kosong",
+    fillEmptyHint: "Isi semua hari kerja yang kosong dengan kuas aktif",
     cancel: "Tutup",
     empName: "Karyawan",
     saved: (u: number, d: number) => `Tersimpan ✓ (${u} diisi, ${d} dikosongkan)`,
     failed: "Gagal menyimpan. Coba lagi.",
-    discard: "Buang perubahan yang belum disimpan?",
+    discardTitle: "Buang perubahan?",
+    discardMsg: "Ada perubahan yang belum disimpan. Buang dan tutup?",
+    discardYes: "Buang",
+    keep: "Batal",
+    delTitle: "Hapus catatan absensi asli?",
+    delMsg: (n: number) => `${n} sel yang akan dikosongkan punya clock-in asli (foto/GPS). Menyimpan akan MENGHAPUS catatan itu permanen.`,
+    delYes: "Ya, hapus & simpan",
     brush: "Kuas",
+    touchTip: "Di HP: ketuk sel (seret hanya di desktop).",
   },
   en: {
     title: "Bulk Edit Attendance",
-    help: "Pick a status brush, then click or drag cells. Click a name for the whole row, a date for the whole column.",
+    help: "Click/drag cells to paint with the active brush. Clicking a name or date only FILLS empty working-day cells (never overwrites existing data).",
     from: "From",
     to: "To",
     allTeams: "All teams",
@@ -59,12 +69,22 @@ const STR = {
     save: "Save",
     saving: "Saving…",
     reset: "Reset",
+    undo: "Undo",
+    fillEmpty: "Fill empty",
+    fillEmptyHint: "Fill every empty working day with the active brush",
     cancel: "Close",
     empName: "Employee",
     saved: (u: number, d: number) => `Saved ✓ (${u} set, ${d} cleared)`,
     failed: "Failed to save. Try again.",
-    discard: "Discard unsaved changes?",
+    discardTitle: "Discard changes?",
+    discardMsg: "You have unsaved changes. Discard and close?",
+    discardYes: "Discard",
+    keep: "Cancel",
+    delTitle: "Delete real attendance records?",
+    delMsg: (n: number) => `${n} cell(s) being cleared have a real clock-in (photo/GPS). Saving will PERMANENTLY delete those records.`,
+    delYes: "Yes, delete & save",
     brush: "Brush",
+    touchTip: "On phone: tap cells (drag is desktop-only).",
   },
 };
 
@@ -91,26 +111,30 @@ function eachDay(from: string, to: string): string[] {
   return out;
 }
 
+const keyOf = (empId: string, date: string) => `${empId}|${date}`;
+
 export function BulkEditAttendance({
   open,
   onClose,
   employees,
   records,
   period,
+  holidays = [],
 }: {
   open: boolean;
   onClose: () => void;
   employees: Emp[];
   records: AttendanceRecord[];
   period: string; // "YYYY-MM"
+  holidays?: string[]; // tanggal libur nasional (publik)
 }) {
   const locale = useLocale();
   const t = STR[locale];
   const toast = useToast();
   const router = useRouter();
 
-  const today = witaToday();
   const monthLast = monthEnd(period);
+  const today = witaToday();
   const defaultTo = today.slice(0, 7) === period ? today : monthLast;
   const [from, setFrom] = useState(`${period}-01`);
   const [to, setTo] = useState(defaultTo);
@@ -118,17 +142,22 @@ export function BulkEditAttendance({
   const [brush, setBrush] = useState<Brush>("present");
   const [edits, setEdits] = useState<Map<string, Brush>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState<{ title: string; message: string; yes: string; danger?: boolean; onYes: () => void } | null>(null);
   const painting = useRef(false);
+  const history = useRef<Map<string, Brush>[]>([]);
 
-  const key = (empId: string, date: string) => `${empId}|${date}`;
-
-  // Status asli (baseline) sebuah sel: record yang ada, atau "off" bila kosong.
-  const recMap = useMemo(() => {
+  // Baseline status sel & jejak clock-in asli (untuk peringatan hapus).
+  const { recMap, clockInKeys } = useMemo(() => {
     const m = new Map<string, Brush>();
-    for (const r of records) m.set(key(r.employeeId, r.date), r.status === "holiday" ? "off" : (r.status as Brush));
-    return m;
+    const ev = new Set<string>();
+    for (const r of records) {
+      m.set(keyOf(r.employeeId, r.date), r.status === "holiday" ? "off" : (r.status as Brush));
+      if (r.clockIn) ev.add(keyOf(r.employeeId, r.date));
+    }
+    return { recMap: m, clockInKeys: ev };
   }, [records]);
-  const baseOf = useCallback((empId: string, date: string): Brush => recMap.get(key(empId, date)) ?? "off", [recMap]);
+  const baseOf = useCallback((empId: string, date: string): Brush => recMap.get(keyOf(empId, date)) ?? "off", [recMap]);
+  const holidaySet = useMemo(() => new Set(holidays), [holidays]);
 
   const days = useMemo(() => eachDay(from, to), [from, to]);
   const emps = useMemo(
@@ -136,66 +165,103 @@ export function BulkEditAttendance({
     [employees, team],
   );
 
-  // Reset draft saat ditutup.
+  // Reset draft + riwayat saat ditutup.
   useEffect(() => {
-    if (!open) setEdits(new Map());
+    if (!open) {
+      setEdits(new Map());
+      history.current = [];
+      setConfirm(null);
+    }
   }, [open]);
 
-  // Lepas "painting" saat pointer dilepas di mana pun; ESC menutup; kunci scroll body.
+  const snapshot = useCallback((cur: Map<string, Brush>) => {
+    history.current.push(new Map(cur));
+    if (history.current.length > 80) history.current.shift();
+  }, []);
+
+  const undo = useCallback(() => {
+    const prev = history.current.pop();
+    if (prev) setEdits(prev);
+  }, []);
+
+  // Pointer release global; ESC menutup; Ctrl/Cmd+Z undo; kunci scroll body.
   useEffect(() => {
     if (!open) return;
     const up = () => (painting.current = false);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && attemptClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (confirm) setConfirm(null);
+        else attemptClose();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      }
+    };
     window.addEventListener("pointerup", up);
-    window.addEventListener("keydown", esc);
-    const prev = document.body.style.overflow;
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("pointerup", up);
-      window.removeEventListener("keydown", esc);
-      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, edits.size]);
+  }, [open, edits.size, confirm, undo]);
 
-  const apply = useCallback(
-    (empId: string, date: string) => {
-      setEdits((prev) => {
-        const next = new Map(prev);
-        const k = key(empId, date);
-        if (brush === baseOf(empId, date)) next.delete(k); // kembali ke asli → bukan perubahan
-        else next.set(k, brush);
-        return next;
-      });
-    },
-    [brush, baseOf],
-  );
-
-  const applyMany = useCallback(
-    (cells: { empId: string; date: string }[]) => {
+  // Mutasi edits (functional, murni) dengan prune: status == baseline → bukan
+  // perubahan. Snapshot undo diambil di pemanggil (di luar updater) agar tidak
+  // ganda saat React StrictMode menjalankan updater dua kali.
+  const paint = useCallback(
+    (cells: { empId: string; date: string }[], b: Brush) => {
+      if (cells.length === 0) return;
       setEdits((prev) => {
         const next = new Map(prev);
         for (const { empId, date } of cells) {
-          const k = key(empId, date);
-          if (brush === baseOf(empId, date)) next.delete(k);
-          else next.set(k, brush);
+          const k = keyOf(empId, date);
+          if (b === baseOf(empId, date)) next.delete(k);
+          else next.set(k, b);
         }
         return next;
       });
     },
-    [brush, baseOf],
+    [baseOf],
   );
+  // Aksi diskret (klik sel, isi baris/kolom): catat undo lalu cat.
+  const stroke = (cells: { empId: string; date: string }[]) => {
+    if (cells.length === 0) return;
+    snapshot(edits);
+    paint(cells, brush);
+  };
 
-  const statusOf = (empId: string, date: string): Brush => edits.get(key(empId, date)) ?? baseOf(empId, date);
-  const isDirty = (empId: string, date: string) => edits.has(key(empId, date));
+  const statusOf = (empId: string, date: string): Brush => edits.get(keyOf(empId, date)) ?? baseOf(empId, date);
+  const isDirty = (empId: string, date: string) => edits.has(keyOf(empId, date));
+
+  // Header & "Isi kosong": HANYA mengisi sel kosong (off) di hari kerja terjadwal —
+  // tidak pernah menimpa/menghapus data yang sudah ada.
+  const emptyScheduled = useCallback(
+    (cells: { empId: string; date: string }[], wd: (e: string) => number[]) =>
+      cells.filter(
+        ({ empId, date }) => wd(empId).includes(dow(date)) && !holidaySet.has(date) && statusOf(empId, date) === "off",
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [edits, baseOf, holidaySet],
+  );
+  const wdOf = (empId: string) => emps.find((e) => e.id === empId)?.workDays ?? [];
+
+  const fillRow = (empId: string) => stroke(emptyScheduled(days.map((date) => ({ empId, date })), wdOf));
+  const fillCol = (date: string) => stroke(emptyScheduled(emps.map((e) => ({ empId: e.id, date })), wdOf));
+  const fillAll = () => stroke(emptyScheduled(emps.flatMap((e) => days.map((date) => ({ empId: e.id, date }))), wdOf));
 
   function attemptClose() {
-    if (edits.size > 0 && !window.confirm(t.discard)) return;
+    if (edits.size > 0) {
+      setConfirm({ title: t.discardTitle, message: t.discardMsg, yes: t.discardYes, danger: true, onYes: () => { setConfirm(null); onClose(); } });
+      return;
+    }
     onClose();
   }
 
-  async function save() {
-    if (edits.size === 0 || saving) return;
+  async function doSave() {
     setSaving(true);
     try {
       const changes = [...edits].map(([k, status]) => {
@@ -211,6 +277,7 @@ export function BulkEditAttendance({
       if (!res.ok) throw new Error(data?.error ?? "failed");
       toast.success(t.saved(data.upserted ?? 0, data.deleted ?? 0));
       setEdits(new Map());
+      history.current = [];
       router.refresh();
       onClose();
     } catch {
@@ -218,6 +285,22 @@ export function BulkEditAttendance({
     } finally {
       setSaving(false);
     }
+  }
+
+  function save() {
+    if (edits.size === 0 || saving) return;
+    const realDeletes = [...edits].filter(([k, s]) => s === "off" && clockInKeys.has(k)).length;
+    if (realDeletes > 0) {
+      setConfirm({
+        title: t.delTitle,
+        message: t.delMsg(realDeletes),
+        yes: t.delYes,
+        danger: true,
+        onYes: () => { setConfirm(null); void doSave(); },
+      });
+      return;
+    }
+    void doSave();
   }
 
   if (!open || typeof document === "undefined") return null;
@@ -228,42 +311,23 @@ export function BulkEditAttendance({
       <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
         <div>
           <h2 className="font-display text-lg font-semibold text-ink">{t.title}</h2>
-          <p className="mt-0.5 max-w-2xl text-xs text-muted">{t.help}</p>
+          <p className="mt-0.5 max-w-3xl text-xs text-muted">{t.help}</p>
         </div>
-        <button
-          type="button"
-          onClick={attemptClose}
-          aria-label={t.cancel}
-          className="rounded-xl p-2 text-muted transition-colors hover:bg-sand"
-        >
+        <button type="button" onClick={attemptClose} aria-label={t.cancel} className="rounded-xl p-2 text-muted transition-colors hover:bg-sand">
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      {/* Toolbar: rentang, tim, kuas */}
+      {/* Toolbar */}
       <div className="flex flex-col gap-3 border-b border-line px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-muted">
             {t.from}
-            <input
-              type="date"
-              value={from}
-              min={`${period}-01`}
-              max={to}
-              onChange={(e) => setFrom(e.target.value)}
-              className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink"
-            />
+            <input type="date" value={from} min={`${period}-01`} max={to} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink" />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-muted">
             {t.to}
-            <input
-              type="date"
-              value={to}
-              min={from}
-              max={monthLast}
-              onChange={(e) => setTo(e.target.value)}
-              className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink"
-            />
+            <input type="date" value={to} min={from} max={monthLast} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-sm text-ink" />
           </label>
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip active={team === "all"} onClick={() => setTeam("all")}>{t.allTeams}</Chip>
@@ -272,7 +336,6 @@ export function BulkEditAttendance({
             ))}
           </div>
         </div>
-        {/* Palet kuas */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold uppercase tracking-wide text-faint">{t.brush}</span>
           {BRUSHES.map((b) => (
@@ -280,16 +343,19 @@ export function BulkEditAttendance({
               key={b}
               type="button"
               onClick={() => setBrush(b)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
-                UI[b].chip,
-                brush === b ? cn("ring-2 ring-offset-1", UI[b].ring) : "opacity-80 hover:opacity-100",
-              )}
+              className={cn("inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all", UI[b].chip, brush === b ? cn("ring-2 ring-offset-1", UI[b].ring) : "opacity-80 hover:opacity-100")}
             >
               <span className="grid h-4 w-4 place-items-center rounded text-[10px] font-bold">{UI[b].letter || "•"}</span>
               {UI[b][locale]}
             </button>
           ))}
+          <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
+          <button type="button" onClick={fillAll} title={t.fillEmptyHint} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-sand">
+            <PaintBucket className="h-4 w-4" /> {t.fillEmpty}
+          </button>
+          <button type="button" onClick={undo} disabled={history.current.length === 0} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-sand disabled:opacity-40">
+            <Undo2 className="h-4 w-4" /> {t.undo}
+          </button>
         </div>
       </div>
 
@@ -298,22 +364,11 @@ export function BulkEditAttendance({
         <table className="border-separate border-spacing-0 select-none text-center text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-30 min-w-[190px] border-b border-r border-line bg-forest-700 px-3 py-2 text-left text-xs font-semibold text-white">
-                {t.empName}
-              </th>
+              <th className="sticky left-0 top-0 z-30 min-w-[190px] border-b border-r border-line bg-forest-700 px-3 py-2 text-left text-xs font-semibold text-white">{t.empName}</th>
               {days.map((d) => {
                 const wknd = dow(d) === 0 || dow(d) === 6;
                 return (
-                  <th
-                    key={d}
-                    onClick={() => applyMany(emps.map((e) => ({ empId: e.id, date: d })))}
-                    title={d}
-                    className={cn(
-                      "sticky top-0 z-20 min-w-[38px] cursor-pointer border-b border-r border-line px-1 py-1 text-[11px] font-semibold leading-tight transition-colors",
-                      wknd ? "bg-[#7d2b2b] text-[#fde8e8]" : "bg-forest-700 text-white",
-                      "hover:brightness-110",
-                    )}
-                  >
+                  <th key={d} onClick={() => fillCol(d)} title={d} className={cn("sticky top-0 z-20 min-w-[38px] cursor-pointer border-b border-r border-line px-1 py-1 text-[11px] font-semibold leading-tight transition-[filter]", wknd ? "bg-[#7d2b2b] text-[#fde8e8]" : "bg-forest-700 text-white", "hover:brightness-110")}>
                     <div className="opacity-80">{WD[locale][dow(d)]}</div>
                     <div>{Number(d.slice(8, 10))}</div>
                   </th>
@@ -324,13 +379,7 @@ export function BulkEditAttendance({
           <tbody>
             {emps.map((e, ri) => (
               <tr key={e.id}>
-                <th
-                  onClick={() => applyMany(days.map((d) => ({ empId: e.id, date: d })))}
-                  className={cn(
-                    "sticky left-0 z-10 min-w-[190px] cursor-pointer border-b border-r border-line px-3 py-1.5 text-left transition-colors hover:bg-sand",
-                    ri % 2 ? "bg-[#f8faf7]" : "bg-white",
-                  )}
-                >
+                <th onClick={() => fillRow(e.id)} className={cn("sticky left-0 z-10 min-w-[190px] cursor-pointer border-b border-r border-line px-3 py-1.5 text-left transition-colors hover:bg-sand", ri % 2 ? "bg-[#f8faf7]" : "bg-white")}>
                   <div className="flex items-center gap-2">
                     <span className="w-4 shrink-0 text-[11px] font-medium text-faint">{ri + 1}</span>
                     <span className="truncate text-[13px] font-medium text-ink">{e.name}</span>
@@ -341,25 +390,29 @@ export function BulkEditAttendance({
                   const st = statusOf(e.id, d);
                   const dirty = isDirty(e.id, d);
                   const scheduled = e.workDays.includes(dow(d));
+                  const isHoliday = holidaySet.has(d);
                   const isOff = st === "off";
+                  const offBg = isHoliday
+                    ? "bg-[#f6e9e9] hover:bg-[#efdada]" // libur nasional
+                    : scheduled
+                      ? "bg-white hover:bg-sand"
+                      : "bg-[#eef1f4] hover:bg-[#e3e7ec]"; // bukan jadwal / weekend
                   return (
                     <td key={d} className="border-b border-r border-line p-0">
                       <div
                         role="button"
                         tabIndex={-1}
+                        title={isHoliday ? "Libur nasional" : undefined}
                         onPointerDown={(ev) => {
                           ev.preventDefault();
                           painting.current = true;
-                          apply(e.id, d);
+                          snapshot(edits); // satu undo per goresan
+                          paint([{ empId: e.id, date: d }], brush);
                         }}
                         onPointerEnter={() => {
-                          if (painting.current) apply(e.id, d);
+                          if (painting.current) paint([{ empId: e.id, date: d }], brush);
                         }}
-                        className={cn(
-                          "flex h-8 w-full cursor-pointer items-center justify-center text-[11px] font-bold transition-colors",
-                          isOff ? (scheduled ? "bg-white hover:bg-sand" : "bg-[#eef1f4] hover:bg-[#e3e7ec]") : cn(UI[st].cell, "hover:brightness-95"),
-                          dirty && "ring-2 ring-inset ring-forest-600",
-                        )}
+                        className={cn("flex h-8 w-full cursor-pointer items-center justify-center text-[11px] font-bold transition-colors", isOff ? offBg : cn(UI[st].cell, "hover:brightness-95"), dirty && "ring-2 ring-inset ring-forest-600")}
                       >
                         {!isOff && UI[st].letter}
                       </div>
@@ -373,21 +426,46 @@ export function BulkEditAttendance({
         {emps.length === 0 && <p className="py-10 text-center text-sm text-faint">—</p>}
       </div>
 
-      {/* Footer aksi */}
+      {/* Footer */}
       <div className="flex items-center justify-between gap-3 border-t border-line bg-cream px-4 py-3 sm:px-6">
-        <span className={cn("text-sm font-medium", edits.size ? "text-forest-700" : "text-faint")}>{t.changes(edits.size)}</span>
+        <div className="flex flex-col">
+          <span className={cn("text-sm font-medium", edits.size ? "text-forest-700" : "text-faint")}>{t.changes(edits.size)}</span>
+          <span className="hidden text-[11px] text-faint sm:block">{t.touchTip}</span>
+        </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setEdits(new Map())} disabled={edits.size === 0 || saving}>
+          <Button variant="ghost" onClick={() => { snapshot(edits); setEdits(new Map()); }} disabled={edits.size === 0 || saving}>
             <RotateCcw className="h-4 w-4" /> {t.reset}
           </Button>
-          <Button variant="outline" onClick={attemptClose} disabled={saving}>
-            {t.cancel}
-          </Button>
+          <Button variant="outline" onClick={attemptClose} disabled={saving}>{t.cancel}</Button>
           <Button onClick={save} disabled={edits.size === 0 || saving}>
             <Check className="h-4 w-4" /> {saving ? t.saving : `${t.save} (${edits.size})`}
           </Button>
         </div>
       </div>
+
+      {/* Konfirmasi (di dalam overlay agar selalu di atas grid) */}
+      {confirm && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-bark/50 backdrop-blur-sm" onClick={() => setConfirm(null)} />
+          <div role="dialog" aria-modal="true" className="relative w-full max-w-sm rounded-2xl bg-panel p-6 shadow-pop">
+            <div className="flex items-start gap-3">
+              {confirm.danger && (
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-clay-soft text-clay">
+                  <AlertTriangle className="h-5 w-5" />
+                </span>
+              )}
+              <div>
+                <h3 className="font-display text-base font-semibold text-ink">{confirm.title}</h3>
+                <p className="mt-1 text-sm text-muted">{confirm.message}</p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirm(null)}>{t.keep}</Button>
+              <Button variant={confirm.danger ? "danger" : "primary"} onClick={confirm.onYes}>{confirm.yes}</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
@@ -395,14 +473,7 @@ export function BulkEditAttendance({
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-forest-700 text-white" : "border border-line text-muted hover:bg-sand",
-      )}
-    >
+    <button type="button" onClick={onClick} className={cn("rounded-lg px-3 py-1.5 text-sm font-medium transition-colors", active ? "bg-forest-700 text-white" : "border border-line text-muted hover:bg-sand")}>
       {children}
     </button>
   );

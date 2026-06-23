@@ -202,6 +202,7 @@ export function AttendanceView({
   canReviewAll = true,
   approvals = [],
   overtime = [],
+  holidays = [],
   currentUserName = "HR",
   currentEmployeeId = null,
 }: {
@@ -215,6 +216,8 @@ export function AttendanceView({
   approvals?: ClockApprovalRequest[];
   /** Lembur disetujui (untuk bagian "Daftar Lembur" pada ekspor XLSX). */
   overtime?: { employeeId: string; date: string; hours: number }[];
+  /** Tanggal libur nasional (publik) — dipakai grid edit-massal. */
+  holidays?: string[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
 }) {
@@ -511,6 +514,7 @@ export function AttendanceView({
           employees={employees}
           records={records}
           period={period}
+          holidays={holidays}
         />
       )}
 

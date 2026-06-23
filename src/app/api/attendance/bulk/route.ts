@@ -64,9 +64,10 @@ export async function POST(req: Request) {
       arr.push(c.date);
       delByEmp.set(c.employeeId, arr);
     } else {
-      // Hanya set status + source; kolom lain (clock_in/out dll) dibiarkan utuh
-      // pada baris yang sudah ada, jadi jam clock-in asli tidak terhapus.
-      upserts.push({ employee_id: c.employeeId, date: c.date, status: c.status, source: "manual" });
+      // Set status + source + reset late_minutes (edit manual tak punya timing
+      // telat; ini mencegah "Hadir" menyisakan late_minutes basi). Kolom lain
+      // (clock_in/out, overtime_minutes) dibiarkan utuh → jam asli tak terhapus.
+      upserts.push({ employee_id: c.employeeId, date: c.date, status: c.status, source: "manual", late_minutes: 0 });
     }
   }
 

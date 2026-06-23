@@ -8,6 +8,7 @@ import {
   getAttendanceSettings,
   getClockApprovals,
   getEmployees,
+  getHolidays,
   getHolidayToday,
   getOvertimeRequests,
 } from "@/lib/data";
@@ -18,13 +19,14 @@ import { witaToday } from "@/lib/utils";
 export const metadata = { title: "Absensi — Treelogy HR" };
 
 export default async function AttendancePage() {
-  const [all, employeesAll, settings, user, approvalsAll, overtimeAll] = await Promise.all([
+  const [all, employeesAll, settings, user, approvalsAll, overtimeAll, holidaysAll] = await Promise.all([
     getAttendance(),
     getEmployees(),
     getAttendanceSettings(),
     getSessionUser(),
     getClockApprovals(),
     getOvertimeRequests(),
+    getHolidays(),
   ]);
   const pendingApprovals = approvalsAll.filter((a) => a.status === "pending");
   const canManage = can(user, "attendance.manage");
@@ -33,6 +35,10 @@ export default async function AttendancePage() {
     ? overtimeAll
         .filter((o) => o.status === "approved" && o.date.startsWith(CURRENT_PERIOD))
         .map((o) => ({ employeeId: o.employeeId, date: o.date, hours: o.hours }))
+    : [];
+  // Hari libur nasional (publik) → grid edit-massal tidak menganggapnya sel kosong.
+  const holidayDates = canManage
+    ? holidaysAll.filter((h) => h.type === "public").map((h) => h.date)
     : [];
   // Selain HR/admin hanya melihat absensinya sendiri (RLS sudah membatasi di
   // Supabase; filter ini menjaga perilaku yang sama di mode seed/offline).
@@ -74,6 +80,7 @@ export default async function AttendancePage() {
       canReviewAll={canManage}
       approvals={canManage ? pendingApprovals : []}
       overtime={overtime}
+      holidays={holidayDates}
       currentUserName={user?.name ?? "HR"}
       currentEmployeeId={user?.employeeId ?? null}
     />
