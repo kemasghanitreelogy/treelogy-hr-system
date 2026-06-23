@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createAdminClient } from "./supabase/admin";
 import { sendPushToEmployees } from "./push/send";
 import type { NotifTone } from "./types";
@@ -44,8 +45,15 @@ export async function pushNotifications(rows: NewNotification[]): Promise<{ sent
   let failed = 0;
   try {
     const results = await Promise.all(
+      // Tag unik per notifikasi → keputusan sejenis (mis. 2x "leave") TIDAK saling
+      // menimpa di tray. (Reminder clock-in pakai tag tetap agar justru menyatu.)
       rows.map((r) =>
-        sendPushToEmployees(admin, [r.employeeId], { title: r.title, body: r.body, url: r.href, tag: r.type }),
+        sendPushToEmployees(admin, [r.employeeId], {
+          title: r.title,
+          body: r.body,
+          url: r.href,
+          tag: `${r.type}:${randomUUID()}`,
+        }),
       ),
     );
     for (const res of results) {

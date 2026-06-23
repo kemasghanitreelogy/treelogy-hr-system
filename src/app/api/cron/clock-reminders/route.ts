@@ -118,6 +118,7 @@ export async function GET(req: Request) {
         body: msg.body,
         url: "/attendance",
         tag: `clock-${kind}`,
+        ttl: 60 * 60 * 2, // reminder basi setelah ~2 jam → jangan dikirim telat
       });
       sent += res.sent;
     }
