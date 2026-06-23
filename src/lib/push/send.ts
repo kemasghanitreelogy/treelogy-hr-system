@@ -48,13 +48,18 @@ export async function sendPushToEmployees(
     badge: "/icons/favicon-48.png",
   });
 
+  // urgency "high" → FCM/APNs mengirim segera & membangunkan device meski layar
+  // mati / app tertutup (tanpa ini, Android Doze men-batch pesan sampai app dibuka).
+  // TTL 1 hari supaya notifikasi yang tak sempat terkirim tidak menumpuk basi.
+  const options = { TTL: 60 * 60 * 24, urgency: "high" as const };
+
   let sent = 0;
   let failed = 0;
   const dead: string[] = [];
   await Promise.all(
     (subs as SubRow[]).map(async (s) => {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body);
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, options);
         sent++;
       } catch (err) {
         failed++;
