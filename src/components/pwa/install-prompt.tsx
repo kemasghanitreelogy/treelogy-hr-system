@@ -24,6 +24,16 @@ function isIosDevice(): boolean {
   return /Macintosh/.test(ua) && (window.navigator.maxTouchPoints ?? 0) > 1;
 }
 
+/**
+ * Hanya tampilkan ajakan pasang di HP/tablet. Laptop/desktop (pointer presisi)
+ * tidak perlu di-nag — primary pointer "coarse" = perangkat sentuh.
+ */
+function isMobileDevice(): boolean {
+  const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const uaMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent);
+  return coarse || uaMobile || isIosDevice();
+}
+
 /** In-app webviews (IG/FB/Line/etc.) can't "Add to Home Screen" — user must open in Safari. */
 function isInAppBrowser(): boolean {
   return /FBAN|FBAV|Instagram|Line|Twitter|MicroMessenger|GSA|DuckDuckGo/i.test(window.navigator.userAgent);
@@ -37,6 +47,7 @@ export function InstallPrompt() {
 
   useEffect(() => {
     if (isStandalone()) return; // already installed → never nag again
+    if (!isMobileDevice()) return; // laptop/desktop → jangan tampilkan ajakan pasang
 
     // Android / desktop Chromium: capture the native install prompt.
     const onBeforeInstall = (e: Event) => {

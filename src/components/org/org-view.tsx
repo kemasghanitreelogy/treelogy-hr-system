@@ -387,7 +387,6 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
     }
   }
 
-  const totalHeads = TEAMS.reduce((s, tm) => s + rootsOf(tm).length, 0);
   const overTeam = overId ? byId.get(overId)?.team : undefined;
 
   // NOTE: no `fade-up` on this root — its retained transform (animation-fill-mode:
@@ -395,12 +394,6 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
   // DragOverlay drift away from the cursor.
   return (
     <div className={cn("space-y-4", canManage && changes.count > 0 && "pb-24")}>
-      <div className="grid grid-cols-3 gap-3">
-        <Stat label={t.statActive} value={draft.length} />
-        <Stat label={t.statDivisions} value={TEAMS.length} />
-        <Stat label={t.statHeads} value={totalHeads} />
-      </div>
-
       {canManage && (
         <p className="text-xs leading-relaxed text-faint">
           <GripVertical className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />
@@ -527,15 +520,6 @@ export function OrgView({ initial, canManage = false }: { initial: Employee[]; c
       >
         {adding && <AddForm team={adding} all={draft} onCancel={() => setAdding(null)} onAdd={addPerson} />}
       </Sheet>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="card flex flex-col items-center justify-center gap-0.5 px-3 py-3 text-center">
-      <span className="font-display text-2xl font-bold text-ink">{value}</span>
-      <span className="text-xs text-faint">{label}</span>
     </div>
   );
 }
