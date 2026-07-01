@@ -2,6 +2,7 @@ import {
   CalendarClock,
   CalendarDays,
   CalendarOff,
+  Crown,
   LayoutDashboard,
   Layers,
   Network,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 
 import type { Locale } from "@/lib/i18n";
+import { SUPERADMIN_PERM } from "@/lib/super-admin";
 
 export interface NavItem {
   href: string;
@@ -39,6 +41,9 @@ const ITEMS: Record<string, NavItem> = {
   "/shifts": { href: "/shifts", label: "Jadwal", labelEn: "Schedule", icon: Layers, perm: "shifts.view" },
   "/holidays": { href: "/holidays", label: "Hari Libur", labelEn: "Holidays", icon: CalendarOff, perm: "dashboard.view" },
   "/access": { href: "/access", label: "Peran & Akses", labelEn: "Roles & Access", icon: ShieldCheck, perm: "access.roles" },
+  // Super-admin-only menus (gated by the synthetic SUPERADMIN_PERM). Add future
+  // special menus here with `perm: SUPERADMIN_PERM`.
+  "/super-admin": { href: "/super-admin", label: "Super Admin", labelEn: "Super Admin", icon: Crown, perm: SUPERADMIN_PERM },
 };
 
 export type Audience = "ops" | "self";
@@ -51,6 +56,7 @@ export type Audience = "ops" | "self";
 export function audienceFromPermissions(permissions: string[]): Audience {
   const set = new Set(permissions);
   const ops =
+    set.has(SUPERADMIN_PERM) ||
     set.has("employees.manage") ||
     set.has("access.roles") ||
     set.has("access.users") ||
@@ -62,8 +68,8 @@ export function audienceFromPermissions(permissions: string[]): Audience {
 // Order by real-world usage frequency for each audience (Hick's Law + Serial Position:
 // most-used first = primacy; rarely-used config last).
 const ORDER: Record<Audience, string[]> = {
-  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/access"],
-  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/employees", "/org-structure", "/access"],
+  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/access", "/super-admin"],
+  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/employees", "/org-structure", "/access", "/super-admin"],
 };
 
 // Most-frequent destinations for the mobile thumb-zone bar (4 = sweet spot).

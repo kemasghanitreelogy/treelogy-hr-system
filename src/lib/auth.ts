@@ -2,6 +2,7 @@ import { cache } from "react";
 import { createClient } from "./supabase/server";
 import { isSupabaseConfigured } from "./supabase/config";
 import { ALL_PERMISSION_IDS } from "./rbac";
+import { SUPER_ADMIN_EMAIL, SUPERADMIN_PERM } from "./super-admin";
 
 export interface SessionUser {
   id: string;
@@ -11,6 +12,8 @@ export interface SessionUser {
   roleName: string;
   permissions: string[];
   employeeId: string | null;
+  /** Orthogonal elevation: root email or an assigned super admin. */
+  isSuperAdmin: boolean;
 }
 
 /** Demo identity used when Supabase isn't configured (seed mode). */
@@ -20,8 +23,9 @@ const SEED_USER: SessionUser = {
   name: "Dewi Lestari",
   roleId: "role-admin",
   roleName: "Administrator",
-  permissions: [...ALL_PERMISSION_IDS],
+  permissions: [...ALL_PERMISSION_IDS, SUPERADMIN_PERM],
   employeeId: "e08",
+  isSuperAdmin: true,
 };
 
 async function resolveSessionUser(): Promise<SessionUser | null> {
@@ -39,7 +43,7 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("employee_id, role_id, role")
+    .select("employee_id, role_id, role, is_super_admin")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -64,6 +68,12 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
   let name = local.replace(/\b\w/g, (c) => c.toUpperCase());
   if (empRes.data?.name) name = empRes.data.name;
 
+  // Super admin = the fixed root email OR an account the super admin assigned.
+  // Carry a synthetic permission so nav/can()/route-guards all gate for free.
+  const isSuperAdmin =
+    (user.email ?? "").toLowerCase() === SUPER_ADMIN_EMAIL || profile?.is_super_admin === true;
+  if (isSuperAdmin && !permissions.includes(SUPERADMIN_PERM)) permissions = [...permissions, SUPERADMIN_PERM];
+
   console.log(`[perf] getSessionUser authGetUser=${Math.round(tAuth - t0)}ms total=${Math.round(performance.now() - t0)}ms`);
   return {
     id: user.id,
@@ -73,6 +83,7 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
     roleName,
     permissions,
     employeeId: profile?.employee_id ?? null,
+    isSuperAdmin,
   };
 }
 

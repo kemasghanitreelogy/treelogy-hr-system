@@ -21,6 +21,8 @@ import { roles, systemUsers, type UserStatus } from "./rbac";
 import { addDaysStr, witaToday } from "./utils";
 import { isSupabaseConfigured } from "./supabase/config";
 import { createClient } from "./supabase/server";
+import { createAdminClient } from "./supabase/admin";
+import { SUPER_ADMIN_EMAIL, type SuperAdminAccount } from "./super-admin";
 import type {
   AttendanceRecord,
   AttendanceSettings,
@@ -621,6 +623,46 @@ export async function getSystemUsers() {
   } catch {
     return systemUsers;
   }
+}
+
+/**
+ * All login accounts + their super-admin flag, for the super-admin management
+ * page. Uses the service-role client (server-only) so it can read auth emails
+ * and every profile; callers MUST gate this behind a super-admin check.
+ */
+export async function getSuperAdminAccounts(): Promise<SuperAdminAccount[]> {
+  if (!isSupabaseConfigured) {
+    // Demo: show seed people; the root is a live-only concept.
+    return seedEmployees
+      .filter((e) => e.email)
+      .map((e) => ({ id: `seed-${e.id}`, employeeId: e.id, name: e.name, email: e.email!, isSuperAdmin: false, isRoot: false }));
+  }
+  const admin = createAdminClient();
+  if (!admin) return [];
+  const [{ data: profs }, { data: emps }, usersRes] = await Promise.all([
+    admin.from("profiles").select("id, employee_id, is_super_admin"),
+    admin.from("employees").select("id, name"),
+    admin.auth.admin.listUsers({ page: 1, perPage: 200 }),
+  ]);
+  const emailById = new Map<string, string>();
+  for (const u of usersRes.data?.users ?? []) emailById.set(u.id, (u.email ?? "").toLowerCase());
+  const nameByEmp = new Map<string, string>();
+  for (const e of (emps ?? []) as Row[]) nameByEmp.set(String(e.id), String(e.name));
+  return ((profs ?? []) as Row[])
+    .map((p) => {
+      const email = emailById.get(String(p.id)) ?? "";
+      const employeeId = p.employee_id ? String(p.employee_id) : null;
+      const name = (employeeId && nameByEmp.get(employeeId)) || email || "—";
+      return {
+        id: String(p.id),
+        employeeId,
+        name,
+        email,
+        isSuperAdmin: p.is_super_admin === true,
+        isRoot: email === SUPER_ADMIN_EMAIL,
+      };
+    })
+    .sort((a, b) => Number(b.isSuperAdmin) - Number(a.isSuperAdmin) || a.name.localeCompare(b.name));
 }
 
 // ---- Pure compute helpers ----
