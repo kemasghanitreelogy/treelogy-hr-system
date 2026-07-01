@@ -24,8 +24,8 @@ export function CatMascot({
   const amber = tone === "amber";
 
   const c = amber
-    ? { light: "#f6c97c", base: "#e2963a", dark: "#bd7420", shade: "#96530f", stripe: "#a25e18", cream: "#fbeed0", creamSh: "#e6c793", inner: "#e7a288", iris1: "#a9c265", iris2: "#7a9a3f", iris3: "#38481d" }
-    : { light: "#b9d27a", base: "#7d9c57", dark: "#556d3c", shade: "#37481f", stripe: "#42592c", cream: "#eef3d6", creamSh: "#d5deb4", inner: "#cfe0b0", iris1: "#e6b84f", iris2: "#c08f2b", iris3: "#4a3410" };
+    ? { light: "#f7cd84", base: "#e2963a", dark: "#bd7420", shade: "#96530f", stripe: "#a25e18", cream: "#fbeed0", creamSh: "#e6c793", inner: "#e7a288", iris1: "#b6cd6f", iris2: "#7a9a3f", iris3: "#33421a", furL: "#f9d791", furD: "#c8801f" }
+    : { light: "#bdd47e", base: "#7d9c57", dark: "#556d3c", shade: "#37481f", stripe: "#42592c", cream: "#eef3d6", creamSh: "#d5deb4", inner: "#cfe0b0", iris1: "#e6c25f", iris2: "#c08f2b", iris3: "#4a3410", furL: "#cbe08c", furD: "#5f7a3c" };
   const u = `${expression}-${tone}`;
   const tilt = late ? -6 : -8;
 
@@ -138,6 +138,11 @@ export function CatMascot({
 
         {/* HEAD (slight tilt for life) */}
         <g transform={`rotate(${tilt} 60 72)`}>
+          {/* Fluffy cheek floof peeking from behind the head */}
+          <g fill={`url(#head-${u})`}>
+            <ellipse cx="23" cy="57" rx="6.5" ry="5.5" /><ellipse cx="24" cy="66" rx="6.5" ry="5.5" /><ellipse cx="28" cy="73" rx="6.5" ry="5.5" />
+            <ellipse cx="97" cy="57" rx="6.5" ry="5.5" /><ellipse cx="96" cy="66" rx="6.5" ry="5.5" /><ellipse cx="92" cy="73" rx="6.5" ry="5.5" />
+          </g>
           <g className="cat-ear-l">
             <path d="M31 27 L20 -2 L57 19 Z" fill={`url(#head-${u})`} />
             <path d="M35 24 L27 7 L50 19 Z" fill={`url(#ear-${u})`} />
@@ -147,10 +152,17 @@ export function CatMascot({
             <path d="M85 23 L93 6 L70 18 Z" fill={`url(#ear-${u})`} />
           </g>
 
-          {/* Pear-shaped head (fuller cheeks, tapered chin) */}
-          <path d="M60 8 C36 8 23 24 23 43 C23 57 31 68 42 73 C50 77 70 77 78 73 C89 68 97 57 97 43 C97 24 84 8 60 8 Z" fill={`url(#head-${u})`} />
+          {/* Rounder head (fuller cheeks) */}
+          <path d="M60 8 C34 8 21 24 21 44 C21 58 29 69 41 74 C50 78 70 78 79 74 C91 69 99 58 99 44 C99 24 86 8 60 8 Z" fill={`url(#head-${u})`} />
           <path d="M28 60 Q60 82 92 60 Q60 74 28 60 Z" fill={c.shade} opacity="0.16" />
           <path d="M33 20 Q60 6 87 20" stroke="#ffffff" strokeOpacity="0.30" strokeWidth="4" strokeLinecap="round" />
+          {/* Soft fur strokes (rim + cheeks) for texture */}
+          <g stroke={c.furD} strokeLinecap="round" fill="none" strokeOpacity="0.35">
+            <path d="M26 40 Q23 34 24 29" strokeWidth="2.2" /><path d="M31 30 Q29 24 31 20" strokeWidth="2" />
+            <path d="M90 38 Q94 32 92 27" strokeWidth="2.2" /><path d="M86 28 Q88 22 86 18" strokeWidth="2" />
+            <path d="M24 58 Q18 60 16 58" strokeWidth="2.4" /><path d="M25 65 Q19 68 17 66" strokeWidth="2.4" /><path d="M27 71 Q22 75 20 73" strokeWidth="2.2" />
+            <path d="M96 58 Q102 60 104 58" strokeWidth="2.4" /><path d="M95 65 Q101 68 103 66" strokeWidth="2.4" /><path d="M93 71 Q98 75 100 73" strokeWidth="2.2" />
+          </g>
 
           {/* Forehead tabby "M" */}
           <g stroke={c.stripe} strokeWidth="2.2" strokeLinecap="round" strokeOpacity="0.7">
@@ -185,26 +197,34 @@ export function CatMascot({
             </g>
           ) : (
             <g>
-              <ellipse cx="45.5" cy="43" rx="12.5" ry="15" fill="#fff" />
-              <ellipse cx="74.5" cy="43" rx="12.5" ry="15" fill="#fff" />
-              <circle cx="47.5" cy="44" r="11.3" fill={`url(#iris-${u})`} />
-              <circle cx="72.5" cy="44" r="11.3" fill={`url(#iris-${u})`} />
-              <ellipse cx="48.5" cy="44" rx="6.2" ry="9" fill="#120b05" />
-              <ellipse cx="71.5" cy="44" rx="6.2" ry="9" fill="#120b05" />
-              <path d="M33 37 A12.5 15 0 0 1 58 37 A12.5 9 0 0 0 33 37 Z" fill="#000" opacity="0.18" />
-              <path d="M62 37 A12.5 15 0 0 1 87 37 A12.5 9 0 0 0 62 37 Z" fill="#000" opacity="0.18" />
-              <circle cx="43" cy="38.5" r="4" fill="#fff" />
-              <circle cx="68.5" cy="38.5" r="4" fill="#fff" />
-              <circle cx="51" cy="49" r="2" fill="#fff" fillOpacity="0.72" />
-              <circle cx="76.5" cy="49" r="2" fill="#fff" fillOpacity="0.72" />
+              <ellipse cx="45" cy="43" rx="13" ry="15.5" fill="#fff" />
+              <ellipse cx="75" cy="43" rx="13" ry="15.5" fill="#fff" />
+              <circle cx="47.5" cy="44" r="11.8" fill={`url(#iris-${u})`} />
+              <circle cx="72.5" cy="44" r="11.8" fill={`url(#iris-${u})`} />
+              <circle cx="47.5" cy="44" r="11.8" fill="none" stroke={c.iris1} strokeWidth="1.4" strokeOpacity="0.6" />
+              <circle cx="72.5" cy="44" r="11.8" fill="none" stroke={c.iris1} strokeWidth="1.4" strokeOpacity="0.6" />
+              <ellipse cx="48.5" cy="44" rx="6.4" ry="9.4" fill="#0e0904" />
+              <ellipse cx="71.5" cy="44" rx="6.4" ry="9.4" fill="#0e0904" />
+              <path d="M32 36 A13 15.5 0 0 1 58 36 A13 9 0 0 0 32 36 Z" fill="#000" opacity="0.20" />
+              <path d="M62 36 A13 15.5 0 0 1 88 36 A13 9 0 0 0 62 36 Z" fill="#000" opacity="0.20" />
+              <circle cx="42.5" cy="38" r="4.6" fill="#fff" />
+              <circle cx="68" cy="38" r="4.6" fill="#fff" />
+              <circle cx="51.5" cy="49.5" r="2.4" fill="#fff" fillOpacity="0.85" />
+              <circle cx="76.5" cy="49.5" r="2.4" fill="#fff" fillOpacity="0.85" />
+              <path d="M40 33 l1.2 2.4 2.4 1.2 -2.4 1.2 -1.2 2.4 -1.2 -2.4 -2.4 -1.2 2.4 -1.2 z" fill="#fff" fillOpacity="0.9" />
             </g>
           )}
 
           {/* Muzzle */}
-          <ellipse cx="52" cy="59" rx="7.5" ry="6" fill={`url(#belly-${u})`} fillOpacity="0.92" />
-          <ellipse cx="68" cy="59" rx="7.5" ry="6" fill={`url(#belly-${u})`} fillOpacity="0.92" />
-          <path d="M55.5 53.5 Q60 51.5 64.5 53.5 Q62 59 60 60 Q58 59 55.5 53.5 Z" fill="#cf7d84" />
-          <path d="M57 55 Q60 53.5 63 55" stroke="#fff" strokeOpacity="0.5" strokeWidth="1" strokeLinecap="round" />
+          <ellipse cx="52" cy="60" rx="8" ry="6.4" fill={`url(#belly-${u})`} fillOpacity="0.95" />
+          <ellipse cx="68" cy="60" rx="8" ry="6.4" fill={`url(#belly-${u})`} fillOpacity="0.95" />
+          <g fill="#b98a55" fillOpacity="0.6">
+            <circle cx="49" cy="58" r="0.9" /><circle cx="53" cy="59" r="0.9" />
+            <circle cx="67" cy="59" r="0.9" /><circle cx="71" cy="58" r="0.9" />
+          </g>
+          {/* Nose */}
+          <path d="M55 53.5 Q60 51 65 53.5 Q62 59.5 60 60.5 Q58 59.5 55 53.5 Z" fill="#d98a90" />
+          <path d="M57.5 55 Q60 53.5 62.5 55" stroke="#fff" strokeOpacity="0.55" strokeWidth="1" strokeLinecap="round" />
 
           {/* Mouth */}
           {late ? (
@@ -212,7 +232,10 @@ export function CatMascot({
           ) : sleepy ? (
             <path d="M54 61 Q60 65 66 61" stroke={c.dark} strokeWidth="2.2" strokeLinecap="round" />
           ) : (
-            <path d="M60 60 Q56 64.5 52.5 61.5 M60 60 Q64 64.5 67.5 61.5" stroke={c.dark} strokeWidth="2.2" strokeLinecap="round" />
+            <>
+              <path d="M60 60.5 Q56 65 52.5 62 M60 60.5 Q64 65 67.5 62" stroke={c.dark} strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M57 63 Q60 67 63 63 Z" fill="#e58a9a" />
+            </>
           )}
 
           {/* Whiskers */}
