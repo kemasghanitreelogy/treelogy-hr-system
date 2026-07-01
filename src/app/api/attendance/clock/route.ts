@@ -233,13 +233,14 @@ export async function POST(req: Request) {
   }
 
   let recorded = false;
+  let lateMinutes: number | null = null;
   if (profile?.employee_id) {
     if (direction === "in") {
       // Telat = selisih jam masuk vs jadwal mulai (WITA).
       const workStart = (emp?.work_start as string) ?? "08:00";
       const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
       const [sh, sm] = workStart.split(":").map(Number);
-      const lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
+      lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
 
       const { error } = await supabase.from("attendance").upsert(
         {
@@ -296,5 +297,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, recorded, distance });
+  return NextResponse.json({ ok: true, recorded, distance, lateMinutes });
 }

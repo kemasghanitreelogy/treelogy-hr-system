@@ -17,6 +17,7 @@ import {
   Timer,
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { ClockStamp } from "@/components/attendance/clock-stamp";
 import type { AttendanceRecord, TeamGeofence } from "@/lib/types";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
@@ -276,6 +277,8 @@ export function ClockWidget({
   // Libur = bukan hari kerja menurut jadwal, ATAU hari libur kalender yang cocok.
   const offDayToday = holidayToday || !workDays.includes(witaDowNow());
   const [now, setNow] = useState<Date | null>(null);
+  // Drives the one-shot clock-in feedback animation (null = idle).
+  const [stamp, setStamp] = useState<{ late: boolean; minutes: number } | null>(null);
   const router = useRouter();
   // Seed from today's server record so a refresh keeps state: clocked in (no out
   // yet) → "in"; clocked in AND out → "done"; nothing yet → "out".
@@ -466,6 +469,11 @@ export function ClockWidget({
           tone: "ok",
           text: offDayChoice === "swap" ? t.swapSent : offDayChoice === "overtime" ? t.overtimeSent : t.clockInOk,
         });
+        // Celebrate a normal clock-in (not the swap/overtime off-day flows) with a
+        // color-psychology feedback stamp: green on-time vs gentle amber if late.
+        if (data.recorded && typeof data.lateMinutes === "number") {
+          setStamp({ late: data.lateMinutes > 0, minutes: data.lateMinutes });
+        }
       } else {
         setClockOutAt(new Date());
         setPhase("done");
@@ -620,6 +628,15 @@ export function ClockWidget({
       />
 
       <OffDayModal open={oodPending != null} t={t} holidayName={holidayName} onChoose={chooseOffDay} onCancel={() => setOodPending(null)} />
+
+      {stamp && (
+        <ClockStamp
+          late={stamp.late}
+          lateMinutes={stamp.minutes}
+          locale={locale}
+          onDone={() => setStamp(null)}
+        />
+      )}
     </>
   );
 }
