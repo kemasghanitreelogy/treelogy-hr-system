@@ -280,11 +280,12 @@ export function ClockWidget({
   // Libur = bukan hari kerja menurut jadwal, ATAU hari libur kalender yang cocok.
   const offDayToday = holidayToday || !workDays.includes(witaDowNow());
   const [now, setNow] = useState<Date | null>(null);
-  // Drives the one-shot clock-in feedback animation (null = idle).
-  const [stamp, setStamp] = useState<{ late: boolean; minutes: number } | null>(null);
+  // Drives the one-shot clock-in/out feedback animation (null = idle).
+  // dir: "in"|"out"; flag: late (in) / overtime (out); minutes: the count.
+  const [stamp, setStamp] = useState<{ dir: "in" | "out"; flag: boolean; minutes: number } | null>(null);
   // Owner preview: when set, the next camera capture shows the stamp WITHOUT
   // hitting the API — so the test walks the real face-capture → animation flow.
-  const previewPending = useRef<{ late: boolean; minutes: number } | null>(null);
+  const previewPending = useRef<{ dir: "in" | "out"; flag: boolean; minutes: number } | null>(null);
   const router = useRouter();
   // Seed from today's server record so a refresh keeps state: clocked in (no out
   // yet) → "in"; clocked in AND out → "done"; nothing yet → "out".
@@ -486,12 +487,16 @@ export function ClockWidget({
         // Celebrate a normal clock-in (not the swap/overtime off-day flows) with a
         // color-psychology feedback stamp: green on-time vs gentle amber if late.
         if (data.recorded && typeof data.lateMinutes === "number") {
-          setStamp({ late: data.lateMinutes > 0, minutes: data.lateMinutes });
+          setStamp({ dir: "in", flag: data.lateMinutes > 0, minutes: data.lateMinutes });
         }
       } else {
         setClockOutAt(new Date());
         setPhase("done");
         setNotice({ tone: "ok", text: t.clockOutOk });
+        // Clock-out stamp: content green "good work" vs proud amber if overtime.
+        if (data.recorded && typeof data.overtimeMinutes === "number") {
+          setStamp({ dir: "out", flag: data.overtimeMinutes > 0, minutes: data.overtimeMinutes });
+        }
       }
       // Sinkronkan ulang data server di latar belakang (riwayat absensi, dashboard)
       // tanpa memblokir UI — cache router diinvalidasi lalu di-prefetch ulang.
@@ -646,28 +651,43 @@ export function ClockWidget({
 
       {stampPreview && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line bg-panel/60 px-3 py-2 text-xs">
-          <span className="font-medium text-faint">{locale === "en" ? "Preview animation:" : "Pratinjau animasi:"}</span>
+          <span className="w-full font-medium text-faint">{locale === "en" ? "Preview animation:" : "Pratinjau animasi:"}</span>
           <button
             type="button"
-            onClick={() => { setNotice(null); previewPending.current = { late: false, minutes: 0 }; setFlow("camera"); }}
+            onClick={() => { setNotice(null); previewPending.current = { dir: "in", flag: false, minutes: 0 }; setFlow("camera"); }}
             className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
           >
-            {locale === "en" ? "On-time" : "Tepat waktu"}
+            {locale === "en" ? "In · on-time" : "Masuk · tepat"}
           </button>
           <button
             type="button"
-            onClick={() => { setNotice(null); previewPending.current = { late: true, minutes: 8 }; setFlow("camera"); }}
+            onClick={() => { setNotice(null); previewPending.current = { dir: "in", flag: true, minutes: 8 }; setFlow("camera"); }}
             className="rounded-lg bg-gold px-2.5 py-1 font-semibold text-bark active:scale-95"
           >
-            {locale === "en" ? "Late" : "Telat"}
+            {locale === "en" ? "In · late" : "Masuk · telat"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setNotice(null); previewPending.current = { dir: "out", flag: false, minutes: 0 }; setFlow("camera"); }}
+            className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
+          >
+            {locale === "en" ? "Out · normal" : "Pulang"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setNotice(null); previewPending.current = { dir: "out", flag: true, minutes: 45 }; setFlow("camera"); }}
+            className="rounded-lg bg-gold px-2.5 py-1 font-semibold text-bark active:scale-95"
+          >
+            {locale === "en" ? "Out · overtime" : "Pulang · lembur"}
           </button>
         </div>
       )}
 
       {stamp && (
         <ClockStamp
-          late={stamp.late}
-          lateMinutes={stamp.minutes}
+          dir={stamp.dir}
+          flag={stamp.flag}
+          minutes={stamp.minutes}
           locale={locale}
           onDone={() => setStamp(null)}
         />

@@ -234,6 +234,7 @@ export async function POST(req: Request) {
 
   let recorded = false;
   let lateMinutes: number | null = null;
+  let overtimeMinutes: number | null = null;
   if (profile?.employee_id) {
     if (direction === "in") {
       // Telat = selisih jam masuk vs jadwal mulai (WITA).
@@ -271,7 +272,7 @@ export async function POST(req: Request) {
       const workEnd = (emp?.work_end as string) ?? "17:00";
       const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
       const [eh, em] = workEnd.split(":").map(Number);
-      const overtimeMinutes = Math.max(0, ch * 60 + cm - (eh * 60 + em));
+      overtimeMinutes = Math.max(0, ch * 60 + cm - (eh * 60 + em));
 
       // Clock-out only completes an existing clock-in for today. .select() lets us
       // detect "no row updated" (never clocked in) instead of faking success.
@@ -297,5 +298,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, recorded, distance, lateMinutes });
+  return NextResponse.json({ ok: true, recorded, distance, lateMinutes, overtimeMinutes });
 }

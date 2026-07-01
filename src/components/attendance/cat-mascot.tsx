@@ -11,12 +11,22 @@ const BARK = "#26331e";
 const BLUSH = "#ef8fa6";
 const INNER_EAR = "#f4c7cf";
 
-export function CatMascot({ mood, className }: { mood: "happy" | "late"; className?: string }) {
-  const late = mood === "late";
-  const light = late ? "#f6d074" : "#b3d074";
-  const base = late ? "#e0a82e" : "#7d9c57";
-  const dark = late ? "#b9841f" : "#587741";
-  const u = mood; // unique gradient id suffix
+export function CatMascot({
+  expression,
+  tone,
+  className,
+}: {
+  expression: "happy" | "late" | "sleepy";
+  tone: "green" | "amber";
+  className?: string;
+}) {
+  const late = expression === "late";
+  const sleepy = expression === "sleepy";
+  const amber = tone === "amber";
+  const light = amber ? "#f6d074" : "#b3d074";
+  const base = amber ? "#e0a82e" : "#7d9c57";
+  const dark = amber ? "#b9841f" : "#587741";
+  const u = `${expression}-${tone}`; // unique gradient id suffix
 
   return (
     <svg viewBox="0 0 120 120" className={className} role="img" aria-hidden fill="none">
@@ -80,16 +90,23 @@ export function CatMascot({ mood, className }: { mood: "happy" | "late"; classNa
           </g>
         )}
 
-        {/* Big glossy eyes */}
-        <g>
-          <ellipse cx="46" cy={late ? "61" : "60"} rx="7.6" ry="9.4" fill={`url(#eye-${u})`} />
-          <ellipse cx="74" cy={late ? "61" : "60"} rx="7.6" ry="9.4" fill={`url(#eye-${u})`} />
-          {/* catchlights */}
-          <circle cx="43.5" cy={late ? "57.5" : "56.5"} r="2.9" fill="#fff" />
-          <circle cx="71.5" cy={late ? "57.5" : "56.5"} r="2.9" fill="#fff" />
-          <circle cx="48" cy={late ? "63.5" : "62.5"} r="1.5" fill="#fff" fillOpacity="0.85" />
-          <circle cx="76" cy={late ? "63.5" : "62.5"} r="1.5" fill="#fff" fillOpacity="0.85" />
-        </g>
+        {/* Eyes — sleepy: content closed arcs; otherwise big glossy eyes */}
+        {sleepy ? (
+          <g stroke={BARK} strokeWidth="4" strokeLinecap="round">
+            <path d="M40 59 Q47 65 54 59" />
+            <path d="M66 59 Q73 65 80 59" />
+          </g>
+        ) : (
+          <g>
+            <ellipse cx="46" cy={late ? "61" : "60"} rx="7.6" ry="9.4" fill={`url(#eye-${u})`} />
+            <ellipse cx="74" cy={late ? "61" : "60"} rx="7.6" ry="9.4" fill={`url(#eye-${u})`} />
+            {/* catchlights */}
+            <circle cx="43.5" cy={late ? "57.5" : "56.5"} r="2.9" fill="#fff" />
+            <circle cx="71.5" cy={late ? "57.5" : "56.5"} r="2.9" fill="#fff" />
+            <circle cx="48" cy={late ? "63.5" : "62.5"} r="1.5" fill="#fff" fillOpacity="0.85" />
+            <circle cx="76" cy={late ? "63.5" : "62.5"} r="1.5" fill="#fff" fillOpacity="0.85" />
+          </g>
+        )}
 
         {/* Nose */}
         <path d="M56.5 67 L63.5 67 L60 71.5 Z" fill="#c06774" />
