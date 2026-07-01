@@ -6,20 +6,26 @@
  */
 
 import type { Employee, EmployeeContract, LeaveBalance, LeaveRequest } from "@/lib/types";
+import { witaNow } from "@/lib/utils";
 
 export const ANNUAL_QUOTA = 12;
 
-/** Whole months of service completed between `startISO` and `asOf`. */
+/**
+ * Whole months of service completed between `startISO` and `asOf`.
+ * Both anchors are read in UTC: `startISO` ("YYYY-MM-DD") parses to UTC midnight,
+ * and callers pass a WITA-anchored `asOf` (see {@link witaNow}), so the tenure
+ * boundary is evaluated on the WITA calendar day regardless of server timezone.
+ */
 function completedMonths(startISO: string, asOf: Date): number {
   const start = new Date(startISO);
   if (isNaN(start.getTime())) return 0;
-  let m = (asOf.getFullYear() - start.getFullYear()) * 12 + (asOf.getMonth() - start.getMonth());
-  if (asOf.getDate() < start.getDate()) m -= 1; // not a full month yet
+  let m = (asOf.getUTCFullYear() - start.getUTCFullYear()) * 12 + (asOf.getUTCMonth() - start.getUTCMonth());
+  if (asOf.getUTCDate() < start.getUTCDate()) m -= 1; // not a full month yet
   return m;
 }
 
 /** Entitlement: 0 in the first year of service, then `ANNUAL_QUOTA`. */
-export function annualQuotaFor(startISO: string | null | undefined, asOf: Date = new Date()): number {
+export function annualQuotaFor(startISO: string | null | undefined, asOf: Date = witaNow()): number {
   if (!startISO) return 0;
   return completedMonths(startISO, asOf) >= 12 ? ANNUAL_QUOTA : 0;
 }
@@ -63,10 +69,10 @@ function dayBeforeISO(iso: string): string {
 export function leaveHistory(
   startISO: string | null | undefined,
   requests: LeaveRequest[],
-  asOf: Date = new Date(),
+  asOf: Date = witaNow(),
 ): LeavePeriod[] {
   if (!startISO || isNaN(new Date(startISO).getTime())) return [];
-  const asOfISO = `${asOf.getFullYear()}-${pad(asOf.getMonth() + 1)}-${pad(asOf.getDate())}`;
+  const asOfISO = `${asOf.getUTCFullYear()}-${pad(asOf.getUTCMonth() + 1)}-${pad(asOf.getUTCDate())}`;
   const annual = requests.filter((r) => r.type === "annual" && r.status === "approved");
 
   const periods: LeavePeriod[] = [];

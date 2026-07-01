@@ -36,6 +36,20 @@ const MONTHS: Record<"id" | "en", string[]> = {
   ],
 };
 
+/** Shared WITA (Asia/Makassar) date formatter — reused so every date renders in
+ *  the attendance timezone regardless of server or browser locale. */
+const WITA_YMD = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Makassar",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+/** [year, month(1-12), day] of an instant, read in WITA. */
+function witaYMD(d: Date): [number, number, number] {
+  const [y, m, day] = WITA_YMD.format(d).split("-").map(Number);
+  return [y, m, day];
+}
+
 export function formatDate(
   input: string | Date,
   style: "short" | "long" = "short",
@@ -43,11 +57,15 @@ export function formatDate(
 ): string {
   const d = typeof input === "string" ? new Date(input) : input;
   if (Number.isNaN(d.getTime())) return "—";
+  // Always render the WITA calendar day — a date-only string ("2026-07-01") is
+  // parsed as UTC midnight, which is still the same day in WITA (UTC+8); a full
+  // instant is mapped to its WITA day. Avoids off-by-one on non-WITA locales.
+  const [y, mo, day] = witaYMD(d);
   const months = MONTHS[locale];
   if (style === "long") {
-    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    return `${day} ${months[mo - 1]} ${y}`;
   }
-  return `${String(d.getDate()).padStart(2, "0")} ${months[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
+  return `${String(day).padStart(2, "0")} ${months[mo - 1].slice(0, 3)} ${y}`;
 }
 
 export function monthLabel(period: string, locale: "id" | "en" = "id"): string {
@@ -78,12 +96,16 @@ export function addDaysStr(date: string, days: number): string {
 
 /** Today's date (YYYY-MM-DD) in WITA (Asia/Makassar) — the attendance timezone. */
 export function witaToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Makassar",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return WITA_YMD.format(new Date());
+}
+
+/**
+ * "Now" as a Date whose UTC components equal the current WITA calendar day
+ * (anchored at midnight). Pass this to date-only APIs (tenure/anniversary math)
+ * so they stay on the WITA day regardless of the server's own timezone.
+ */
+export function witaNow(): Date {
+  return new Date(`${witaToday()}T00:00:00Z`);
 }
 
 export function formatTime(input?: string | null): string {

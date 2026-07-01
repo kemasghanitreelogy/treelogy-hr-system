@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient, findUserByEmail } from "@/lib/supabase/admin";
 import { mapEmployee } from "@/lib/data";
+import { witaToday } from "@/lib/utils";
 import type { Employee, Team } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -174,7 +175,7 @@ export async function POST(req: Request) {
   const row = {
     nik,
     status: "active",
-    join_date: new Date().toISOString().slice(0, 10),
+    join_date: witaToday(),
     bpjs_kes: true,
     bpjs_tk: true,
     ...toRow(body),

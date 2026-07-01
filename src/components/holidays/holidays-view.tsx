@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarOff, Loader2, Plus, Trash2 } from "lucide-react";
 import type { Holiday, Religion } from "@/lib/types";
-import { cn, formatDate, monthLabel } from "@/lib/utils";
+import { cn, formatDate, monthLabel, witaToday } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import { apiErrorMessage } from "@/lib/api-error";
 import type { Locale } from "@/lib/i18n";
@@ -70,10 +70,12 @@ export function HolidaysView({ holidays, canManage }: { holidays: Holiday[]; can
   const toast = useToast();
 
   const [list, setList] = useState(() => [...holidays].sort((a, b) => a.date.localeCompare(b.date)));
-  const now = new Date();
-  const curYear = now.getFullYear();
+  // Default calendar to the current month/year in WITA (not the browser's tz).
+  const witaTodayStr = witaToday(); // "YYYY-MM-DD"
+  const curYear = Number(witaTodayStr.slice(0, 4));
+  const curMonth = Number(witaTodayStr.slice(5, 7)); // 1-12
   const [mode, setMode] = useState<Mode>("month");
-  const [month, setMonth] = useState(now.getMonth() + 1); // 1-12
+  const [month, setMonth] = useState(curMonth);
   const [year, setYear] = useState(curYear);
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
@@ -147,7 +149,7 @@ export function HolidaysView({ holidays, canManage }: { holidays: Holiday[]; can
             {mode === "month" && (
               <>
                 <button
-                  onClick={() => { setMonth(now.getMonth() + 1); setYear(curYear); }}
+                  onClick={() => { setMonth(curMonth); setYear(curYear); }}
                   className="rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium text-muted hover:text-ink"
                 >
                   {t.thisMonth}
