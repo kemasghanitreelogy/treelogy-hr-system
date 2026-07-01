@@ -79,8 +79,8 @@ export function ClockStamp({
     } catch {
       /* vibrate unsupported — ignore */
     }
-    const fade = setTimeout(() => setLeaving(true), 1800);
-    const done = setTimeout(() => onDoneRef.current(), 2000);
+    const fade = setTimeout(() => setLeaving(true), 3800);
+    const done = setTimeout(() => onDoneRef.current(), 4000);
     return () => {
       clearTimeout(fade);
       clearTimeout(done);
