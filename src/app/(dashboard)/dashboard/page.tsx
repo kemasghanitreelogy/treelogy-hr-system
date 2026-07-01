@@ -31,6 +31,7 @@ import {
   getLeaveBalances,
   getContracts,
 } from "@/lib/data";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { applyTenureQuota } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
@@ -204,7 +205,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-5 fade-up">
       <div className="flex flex-col gap-1">
-        <p className="text-sm text-muted">{formatDate(TODAY, "long", locale)}</p>
+        <p className="text-sm text-muted">{formatDate(isSupabaseConfigured ? witaToday() : TODAY, "long", locale)}</p>
         <h2 className="font-display text-xl font-bold text-ink sm:text-2xl">
           {t.welcome(firstName)}
         </h2>

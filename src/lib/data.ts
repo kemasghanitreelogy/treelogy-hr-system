@@ -18,6 +18,7 @@ import {
   tabunganEntries as seedTabungan,
 } from "./seed";
 import { roles, systemUsers, type UserStatus } from "./rbac";
+import { witaToday } from "./utils";
 import { isSupabaseConfigured } from "./supabase/config";
 import { createClient } from "./supabase/server";
 import type {
@@ -705,11 +706,16 @@ export interface DashboardData {
 
 export async function getDashboardData(): Promise<DashboardData> {
   const t0 = performance.now();
+  // Live (Supabase) → tanggal WITA nyata; seed/demo → konstanta beku (dataset demo
+  // memang dipatok ke TODAY). Tanpa ini, dashboard live selalu menampilkan
+  // "hari ini" versi demo dan absensi hari berjalan tak pernah muncul.
+  const todayStr = isSupabaseConfigured ? witaToday() : TODAY;
+  const period = isSupabaseConfigured ? todayStr.slice(0, 7) : CURRENT_PERIOD;
   // Hanya tarik absensi bulan berjalan (bukan seluruh tabel) — dashboard hanya
   // butuh "hari ini" + bulan ini + tren beberapa hari terakhir.
   const [employees, attendanceRows, leave, dayOff, overtime] = await Promise.all([
     getEmployees(),
-    getAttendanceSince(`${CURRENT_PERIOD}-01`),
+    getAttendanceSince(`${period}-01`),
     getLeaveRequests(),
     getDayOffInLieu(),
     getOvertimeRequests(),
@@ -717,8 +723,8 @@ export async function getDashboardData(): Promise<DashboardData> {
   const tFetch = performance.now();
   const empMap = new Map(employees.map((e) => [e.id, e]));
   const active = employees.filter((e) => e.status === "active");
-  const todayRows = attendanceRows.filter((r) => r.date === TODAY);
-  const monthRows = attendanceRows.filter((r) => r.date.startsWith(CURRENT_PERIOD));
+  const todayRows = attendanceRows.filter((r) => r.date === todayStr);
+  const monthRows = attendanceRows.filter((r) => r.date.startsWith(period));
 
   const presentToday = todayRows.filter((r) => r.status === "present" || r.status === "late").length;
   const lateToday = todayRows.filter((r) => r.status === "late").length;
@@ -729,7 +735,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   const periodRows = monthRows;
   const payrollNet = active.reduce(
-    (s, e) => s + buildPayslip(e, CURRENT_PERIOD, "pr-" + CURRENT_PERIOD, periodRows, overtime, leave).netPay,
+    (s, e) => s + buildPayslip(e, period, "pr-" + period, periodRows, overtime, leave).netPay,
     0,
   );
 
