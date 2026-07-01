@@ -65,6 +65,17 @@ export function periodsBack(n: number, from: string): string[] {
   });
 }
 
+/**
+ * Add (or subtract) whole days to a YYYY-MM-DD string, returning YYYY-MM-DD.
+ * Pure calendar arithmetic anchored at UTC midnight — safe for date-only values
+ * (Indonesia has no DST, so no wall-clock drift).
+ */
+export function addDaysStr(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Today's date (YYYY-MM-DD) in WITA (Asia/Makassar) — the attendance timezone. */
 export function witaToday(): string {
   return new Intl.DateTimeFormat("en-CA", {

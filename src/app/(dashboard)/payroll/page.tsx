@@ -1,7 +1,7 @@
 import { PayrollView } from "@/components/payroll/payroll-view";
 import { PayslipList } from "@/components/payroll/payslip-list";
 import {
-  CURRENT_PERIOD,
+  livePeriod,
   buildPayslip,
   getAttendanceSince,
   getEmployees,
@@ -48,7 +48,7 @@ function buildHistory(emps: Employee[], attendance: AttendanceRecord[], overtime
   // Hanya bulan yang memiliki data absensi tersimpan — jangan mengarang slip untuk
   // bulan kosong sebelum sistem berjalan (mis. Jan–Mei 2026 / 2025).
   const periods = [...new Set(attendance.map((a) => a.date.slice(0, 7)))]
-    .filter((p) => p <= CURRENT_PERIOD)
+    .filter((p) => p <= livePeriod())
     .sort()
     .reverse(); // terbaru dulu
   return periods.flatMap((p) => {
@@ -58,7 +58,7 @@ function buildHistory(emps: Employee[], attendance: AttendanceRecord[], overtime
 }
 
 export default async function PayrollPage() {
-  const period = CURRENT_PERIOD;
+  const period = livePeriod();
   const oldest = periodsBack(HISTORY_MONTHS, period)[HISTORY_MONTHS - 1];
   const user = await getSessionUser();
   const locale = await getLocale();

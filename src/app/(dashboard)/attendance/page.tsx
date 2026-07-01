@@ -2,8 +2,8 @@ import { ClockWidget } from "@/components/attendance/clock-widget";
 import { AttendanceView } from "@/components/attendance/attendance-view";
 import { AttendanceSettingsCard } from "@/components/attendance/attendance-settings-card";
 import {
-  CURRENT_PERIOD,
-  TODAY,
+  liveToday,
+  livePeriod,
   getAttendance,
   getAttendanceSettings,
   getClockApprovals,
@@ -14,7 +14,6 @@ import {
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
-import { witaToday } from "@/lib/utils";
 
 export const metadata = { title: "Absensi — Treelogy HR" };
 
@@ -30,10 +29,13 @@ export default async function AttendancePage() {
   ]);
   const pendingApprovals = approvalsAll.filter((a) => a.status === "pending");
   const canManage = can(user, "attendance.manage");
+  // Periode/hari "berjalan": tanggal WITA nyata saat live, konstanta demo saat seed.
+  const period = livePeriod();
+  const today = liveToday();
   // Lembur disetujui pada periode berjalan → bagian "Daftar Lembur" pada ekspor XLSX (HR saja).
   const overtime = canManage
     ? overtimeAll
-        .filter((o) => o.status === "approved" && o.date.startsWith(CURRENT_PERIOD))
+        .filter((o) => o.status === "approved" && o.date.startsWith(period))
         .map((o) => ({ employeeId: o.employeeId, date: o.date, hours: o.hours }))
     : [];
   // Hari libur nasional (publik) → grid edit-massal tidak menganggapnya sel kosong.
@@ -43,7 +45,7 @@ export default async function AttendancePage() {
   // Selain HR/admin hanya melihat absensinya sendiri (RLS sudah membatasi di
   // Supabase; filter ini menjaga perilaku yang sama di mode seed/offline).
   const records = all
-    .filter((r) => r.date.startsWith(CURRENT_PERIOD))
+    .filter((r) => r.date.startsWith(period))
     .filter((r) => canManage || (user?.employeeId != null && r.employeeId === user.employeeId));
   const employees = employeesAll.map((e) => ({
     id: e.id,
@@ -67,8 +69,7 @@ export default async function AttendancePage() {
   // cukup riwayat saja, jangan dobel. HR/admin tetap dapat widget di halaman
   // ini karena Beranda mereka berisi dashboard operasional (tanpa widget).
   const showClockWidget = audienceFromPermissions(user?.permissions ?? []) === "ops";
-  // Today's record (WITA) so the clock widget reflects clocked-in state on refresh.
-  const today = witaToday();
+  // Today's record so the clock widget reflects clocked-in state on refresh.
   const todayRecord = all.find((r) => r.employeeId === user?.employeeId && r.date === today) ?? null;
 
   const view = (
@@ -76,7 +77,7 @@ export default async function AttendancePage() {
       records={records}
       employees={employees}
       dates={dates}
-      defaultDate={dates.includes(TODAY) ? TODAY : dates[dates.length - 1] ?? TODAY}
+      defaultDate={dates.includes(today) ? today : dates[dates.length - 1] ?? today}
       canReviewAll={canManage}
       approvals={canManage ? pendingApprovals : []}
       overtime={overtime}

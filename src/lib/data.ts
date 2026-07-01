@@ -18,7 +18,7 @@ import {
   tabunganEntries as seedTabungan,
 } from "./seed";
 import { roles, systemUsers, type UserStatus } from "./rbac";
-import { witaToday } from "./utils";
+import { addDaysStr, witaToday } from "./utils";
 import { isSupabaseConfigured } from "./supabase/config";
 import { createClient } from "./supabase/server";
 import type {
@@ -46,6 +46,19 @@ import type {
 
 export { TODAY, CURRENT_PERIOD };
 export { roles as _roles } from "./rbac";
+
+/**
+ * The app's "today" (YYYY-MM-DD). Live (Supabase) → real WITA date; seed/demo →
+ * the frozen demo constant so the seed dataset stays internally coherent.
+ * Use this everywhere instead of the raw TODAY constant on live-facing paths.
+ */
+export function liveToday(): string {
+  return isSupabaseConfigured ? witaToday() : TODAY;
+}
+/** Current period (YYYY-MM) matching {@link liveToday}. */
+export function livePeriod(): string {
+  return liveToday().slice(0, 7);
+}
 
 /* ============================================================
    Data API — reads from Supabase when configured, else seed.
@@ -706,16 +719,21 @@ export interface DashboardData {
 
 export async function getDashboardData(): Promise<DashboardData> {
   const t0 = performance.now();
-  // Live (Supabase) → tanggal WITA nyata; seed/demo → konstanta beku (dataset demo
-  // memang dipatok ke TODAY). Tanpa ini, dashboard live selalu menampilkan
-  // "hari ini" versi demo dan absensi hari berjalan tak pernah muncul.
-  const todayStr = isSupabaseConfigured ? witaToday() : TODAY;
-  const period = isSupabaseConfigured ? todayStr.slice(0, 7) : CURRENT_PERIOD;
-  // Hanya tarik absensi bulan berjalan (bukan seluruh tabel) — dashboard hanya
-  // butuh "hari ini" + bulan ini + tren beberapa hari terakhir.
+  // Live (Supabase) → tanggal WITA nyata; seed/demo → konstanta beku. Tanpa ini,
+  // dashboard live selalu menampilkan "hari ini" versi demo dan absensi hari
+  // berjalan tak pernah muncul.
+  const todayStr = liveToday();
+  const period = livePeriod();
+  // Jendela fetch = yang paling awal dari (awal bulan berjalan) atau (13 hari lalu),
+  // supaya tren 14-hari tetap utuh saat melintasi batas bulan (mis. awal Juli masih
+  // menampilkan ekor akhir Juni). Statistik "hari ini"/"bulan ini" tetap difilter
+  // ketat di bawah, jadi jendela yang lebih lebar tidak mencemari angka bulanan.
+  const monthStart = `${period}-01`;
+  const trendStart = addDaysStr(todayStr, -13);
+  const fetchFrom = trendStart < monthStart ? trendStart : monthStart;
   const [employees, attendanceRows, leave, dayOff, overtime] = await Promise.all([
     getEmployees(),
-    getAttendanceSince(`${period}-01`),
+    getAttendanceSince(fetchFrom),
     getLeaveRequests(),
     getDayOffInLieu(),
     getOvertimeRequests(),
