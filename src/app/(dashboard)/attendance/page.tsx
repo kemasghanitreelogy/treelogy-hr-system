@@ -102,6 +102,7 @@ export default async function AttendancePage() {
           holidayToday={holidayToday != null}
           holidayName={holidayToday?.name ?? null}
           todayRecord={todayRecord}
+          stampPreview={user?.email === "kemas@treelogy.com"}
         />
       </div>
       <div className="space-y-4">

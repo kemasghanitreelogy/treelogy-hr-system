@@ -194,6 +194,7 @@ export default async function DashboardPage() {
         holidayName={holidayToday?.name ?? null}
         todayRecord={todayRecord}
         locale={locale}
+        stampPreview={user.email === "kemas@treelogy.com"}
       />
     );
   }

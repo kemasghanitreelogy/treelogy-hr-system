@@ -62,7 +62,7 @@ export function ClockStamp({
 
   return createPortal(
     <div
-      className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center px-6"
+      className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6"
       role="status"
       aria-live="polite"
     >
@@ -80,7 +80,8 @@ export function ClockStamp({
           )}
           {/* badge */}
           <div className={`animate-pop-in flex h-24 w-24 items-center justify-center rounded-full ${disc} shadow-pop`}>
-            <Check className="h-11 w-11 text-cream" strokeWidth={3} aria-hidden />
+            {/* Dark tick on amber (caution chip = crisp on mobile); white on green. */}
+            <Check className={`h-11 w-11 ${late ? "text-bark" : "text-cream"}`} strokeWidth={3} aria-hidden />
           </div>
         </div>
 

@@ -258,11 +258,14 @@ export function ClockWidget({
   holidayToday = false,
   holidayName = null,
   todayRecord = null,
+  stampPreview = false,
 }: {
   geofence: TeamGeofence;
   requireLocation: boolean;
   requirePhoto: boolean;
   shiftLabel?: string;
+  /** Owner-only: show buttons to preview the clock-in animation (on-time / late). */
+  stampPreview?: boolean;
   /** Hari kerja karyawan (0=Min..6=Sab); clock-in di luar ini → modal pilihan. */
   workDays?: number[];
   /** Hari ini libur nasional/keagamaan yang berlaku untuk karyawan ini →
@@ -628,6 +631,26 @@ export function ClockWidget({
       />
 
       <OffDayModal open={oodPending != null} t={t} holidayName={holidayName} onChoose={chooseOffDay} onCancel={() => setOodPending(null)} />
+
+      {stampPreview && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line bg-panel/60 px-3 py-2 text-xs">
+          <span className="font-medium text-faint">{locale === "en" ? "Preview animation:" : "Pratinjau animasi:"}</span>
+          <button
+            type="button"
+            onClick={() => setStamp({ late: false, minutes: 0 })}
+            className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
+          >
+            {locale === "en" ? "On-time" : "Tepat waktu"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setStamp({ late: true, minutes: 8 })}
+            className="rounded-lg bg-gold px-2.5 py-1 font-semibold text-bark active:scale-95"
+          >
+            {locale === "en" ? "Late" : "Telat"}
+          </button>
+        </div>
+      )}
 
       {stamp && (
         <ClockStamp

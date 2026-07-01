@@ -68,6 +68,7 @@ export function SelfDashboard({
   holidayName = null,
   todayRecord = null,
   locale = "id",
+  stampPreview = false,
 }: {
   firstName: string;
   geofence: TeamGeofence;
@@ -82,6 +83,7 @@ export function SelfDashboard({
   holidayName?: string | null;
   todayRecord?: Pick<AttendanceRecord, "clockIn" | "clockOut"> | null;
   locale?: Locale;
+  stampPreview?: boolean;
 }) {
   const t = STR[locale];
   const annualLeft = balance ? balance.annualQuota - balance.annualUsed : 0;
@@ -103,6 +105,7 @@ export function SelfDashboard({
           holidayToday={holidayToday}
           holidayName={holidayName}
           todayRecord={todayRecord}
+          stampPreview={stampPreview}
         />
       </div>
 
