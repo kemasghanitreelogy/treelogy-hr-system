@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { CatMascot, PawPrint } from "@/components/attendance/cat-mascot";
+import { CatMascot, PawPrint, Sparkle } from "@/components/attendance/cat-mascot";
 
 /**
  * One-shot clock-in mascot overlay — a small "world-class" celebratory moment.
@@ -44,6 +44,13 @@ const PAWS: { dx: string; dy: string; rot: string; delay: string }[] = [
   { dx: "44px", dy: "-88px", rot: "8deg", delay: "0.42s" },
 ];
 
+/** Twinkling sparkles (on-time only) — staggered so they shimmer across the hold. */
+const SPARKLES: { cls: string; size: string; color: string; delay: string }[] = [
+  { cls: "-right-1 top-1", size: "h-4 w-4", color: "#e0a82e", delay: "0.45s" },
+  { cls: "-left-1 top-1/2", size: "h-3 w-3", color: "#a4c26a", delay: "0.75s" },
+  { cls: "bottom-1 right-2", size: "h-3.5 w-3.5", color: "#e0a82e", delay: "1.05s" },
+];
+
 export function ClockStamp({
   late,
   lateMinutes,
@@ -68,8 +75,8 @@ export function ClockStamp({
     } catch {
       /* vibrate unsupported — ignore */
     }
-    // Hold ~1.7s, fade over the last 0.3s, unmount at 2s.
-    const fade = setTimeout(() => setLeaving(true), 1700);
+    // Full 2s moment, then a snappy fade-out at the very end.
+    const fade = setTimeout(() => setLeaving(true), 1800);
     const done = setTimeout(onDone, 2000);
     return () => {
       clearTimeout(fade);
@@ -85,7 +92,7 @@ export function ClockStamp({
 
   return createPortal(
     <div
-      className={`pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6 transition-opacity duration-300 ${leaving ? "opacity-0" : "opacity-100"}`}
+      className={`pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6 transition-opacity duration-200 ${leaving ? "opacity-0" : "opacity-100"}`}
       role="status"
       aria-live="polite"
     >
@@ -112,6 +119,13 @@ export function ClockStamp({
           <span className="animate-cat-bounce" style={{ animationDelay: "0.1s" }}>
             <CatMascot mood={late ? "late" : "happy"} className="h-28 w-28" />
           </span>
+          {/* Twinkling sparkles around the mascot (on-time only) */}
+          {!late &&
+            SPARKLES.map((s, i) => (
+              <span key={i} className={`animate-sparkle absolute ${s.cls}`} style={{ animationDelay: s.delay }}>
+                <Sparkle className={s.size} color={s.color} />
+              </span>
+            ))}
         </div>
 
         <p className={`fade-up font-display text-lg font-bold ${title}`} style={{ animationDelay: "0.22s" }}>
