@@ -1,5 +1,5 @@
 import { LeaveView } from "@/components/leave/leave-view";
-import { getAllContracts, getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries } from "@/lib/data";
+import { getAllContracts, getEmployees, getLeaveBalances, getLeaveRequests, getTabunganEntries, liveAsOfDate } from "@/lib/data";
 import { applyTenureQuota, earliestContractStart, tenureStart } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
@@ -30,7 +30,7 @@ export default async function LeavePage() {
   ]);
   const t = STR[locale];
   // Annual leave only accrues after 1 full year of service (from contract start).
-  const balances = applyTenureQuota(balancesRaw, employeesAll, contracts);
+  const balances = applyTenureQuota(balancesRaw, employeesAll, contracts, liveAsOfDate());
   // Tenure anchor per employee (earliest contract start → join date) for history.
   const starts = earliestContractStart(contracts);
   const tenureStarts: Record<string, string> = {};

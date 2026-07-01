@@ -59,6 +59,14 @@ export function liveToday(): string {
 export function livePeriod(): string {
   return liveToday().slice(0, 7);
 }
+/**
+ * {@link liveToday} as a Date anchored at UTC midnight of the WITA calendar day.
+ * For date-only APIs (e.g. tenure/anniversary math) that read Date components on
+ * the UTC server — this keeps them on the WITA day, not the server's UTC day.
+ */
+export function liveAsOfDate(): Date {
+  return new Date(`${liveToday()}T00:00:00Z`);
+}
 
 /* ============================================================
    Data API — reads from Supabase when configured, else seed.

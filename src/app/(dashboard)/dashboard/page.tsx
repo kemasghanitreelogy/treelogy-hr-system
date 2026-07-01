@@ -22,6 +22,7 @@ import { formatDate, rupiah } from "@/lib/utils";
 import {
   liveToday,
   livePeriod,
+  liveAsOfDate,
   computeRecap,
   getAttendance,
   getAttendanceSettings,
@@ -174,7 +175,7 @@ export default async function DashboardPage() {
     const todayRecord = attendance.find((r) => r.employeeId === user.employeeId && r.date === today) ?? null;
     const rawBalance = balances.find((b) => b.employeeId === user.employeeId);
     // Annual leave only accrues after 1 full year of service (from contract start).
-    const balance = rawBalance && me ? applyTenureQuota([rawBalance], [me], myContracts)[0] : rawBalance;
+    const balance = rawBalance && me ? applyTenureQuota([rawBalance], [me], myContracts, liveAsOfDate())[0] : rawBalance;
     const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
     const holidayToday = await getHolidayToday(me?.religion);
