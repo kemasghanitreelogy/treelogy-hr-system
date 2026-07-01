@@ -1,9 +1,10 @@
 /**
- * Treelogy clock mascot — a semi-realistic, richly-shaded sitting kitten drawn as
- * a lightweight vector (layered gradients + soft ambient-occlusion overlays + fur
- * tufts for dimension; no raster, no SVG blur filters, so it stays tiny/cheap).
- * Two tones (green / amber) × three expressions (happy / late / sleepy).
- * Ears twitch, tail sways, and it gently breathes (motion lives in globals.css).
+ * Treelogy clock mascot — a charming, semi-realistic sitting kitten drawn as a
+ * lightweight vector (layered gradients + soft shading; no raster, no SVG blur
+ * filters). Life comes from a slight head tilt (line-of-action), a converging
+ * gaze, and forelegs that actually connect the shoulders to the paws. Two tones
+ * (green / amber) × three expressions (happy / late / sleepy). Ears twitch, tail
+ * sways, and it gently breathes (motion in globals.css).
  */
 
 export function CatMascot({
@@ -23,26 +24,26 @@ export function CatMascot({
   const amber = tone === "amber";
 
   const c = amber
-    ? { light: "#f4c574", base: "#e2963a", dark: "#bd7420", shade: "#9a5713", stripe: "#a25e18", cream: "#fbeed0", creamSh: "#eccf9d", inner: "#e7a288", iris: "#8fae4e" }
-    : { light: "#b9d27a", base: "#7d9c57", dark: "#556d3c", shade: "#3f5330", stripe: "#42592c", cream: "#eef3d6", creamSh: "#d5deb4", inner: "#cfe0b0", iris: "#d1a33f" };
+    ? { light: "#f6c97c", base: "#e2963a", dark: "#bd7420", shade: "#96530f", stripe: "#a25e18", cream: "#fbeed0", creamSh: "#e6c793", inner: "#e7a288", iris1: "#a9c265", iris2: "#7a9a3f", iris3: "#38481d" }
+    : { light: "#b9d27a", base: "#7d9c57", dark: "#556d3c", shade: "#37481f", stripe: "#42592c", cream: "#eef3d6", creamSh: "#d5deb4", inner: "#cfe0b0", iris1: "#e6b84f", iris2: "#c08f2b", iris3: "#4a3410" };
   const u = `${expression}-${tone}`;
 
   return (
     <svg viewBox="0 0 120 144" className={className} role="img" aria-hidden fill="none">
       <defs>
-        <radialGradient id={`head-${u}`} cx="40%" cy="26%" r="82%">
+        <radialGradient id={`head-${u}`} cx="38%" cy="24%" r="84%">
           <stop offset="0%" stopColor={c.light} />
-          <stop offset="52%" stopColor={c.base} />
-          <stop offset="88%" stopColor={c.dark} />
+          <stop offset="50%" stopColor={c.base} />
+          <stop offset="86%" stopColor={c.dark} />
           <stop offset="100%" stopColor={c.shade} />
         </radialGradient>
-        <radialGradient id={`body-${u}`} cx="46%" cy="16%" r="94%">
+        <radialGradient id={`body-${u}`} cx="44%" cy="14%" r="96%">
           <stop offset="0%" stopColor={c.light} />
           <stop offset="55%" stopColor={c.base} />
           <stop offset="92%" stopColor={c.dark} />
           <stop offset="100%" stopColor={c.shade} />
         </radialGradient>
-        <radialGradient id={`belly-${u}`} cx="50%" cy="30%" r="80%">
+        <radialGradient id={`belly-${u}`} cx="50%" cy="26%" r="82%">
           <stop offset="0%" stopColor="#fffaf0" />
           <stop offset="55%" stopColor={c.cream} />
           <stop offset="100%" stopColor={c.creamSh} />
@@ -55,10 +56,10 @@ export function CatMascot({
           <stop offset="0%" stopColor={c.inner} />
           <stop offset="100%" stopColor={c.dark} />
         </radialGradient>
-        <radialGradient id={`iris-${u}`} cx="50%" cy="42%" r="60%">
-          <stop offset="0%" stopColor={c.iris} />
-          <stop offset="70%" stopColor={amber ? "#5f7a30" : "#a97f24"} />
-          <stop offset="100%" stopColor="#2e3a16" />
+        <radialGradient id={`iris-${u}`} cx="50%" cy="38%" r="62%">
+          <stop offset="0%" stopColor={c.iris1} />
+          <stop offset="55%" stopColor={c.iris2} />
+          <stop offset="100%" stopColor={c.iris3} />
         </radialGradient>
       </defs>
 
@@ -73,151 +74,145 @@ export function CatMascot({
       </g>
 
       <g className="cat-body">
-        {/* Backpack peeking behind the body (clock-out) */}
+        {/* Backpack behind the body (clock-out) */}
         {backpack && (
           <g>
-            <rect x="14" y="82" width="24" height="34" rx="9" fill="#c85536" />
-            <rect x="17" y="88" width="15" height="16" rx="5" fill="#e0805f" />
-            <path d="M20 82 Q26 78 32 82" stroke="#a84327" strokeWidth="3" fill="none" strokeLinecap="round" />
+            <rect x="12" y="82" width="24" height="34" rx="9" fill="#c85536" />
+            <rect x="15" y="88" width="15" height="16" rx="5" fill="#e0805f" />
+            <path d="M18 82 Q24 78 30 82" stroke="#a84327" strokeWidth="3" fill="none" strokeLinecap="round" />
           </g>
         )}
-        {/* Body */}
+
+        {/* Body + belly */}
         <path d="M60 58 C40 58 31 79 30 101 C29 123 42 136 60 136 C78 136 91 123 90 101 C89 79 80 58 60 58 Z" fill={`url(#body-${u})`} />
-        {/* Chest/belly fluff */}
         <path d="M60 74 C49 74 43 88 43 104 C43 122 50 132 60 132 C70 132 77 122 77 104 C77 88 71 74 60 74 Z" fill={`url(#belly-${u})`} />
-        {/* Backpack shoulder straps over the chest (clock-out) */}
-        {backpack && (
-          <g>
-            <path d="M45 70 Q46 90 49 110" stroke="#c85536" strokeWidth="6" strokeLinecap="round" fill="none" />
-            <path d="M75 70 Q74 90 71 110" stroke="#c85536" strokeWidth="6" strokeLinecap="round" fill="none" />
-            <path d="M45 70 Q46 88 48 104" stroke="#ffffff" strokeOpacity="0.2" strokeWidth="2" fill="none" />
-            <rect x="45" y="89" width="7" height="5" rx="1.5" fill="#f2e2b0" />
-            <rect x="68" y="89" width="7" height="5" rx="1.5" fill="#f2e2b0" />
-          </g>
-        )}
-        {/* Body stripes (soft) */}
-        <g stroke={c.stripe} strokeWidth="3.6" strokeLinecap="round" strokeOpacity="0.4" fill="none">
-          <path d="M35 90 Q41 94 40 99" /><path d="M34 104 Q41 108 40 113" /><path d="M36 118 Q42 121 41 125" />
-          <path d="M85 90 Q79 94 80 99" /><path d="M86 104 Q79 108 80 113" /><path d="M84 118 Q78 121 79 125" />
+        <g stroke={c.stripe} strokeWidth="3.6" strokeLinecap="round" strokeOpacity="0.38" fill="none">
+          <path d="M35 90 Q41 94 40 99" /><path d="M34 104 Q41 108 40 113" />
+          <path d="M85 90 Q79 94 80 99" /><path d="M86 104 Q79 108 80 113" />
         </g>
 
         {/* Hind feet */}
         <ellipse cx="43" cy="132" rx="11" ry="7" fill={c.base} />
         <ellipse cx="77" cy="132" rx="11" ry="7" fill={c.base} />
-        <path d="M43 132 a11 7 0 0 0 -11 0 Z" fill={c.shade} opacity="0.25" />
-        <g stroke={c.shade} strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.55">
-          <path d="M41 128 L41 132" /><path d="M45 128 L45 132" />
-          <path d="M75 128 L75 132" /><path d="M79 128 L79 132" />
+
+        {/* Forelegs — connect shoulders to the paws held together */}
+        <path d="M57 104 Q49 88 45 74" stroke={c.base} strokeWidth="15" strokeLinecap="round" />
+        <path d="M63 104 Q71 88 75 74" stroke={c.base} strokeWidth="15" strokeLinecap="round" />
+        <path d="M55 100 Q50 90 48 80" stroke={c.dark} strokeWidth="3" strokeLinecap="round" strokeOpacity="0.28" />
+        <path d="M65 100 Q70 90 72 80" stroke={c.light} strokeWidth="3" strokeLinecap="round" strokeOpacity="0.35" />
+
+        {/* Backpack shoulder straps over the chest (clock-out) */}
+        {backpack && (
+          <g>
+            <path d="M50 74 Q50 60 45 52" stroke="#c85536" strokeWidth="6" strokeLinecap="round" fill="none" />
+            <path d="M70 74 Q70 60 75 52" stroke="#c85536" strokeWidth="6" strokeLinecap="round" fill="none" />
+            <rect x="47" y="86" width="7" height="5" rx="1.5" fill="#f2e2b0" />
+            <rect x="66" y="86" width="7" height="5" rx="1.5" fill="#f2e2b0" />
+          </g>
+        )}
+
+        {/* Paws together */}
+        <ellipse cx="56" cy="105" rx="8.4" ry="7" fill={`url(#belly-${u})`} />
+        <ellipse cx="64" cy="105" rx="8.4" ry="7" fill={`url(#belly-${u})`} />
+        <g stroke="#cba86a" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.7">
+          <path d="M53 103 L53 107" /><path d="M56.5 103.5 L56.5 107.5" />
+          <path d="M63.5 103.5 L63.5 107.5" /><path d="M67 103 L67 107" />
         </g>
 
-        {/* Front paws held together at the chest */}
-        <ellipse cx="53" cy="98" rx="8.2" ry="15" fill={c.base} />
-        <ellipse cx="67" cy="98" rx="8.2" ry="15" fill={c.base} />
-        <path d="M53 98 m-8 0 a8 15 0 0 0 16 0 Z" fill={c.shade} opacity="0.18" />
-        <ellipse cx="53" cy="85" rx="6.6" ry="5" fill={`url(#belly-${u})`} />
-        <ellipse cx="67" cy="85" rx="6.6" ry="5" fill={`url(#belly-${u})`} />
-        <g stroke={c.shade} strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.5">
-          <path d="M51 83 L51 87" /><path d="M55 83 L55 87" />
-          <path d="M65 83 L65 87" /><path d="M69 83 L69 87" />
-        </g>
+        {/* Cast shadow from the head onto the chest */}
+        <ellipse cx="60" cy="74" rx="26" ry="9" fill={c.shade} opacity="0.16" />
 
-        {/* Ears */}
-        <g className="cat-ear-l">
-          <path d="M31 27 L22 0 L57 20 Z" fill={`url(#head-${u})`} />
-          <path d="M35 24 L28 8 L50 20 Z" fill={`url(#ear-${u})`} />
-        </g>
-        <g className="cat-ear-r">
-          <path d="M89 27 L98 0 L63 20 Z" fill={`url(#head-${u})`} />
-          <path d="M85 24 L92 8 L70 20 Z" fill={`url(#ear-${u})`} />
-        </g>
+        {/* HEAD (slight tilt for life) */}
+        <g transform="rotate(-8 60 72)">
+          <g className="cat-ear-l">
+            <path d="M31 27 L20 -2 L57 19 Z" fill={`url(#head-${u})`} />
+            <path d="M35 24 L27 7 L50 19 Z" fill={`url(#ear-${u})`} />
+          </g>
+          <g className="cat-ear-r">
+            <path d="M89 26 L99 -3 L63 18 Z" fill={`url(#head-${u})`} />
+            <path d="M85 23 L93 6 L70 18 Z" fill={`url(#ear-${u})`} />
+          </g>
 
-        {/* Head */}
-        <ellipse cx="60" cy="43" rx="39" ry="35" fill={`url(#head-${u})`} />
-        {/* Ambient occlusion where head meets body + under chin */}
-        <path d="M32 66 Q60 84 88 66 Q60 96 32 66 Z" fill={c.shade} opacity="0.20" />
-        {/* Top rim light */}
-        <path d="M34 22 Q60 8 86 22" stroke="#ffffff" strokeOpacity="0.28" strokeWidth="4" strokeLinecap="round" />
+          {/* Pear-shaped head (fuller cheeks, tapered chin) */}
+          <path d="M60 8 C36 8 23 24 23 43 C23 57 31 68 42 73 C50 77 70 77 78 73 C89 68 97 57 97 43 C97 24 84 8 60 8 Z" fill={`url(#head-${u})`} />
+          <path d="M28 60 Q60 82 92 60 Q60 74 28 60 Z" fill={c.shade} opacity="0.16" />
+          <path d="M33 20 Q60 6 87 20" stroke="#ffffff" strokeOpacity="0.30" strokeWidth="4" strokeLinecap="round" />
 
-        {/* Forehead tabby "M" */}
-        <g stroke={c.stripe} strokeWidth="2.3" strokeLinecap="round" strokeOpacity="0.7">
-          <path d="M55 20 L53 7" /><path d="M60 21 L60 5" /><path d="M65 20 L67 7" />
-          <path d="M49 24 L45 15" /><path d="M71 24 L75 15" />
-        </g>
+          {/* Forehead tabby "M" */}
+          <g stroke={c.stripe} strokeWidth="2.2" strokeLinecap="round" strokeOpacity="0.7">
+            <path d="M55 19 L53 6" /><path d="M60 20 L60 4" /><path d="M65 19 L67 6" />
+            <path d="M49 23 L45 14" /><path d="M71 23 L75 14" />
+          </g>
 
-        {/* Blush */}
-        <ellipse cx="32" cy="53" rx="6" ry="3.6" fill="#ef8fa6" fillOpacity="0.45" />
-        <ellipse cx="88" cy="53" rx="6" ry="3.6" fill="#ef8fa6" fillOpacity="0.45" />
+          {/* Blush */}
+          <ellipse cx="33" cy="52" rx="6.5" ry="4" fill="#ef8fa6" fillOpacity="0.42" />
+          <ellipse cx="87" cy="52" rx="6.5" ry="4" fill="#ef8fa6" fillOpacity="0.42" />
 
-        {/* Eyebrows — thin, subtle fur marks */}
-        <g stroke={c.stripe} strokeWidth="1.8" strokeLinecap="round" strokeOpacity="0.75">
-          {late ? (
-            <>
-              <path d="M39 28 Q46 24 52 29" />
-              <path d="M68 29 Q74 24 81 28" />
-            </>
+          {/* Eyebrows */}
+          <g stroke={c.stripe} strokeWidth="1.7" strokeLinecap="round" strokeOpacity="0.7">
+            {late ? (
+              <>
+                <path d="M39 27 Q46 23 52 28" />
+                <path d="M68 28 Q74 23 81 27" />
+              </>
+            ) : (
+              <>
+                <path d="M39 28 Q46 24 52 28" />
+                <path d="M68 28 Q74 24 81 28" />
+              </>
+            )}
+          </g>
+
+          {/* Eyes */}
+          {sleepy ? (
+            <g stroke={c.dark} strokeWidth="4.5" strokeLinecap="round">
+              <path d="M35 44 Q45.5 52 56 44" />
+              <path d="M64 44 Q74.5 52 85 44" />
+            </g>
           ) : (
-            <>
-              <path d="M40 29 Q46 26 52 29" />
-              <path d="M68 29 Q74 26 80 29" />
-            </>
+            <g>
+              <ellipse cx="45.5" cy="43" rx="12.5" ry="15" fill="#fff" />
+              <ellipse cx="74.5" cy="43" rx="12.5" ry="15" fill="#fff" />
+              <circle cx="47.5" cy="44" r="11.3" fill={`url(#iris-${u})`} />
+              <circle cx="72.5" cy="44" r="11.3" fill={`url(#iris-${u})`} />
+              <ellipse cx="48.5" cy="44" rx="6.2" ry="9" fill="#120b05" />
+              <ellipse cx="71.5" cy="44" rx="6.2" ry="9" fill="#120b05" />
+              <path d="M33 37 A12.5 15 0 0 1 58 37 A12.5 9 0 0 0 33 37 Z" fill="#000" opacity="0.18" />
+              <path d="M62 37 A12.5 15 0 0 1 87 37 A12.5 9 0 0 0 62 37 Z" fill="#000" opacity="0.18" />
+              <circle cx="43" cy="38.5" r="4" fill="#fff" />
+              <circle cx="68.5" cy="38.5" r="4" fill="#fff" />
+              <circle cx="51" cy="49" r="2" fill="#fff" fillOpacity="0.72" />
+              <circle cx="76.5" cy="49" r="2" fill="#fff" fillOpacity="0.72" />
+            </g>
+          )}
+
+          {/* Muzzle */}
+          <ellipse cx="52" cy="59" rx="7.5" ry="6" fill={`url(#belly-${u})`} fillOpacity="0.92" />
+          <ellipse cx="68" cy="59" rx="7.5" ry="6" fill={`url(#belly-${u})`} fillOpacity="0.92" />
+          <path d="M55.5 53.5 Q60 51.5 64.5 53.5 Q62 59 60 60 Q58 59 55.5 53.5 Z" fill="#cf7d84" />
+          <path d="M57 55 Q60 53.5 63 55" stroke="#fff" strokeOpacity="0.5" strokeWidth="1" strokeLinecap="round" />
+
+          {/* Mouth */}
+          {late ? (
+            <ellipse cx="60" cy="64" rx="3.3" ry="4.3" fill="#7a3b40" />
+          ) : sleepy ? (
+            <path d="M54 61 Q60 65 66 61" stroke={c.dark} strokeWidth="2.2" strokeLinecap="round" />
+          ) : (
+            <path d="M60 60 Q56 64.5 52.5 61.5 M60 60 Q64 64.5 67.5 61.5" stroke={c.dark} strokeWidth="2.2" strokeLinecap="round" />
+          )}
+
+          {/* Whiskers */}
+          <g stroke="#3a2a16" strokeOpacity="0.3" strokeWidth="1.1" strokeLinecap="round">
+            <path d="M45 57 Q34 55 27 53" /><path d="M45 60 Q33 61 26 62" />
+            <path d="M75 57 Q86 54 93 52" /><path d="M75 60 Q87 61 94 62" />
+          </g>
+
+          {/* Sweat drop (late only) */}
+          {late && (
+            <path className="cat-sweat" d="M95 28 C91 34 91 39 95 39 C99 39 99 34 95 28 Z" fill="#8fbfe0" stroke="#4a7ba6" strokeWidth="0.6" />
           )}
         </g>
-
-        {/* Eyes */}
-        {sleepy ? (
-          <g stroke={c.dark} strokeWidth="4.5" strokeLinecap="round">
-            <path d="M37 45 Q46 53 55 45" />
-            <path d="M65 45 Q74 53 83 45" />
-          </g>
-        ) : (
-          <g>
-            {/* sclera / eye socket shadow */}
-            <ellipse cx="46" cy="45" rx="11.5" ry="13.5" fill="#fff" />
-            <ellipse cx="74" cy="45" rx="11.5" ry="13.5" fill="#fff" />
-            {/* iris */}
-            <circle cx="46" cy="46" r="10.5" fill={`url(#iris-${u})`} />
-            <circle cx="74" cy="46" r="10.5" fill={`url(#iris-${u})`} />
-            {/* pupil */}
-            <ellipse cx="46" cy="46" rx="6" ry="8.5" fill="#140d07" />
-            <ellipse cx="74" cy="46" rx="6" ry="8.5" fill="#140d07" />
-            {/* upper-lid shadow */}
-            <path d="M35 40 A11.5 13.5 0 0 1 57 40 A11.5 8 0 0 0 35 40 Z" fill="#000" opacity="0.16" />
-            <path d="M63 40 A11.5 13.5 0 0 1 85 40 A11.5 8 0 0 0 63 40 Z" fill="#000" opacity="0.16" />
-            {/* catchlights */}
-            <circle cx="42.5" cy="41" r="3.4" fill="#fff" />
-            <circle cx="70.5" cy="41" r="3.4" fill="#fff" />
-            <circle cx="49" cy="50" r="1.8" fill="#fff" fillOpacity="0.7" />
-            <circle cx="77" cy="50" r="1.8" fill="#fff" fillOpacity="0.7" />
-          </g>
-        )}
-
-        {/* Muzzle */}
-        <ellipse cx="52" cy="60" rx="7.5" ry="6" fill={`url(#belly-${u})`} fillOpacity="0.9" />
-        <ellipse cx="68" cy="60" rx="7.5" ry="6" fill={`url(#belly-${u})`} fillOpacity="0.9" />
-        {/* Nose */}
-        <path d="M55.5 54.5 Q60 52.5 64.5 54.5 Q62 60 60 61 Q58 60 55.5 54.5 Z" fill="#cf7d84" />
-        <path d="M57 56 Q60 54.5 63 56" stroke="#fff" strokeOpacity="0.5" strokeWidth="1" strokeLinecap="round" />
-
-        {/* Mouth */}
-        {late ? (
-          <ellipse cx="60" cy="65" rx="3.3" ry="4.3" fill="#7a3b40" />
-        ) : sleepy ? (
-          <path d="M54 62 Q60 66 66 62" stroke={c.dark} strokeWidth="2.3" strokeLinecap="round" />
-        ) : (
-          <path d="M60 61 Q56 65.5 52 62 M60 61 Q64 65.5 68 62" stroke={c.dark} strokeWidth="2.3" strokeLinecap="round" />
-        )}
-
-        {/* Whiskers */}
-        <g stroke="#3a2a16" strokeOpacity="0.32" strokeWidth="1.2" strokeLinecap="round">
-          <path d="M45 58 Q34 56 28 54" /><path d="M45 61 Q33 62 27 63" />
-          <path d="M75 58 Q86 56 92 54" /><path d="M75 61 Q87 62 93 63" />
-        </g>
       </g>
-
-      {/* Sweat drop (late only) */}
-      {late && (
-        <path className="cat-sweat" d="M95 30 C91 36 91 41 95 41 C99 41 99 36 95 30 Z" fill="#8fbfe0" stroke="#4a7ba6" strokeWidth="0.6" />
-      )}
     </svg>
   );
 }
