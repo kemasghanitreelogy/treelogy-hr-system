@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -282,6 +282,9 @@ export function ClockWidget({
   const [now, setNow] = useState<Date | null>(null);
   // Drives the one-shot clock-in feedback animation (null = idle).
   const [stamp, setStamp] = useState<{ late: boolean; minutes: number } | null>(null);
+  // Owner preview: when set, the next camera capture shows the stamp WITHOUT
+  // hitting the API — so the test walks the real face-capture → animation flow.
+  const previewPending = useRef<{ late: boolean; minutes: number } | null>(null);
   const router = useRouter();
   // Seed from today's server record so a refresh keeps state: clocked in (no out
   // yet) → "in"; clocked in AND out → "done"; nothing yet → "out".
@@ -382,6 +385,14 @@ export function ClockWidget({
   }
 
   async function onCapture(dataUrl: string) {
+    // Preview mode: photo taken → play the animation, skip the real record.
+    if (previewPending.current) {
+      const p = previewPending.current;
+      previewPending.current = null;
+      setFlow("idle");
+      setStamp(p);
+      return;
+    }
     setFlow("submitting");
     await submit(geo, dataUrl, oorMode);
   }
@@ -615,6 +626,7 @@ export function ClockWidget({
         onCancel={() => {
           setFlow("idle");
           setOorMode(false);
+          previewPending.current = null;
         }}
       />
 
@@ -637,14 +649,14 @@ export function ClockWidget({
           <span className="font-medium text-faint">{locale === "en" ? "Preview animation:" : "Pratinjau animasi:"}</span>
           <button
             type="button"
-            onClick={() => setStamp({ late: false, minutes: 0 })}
+            onClick={() => { setNotice(null); previewPending.current = { late: false, minutes: 0 }; setFlow("camera"); }}
             className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
           >
             {locale === "en" ? "On-time" : "Tepat waktu"}
           </button>
           <button
             type="button"
-            onClick={() => setStamp({ late: true, minutes: 8 })}
+            onClick={() => { setNotice(null); previewPending.current = { late: true, minutes: 8 }; setFlow("camera"); }}
             className="rounded-lg bg-gold px-2.5 py-1 font-semibold text-bark active:scale-95"
           >
             {locale === "en" ? "Late" : "Telat"}
