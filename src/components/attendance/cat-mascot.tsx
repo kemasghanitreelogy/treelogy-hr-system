@@ -9,10 +9,13 @@
 export function CatMascot({
   expression,
   tone,
+  backpack = false,
   className,
 }: {
   expression: "happy" | "late" | "sleepy";
   tone: "green" | "amber";
+  /** Show a little backpack — "heading home" (clock-out). */
+  backpack?: boolean;
   className?: string;
 }) {
   const late = expression === "late";
@@ -70,10 +73,28 @@ export function CatMascot({
       </g>
 
       <g className="cat-body">
+        {/* Backpack peeking behind the body (clock-out) */}
+        {backpack && (
+          <g>
+            <rect x="14" y="82" width="24" height="34" rx="9" fill="#c85536" />
+            <rect x="17" y="88" width="15" height="16" rx="5" fill="#e0805f" />
+            <path d="M20 82 Q26 78 32 82" stroke="#a84327" strokeWidth="3" fill="none" strokeLinecap="round" />
+          </g>
+        )}
         {/* Body */}
         <path d="M60 58 C40 58 31 79 30 101 C29 123 42 136 60 136 C78 136 91 123 90 101 C89 79 80 58 60 58 Z" fill={`url(#body-${u})`} />
         {/* Chest/belly fluff */}
         <path d="M60 74 C49 74 43 88 43 104 C43 122 50 132 60 132 C70 132 77 122 77 104 C77 88 71 74 60 74 Z" fill={`url(#belly-${u})`} />
+        {/* Backpack shoulder straps over the chest (clock-out) */}
+        {backpack && (
+          <g>
+            <path d="M45 70 Q46 90 49 110" stroke="#c85536" strokeWidth="6" strokeLinecap="round" fill="none" />
+            <path d="M75 70 Q74 90 71 110" stroke="#c85536" strokeWidth="6" strokeLinecap="round" fill="none" />
+            <path d="M45 70 Q46 88 48 104" stroke="#ffffff" strokeOpacity="0.2" strokeWidth="2" fill="none" />
+            <rect x="45" y="89" width="7" height="5" rx="1.5" fill="#f2e2b0" />
+            <rect x="68" y="89" width="7" height="5" rx="1.5" fill="#f2e2b0" />
+          </g>
+        )}
         {/* Body stripes (soft) */}
         <g stroke={c.stripe} strokeWidth="3.6" strokeLinecap="round" strokeOpacity="0.4" fill="none">
           <path d="M35 90 Q41 94 40 99" /><path d="M34 104 Q41 108 40 113" /><path d="M36 118 Q42 121 41 125" />

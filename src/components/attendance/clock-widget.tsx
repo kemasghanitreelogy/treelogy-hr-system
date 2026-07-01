@@ -671,14 +671,7 @@ export function ClockWidget({
             onClick={() => { setNotice(null); previewPending.current = { dir: "out", flag: false, minutes: 0 }; setFlow("camera"); }}
             className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
           >
-            {locale === "en" ? "Out · normal" : "Pulang"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNotice(null); previewPending.current = { dir: "out", flag: true, minutes: 45 }; setFlow("camera"); }}
-            className="rounded-lg bg-gold px-2.5 py-1 font-semibold text-bark active:scale-95"
-          >
-            {locale === "en" ? "Out · overtime" : "Pulang · lembur"}
+            {locale === "en" ? "Clock-out" : "Pulang"}
           </button>
         </div>
       )}

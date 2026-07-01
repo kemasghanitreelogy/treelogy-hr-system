@@ -21,13 +21,11 @@ const STR = {
     inOn: () => ({ t: "Tepat waktu, cakep! 🐾", s: "Meong~ absen masuk tercatat" }),
     inLate: (n: number) => ({ t: `Telat ${n} menit 🐾`, s: "Santai, kucing juga suka rebahan dulu" }),
     outNorm: () => ({ t: "Kerja bagus hari ini! 🐾", s: "Hati-hati di jalan, sampai besok~" }),
-    outOt: (n: number) => ({ t: `Lembur ${n} menit, keren! 🐾`, s: "Jangan lupa istirahat yang cukup ya" }),
   },
   en: {
     inOn: () => ({ t: "Purrfect timing! 🐾", s: "Meow~ clock-in recorded" }),
     inLate: (n: number) => ({ t: `${n} min late 🐾`, s: "No biggie — even cats oversleep" }),
     outNorm: () => ({ t: "Great work today! 🐾", s: "Head home safe — see you tomorrow~" }),
-    outOt: (n: number) => ({ t: `${n} min overtime, hero! 🐾`, s: "Get some good rest, okay" }),
   },
 } as const;
 
@@ -94,11 +92,13 @@ export function ClockStamp({
   if (!mounted) return null;
 
   // Situation → mascot expression, tone, copy, and whether to celebrate.
-  const expression: "happy" | "late" | "sleepy" = dir === "in" && flag ? "late" : dir === "out" && !flag ? "sleepy" : "happy";
-  const tone: "green" | "amber" = flag ? "amber" : "green";
-  const celebrate = dir === "in" ? !flag : flag; // on-time-in or overtime-out
+  // Clock-out is always the same "heading home" moment (overtime included).
+  const expression: "happy" | "late" | "sleepy" = dir === "out" ? "sleepy" : flag ? "late" : "happy";
+  const tone: "green" | "amber" = dir === "out" ? "green" : flag ? "amber" : "green";
+  const celebrate = dir === "in" && !flag; // only an on-time clock-in gets confetti
+  const backpack = dir === "out";
   const c = STR[locale];
-  const copy = dir === "in" ? (flag ? c.inLate(minutes) : c.inOn()) : flag ? c.outOt(minutes) : c.outNorm();
+  const copy = dir === "out" ? c.outNorm() : flag ? c.inLate(minutes) : c.inOn();
 
   const glow = tone === "amber" ? "bg-gold-soft" : "bg-forest-100";
   const title = tone === "amber" ? "text-[#8a6512]" : "text-forest-700";
@@ -130,7 +130,7 @@ export function ClockStamp({
             </div>
           )}
           <span className="animate-cat-bounce relative" style={{ animationDelay: "0.1s" }}>
-            <CatMascot expression={expression} tone={tone} className="h-32 w-32" />
+            <CatMascot expression={expression} tone={tone} backpack={backpack} className="h-32 w-32" />
           </span>
           {/* Twinkling sparkles around the mascot (celebratory moments) */}
           {celebrate &&
