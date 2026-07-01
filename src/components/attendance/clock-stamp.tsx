@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
+import { CatMascot, PawPrint } from "@/components/attendance/cat-mascot";
 
 /**
  * One-shot clock-in mascot overlay — a small "world-class" celebratory moment.
@@ -91,7 +92,7 @@ export function ClockStamp({
       <div className="absolute inset-0 animate-overlay bg-bark/45 backdrop-blur-sm" />
 
       <div className="animate-dialog relative flex max-w-xs flex-col items-center gap-2 rounded-3xl bg-panel px-8 py-7 text-center shadow-pop">
-        <div className="relative mb-1 flex h-24 w-24 items-center justify-center">
+        <div className="relative mb-1 flex h-28 w-28 items-center justify-center">
           <span className={`absolute h-20 w-20 rounded-full ${halo}`} />
           <span className={`absolute h-20 w-20 rounded-full border-2 ${ring} animate-stamp-ring`} style={{ animationDelay: "0.16s" }} />
           {/* Paw burst radiating from the mascot (on-time only) */}
@@ -100,17 +101,16 @@ export function ClockStamp({
               {PAWS.map((p, i) => (
                 <span
                   key={i}
-                  className="animate-paw absolute text-2xl leading-none"
+                  className="animate-paw absolute"
                   style={{ "--dx": p.dx, "--dy": p.dy, "--rot": p.rot, animationDelay: p.delay } as CSSProperties}
-                  aria-hidden
                 >
-                  🐾
+                  <PawPrint className="h-5 w-5" color="#5f7e3e" />
                 </span>
               ))}
             </div>
           )}
-          <span className="animate-cat-bounce text-6xl leading-none" style={{ animationDelay: "0.1s" }} aria-hidden>
-            {late ? "🙀" : "😸"}
+          <span className="animate-cat-bounce" style={{ animationDelay: "0.1s" }}>
+            <CatMascot mood={late ? "late" : "happy"} className="h-28 w-28" />
           </span>
         </div>
 
