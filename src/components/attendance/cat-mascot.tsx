@@ -7,6 +7,8 @@
  * sways, and it gently breathes (motion in globals.css).
  */
 
+import type { ReactElement } from "react";
+
 export function CatMascot({
   expression,
   tone,
@@ -87,6 +89,7 @@ export function CatMascot({
         {/* Body + belly */}
         <path d="M60 58 C40 58 31 79 30 101 C29 123 42 136 60 136 C78 136 91 123 90 101 C89 79 80 58 60 58 Z" fill={`url(#body-${u})`} />
         <path d="M60 74 C49 74 43 88 43 104 C43 122 50 132 60 132 C70 132 77 122 77 104 C77 88 71 74 60 74 Z" fill={`url(#belly-${u})`} />
+        <BodyFur c={c} />
         <g stroke={c.stripe} strokeWidth="3.6" strokeLinecap="round" strokeOpacity="0.38" fill="none">
           <path d="M35 90 Q41 94 40 99" /><path d="M34 104 Q41 108 40 113" />
           <path d="M85 90 Q79 94 80 99" /><path d="M86 104 Q79 108 80 113" />
@@ -156,13 +159,8 @@ export function CatMascot({
           <path d="M60 8 C34 8 21 24 21 44 C21 58 29 69 41 74 C50 78 70 78 79 74 C91 69 99 58 99 44 C99 24 86 8 60 8 Z" fill={`url(#head-${u})`} />
           <path d="M28 60 Q60 82 92 60 Q60 74 28 60 Z" fill={c.shade} opacity="0.16" />
           <path d="M33 20 Q60 6 87 20" stroke="#ffffff" strokeOpacity="0.30" strokeWidth="4" strokeLinecap="round" />
-          {/* Soft fur strokes (rim + cheeks) for texture */}
-          <g stroke={c.furD} strokeLinecap="round" fill="none" strokeOpacity="0.35">
-            <path d="M26 40 Q23 34 24 29" strokeWidth="2.2" /><path d="M31 30 Q29 24 31 20" strokeWidth="2" />
-            <path d="M90 38 Q94 32 92 27" strokeWidth="2.2" /><path d="M86 28 Q88 22 86 18" strokeWidth="2" />
-            <path d="M24 58 Q18 60 16 58" strokeWidth="2.4" /><path d="M25 65 Q19 68 17 66" strokeWidth="2.4" /><path d="M27 71 Q22 75 20 73" strokeWidth="2.2" />
-            <path d="M96 58 Q102 60 104 58" strokeWidth="2.4" /><path d="M95 65 Q101 68 103 66" strokeWidth="2.4" /><path d="M93 71 Q98 75 100 73" strokeWidth="2.2" />
-          </g>
+          {/* Fur coat — strands along the head edge + cheeks (realistic texture) */}
+          <HeadFur c={c} />
 
           {/* Forehead tabby "M" */}
           <g stroke={c.stripe} strokeWidth="2.2" strokeLinecap="round" strokeOpacity="0.7">
@@ -273,6 +271,66 @@ function Paw({ cx, cy, u }: { cx: number; cy: number; u: string }) {
         <path d={`M${cx + 3} ${cy - 2} L${cx + 3} ${cy + 2}`} />
       </g>
     </>
+  );
+}
+
+/**
+ * Fur strands crossing an ellipse edge (from just inside to just outside),
+ * angled outward along the normal — the key to a furry, less "sticker" edge.
+ * Deterministic (index-based jitter, no Math.random) so SSR and client match.
+ */
+function furEdge(
+  cx: number, cy: number, rx: number, ry: number, n: number,
+  inset: number, outset: number, color: string, w: number, op: number,
+  a0: number, a1: number, jit: number, kp: string,
+) {
+  const out: ReactElement[] = [];
+  for (let i = 0; i < n; i++) {
+    const f = n > 1 ? i / (n - 1) : 0;
+    const t = ((a0 + (a1 - a0) * f) * Math.PI) / 180;
+    const nx = Math.cos(t);
+    const ny = Math.sin(t);
+    const px = cx + rx * nx;
+    const py = cy + ry * ny;
+    const L = Math.hypot(nx * ry, ny * rx) || 1;
+    const ux = (nx * ry) / L;
+    const uy = (ny * rx) / L;
+    const ins = inset + jit * (0.5 - ((i * 37) % 7) / 7);
+    const outs = outset + jit * (0.5 - ((i * 53) % 5) / 5);
+    const x1 = px - ux * ins;
+    const y1 = py - uy * ins;
+    const x2 = px + ux * outs;
+    const y2 = py + uy * outs;
+    const mx = (x1 + x2) / 2 - uy * 1.1;
+    const my = (y1 + y2) / 2 + ux * 1.1;
+    out.push(
+      <path key={kp + i} d={`M${x1.toFixed(1)} ${y1.toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`} stroke={color} strokeWidth={w} strokeLinecap="round" strokeOpacity={op} fill="none" />,
+    );
+  }
+  return out;
+}
+
+function HeadFur({ c }: { c: { furD: string; furL: string } }) {
+  return (
+    <g>
+      {furEdge(60, 44, 39, 35, 26, 3.5, 3.2, c.furD, 1.7, 0.4, 120, 250, 1.2, "hl")}
+      {furEdge(60, 44, 39, 35, 26, 3.5, 3.2, c.furD, 1.7, 0.4, -70, 60, 1.2, "hr")}
+      {furEdge(60, 44, 39, 35, 20, 2.5, 4.0, c.furL, 1.3, 0.5, 120, 250, 1.2, "tl")}
+      {furEdge(60, 44, 39, 35, 20, 2.5, 4.0, c.furL, 1.3, 0.5, -70, 60, 1.2, "tr")}
+      <g stroke={c.furL} strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.45" fill="none">
+        <path d="M30 54 q-1.9 2 -4.7 -1.7" /><path d="M31 62 q-1.8 2.1 -4.5 -2.1" /><path d="M34 70 q-1.6 2.2 -4.1 -2.9" />
+        <path d="M90 54 q1.9 2 4.7 -1.7" /><path d="M89 62 q1.8 2.1 4.5 -2.1" /><path d="M86 70 q1.6 2.2 4.1 -2.9" />
+      </g>
+    </g>
+  );
+}
+
+function BodyFur({ c }: { c: { furD: string } }) {
+  return (
+    <g>
+      {furEdge(60, 98, 30, 38, 24, 3.5, 3.0, c.furD, 1.6, 0.3, 120, 240, 1.4, "bl")}
+      {furEdge(60, 98, 30, 38, 24, 3.5, 3.0, c.furD, 1.6, 0.3, -60, 60, 1.4, "br")}
+    </g>
   );
 }
 
