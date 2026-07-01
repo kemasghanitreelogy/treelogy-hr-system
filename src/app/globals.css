@@ -162,6 +162,24 @@
 }
 .animate-stamp-ring { animation: stamp-ring 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
+/* Clock-in mascot: a lively multi-bounce settle (transform+opacity, one shot). */
+@keyframes cat-bounce {
+  0% { opacity: 0; transform: translateY(12px) scale(0.5) rotate(-8deg); }
+  45% { opacity: 1; transform: translateY(-8px) scale(1.14) rotate(6deg); }
+  62% { transform: translateY(0) scale(0.96) rotate(-4deg); }
+  78% { transform: translateY(-2px) scale(1.03) rotate(2deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+.animate-cat-bounce { animation: cat-bounce 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Celebratory paw burst: each particle flings to its own --dx/--dy and fades. */
+@keyframes paw-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.3) rotate(0); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1) rotate(var(--rot)); }
+}
+.animate-paw { animation: paw-burst 0.85s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 /* Full visible-viewport height — tracks the dynamic mobile viewport,
    with a 100vh fallback for older browsers. */
 .h-dvh-screen {

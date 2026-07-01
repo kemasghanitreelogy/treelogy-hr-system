@@ -1,32 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Check } from "lucide-react";
 
 /**
- * One-shot clock-in feedback overlay. Color psychology drives the two states:
- *  - ON-TIME  → forest green (calm positive reinforcement) + a confident double ring.
- *  - LATE     → warm gold/amber (gentle, non-shaming caution — never alarm red) +
- *               a single softer ring and the minutes-late note.
+ * One-shot clock-in mascot overlay — a small "world-class" celebratory moment.
+ * Color psychology drives the two states:
+ *  - ON-TIME → forest green, a happy cat + a playful paw burst (positive reinforcement).
+ *  - LATE    → warm gold/amber, a startled-but-cute cat, no confetti (gentle,
+ *              non-shaming — never alarm red).
  *
- * Motion is GPU-only (transform/opacity), plays once, and self-dismisses. It's
- * pointer-events-none so it never blocks the UI, and `prefers-reduced-motion`
- * (handled globally in globals.css) collapses the motion to an instant state.
+ * Shown on a dimmed, blurred scrim so it reads as one focused moment (no floating
+ * over the card). Elements enter in a short stagger, the mascot springs with a
+ * multi-bounce settle, it holds ~2s, then fades out. Everything is GPU-only
+ * (transform/opacity), pointer-events-none (seamless — never blocks a tap), and
+ * `prefers-reduced-motion` (handled globally in globals.css) collapses it to an
+ * instant state.
  */
 
 const STR = {
   id: {
-    onTime: "Tepat waktu",
-    late: (n: number) => `Telat ${n} menit`,
-    clockedIn: "Absen masuk tercatat",
+    onTimeTitle: "Tepat waktu, cakep! 🐾",
+    onTimeSub: "Meong~ absen masuk tercatat",
+    lateTitle: (n: number) => `Telat ${n} menit 🐾`,
+    lateSub: "Santai, kucing juga suka rebahan dulu",
   },
   en: {
-    onTime: "Right on time",
-    late: (n: number) => `${n} min late`,
-    clockedIn: "Clock-in recorded",
+    onTimeTitle: "Purrfect timing! 🐾",
+    onTimeSub: "Meow~ clock-in recorded",
+    lateTitle: (n: number) => `${n} min late 🐾`,
+    lateSub: "No biggie — even cats oversleep",
   },
 } as const;
+
+/** Paw-burst trajectories (on-time only) — each flings to its own offset. */
+const PAWS: { dx: string; dy: string; rot: string; delay: string }[] = [
+  { dx: "-74px", dy: "-54px", rot: "-28deg", delay: "0.30s" },
+  { dx: "74px", dy: "-54px", rot: "28deg", delay: "0.33s" },
+  { dx: "-98px", dy: "8px", rot: "-16deg", delay: "0.31s" },
+  { dx: "98px", dy: "8px", rot: "16deg", delay: "0.36s" },
+  { dx: "-44px", dy: "-88px", rot: "-8deg", delay: "0.39s" },
+  { dx: "44px", dy: "-88px", rot: "8deg", delay: "0.42s" },
+];
 
 export function ClockStamp({
   late,
@@ -40,6 +55,7 @@ export function ClockStamp({
   onDone: () => void;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
@@ -51,46 +67,59 @@ export function ClockStamp({
     } catch {
       /* vibrate unsupported — ignore */
     }
-    const timer = setTimeout(onDone, late ? 1700 : 1500);
-    return () => clearTimeout(timer);
+    // Hold ~1.7s, fade over the last 0.3s, unmount at 2s.
+    const fade = setTimeout(() => setLeaving(true), 1700);
+    const done = setTimeout(onDone, 2000);
+    return () => {
+      clearTimeout(fade);
+      clearTimeout(done);
+    };
   }, [late, onDone]);
 
   if (!mounted) return null;
   const t = STR[locale];
-  const disc = late ? "bg-gold" : "bg-forest-600";
-  const ring = late ? "border-gold/50" : "border-forest-500/50";
+  const halo = late ? "bg-gold-soft" : "bg-forest-100";
+  const ring = late ? "border-gold/60" : "border-forest-400/60";
+  const title = late ? "text-[#8a6512]" : "text-forest-700";
 
   return createPortal(
     <div
-      className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6"
+      className={`pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6 transition-opacity duration-300 ${leaving ? "opacity-0" : "opacity-100"}`}
       role="status"
       aria-live="polite"
     >
-      <div className={`absolute inset-0 animate-overlay ${late ? "bg-gold/10" : "bg-forest-700/10"}`} />
+      <div className="absolute inset-0 animate-overlay bg-bark/45 backdrop-blur-sm" />
 
-      <div className="relative flex flex-col items-center gap-4">
-        <div className="relative flex h-24 w-24 items-center justify-center">
-          {/* radiating ring(s) — confident double for on-time, one gentle for late */}
-          <span className={`absolute h-24 w-24 rounded-full border-2 ${ring} animate-stamp-ring`} />
+      <div className="animate-dialog relative flex max-w-xs flex-col items-center gap-2 rounded-3xl bg-panel px-8 py-7 text-center shadow-pop">
+        <div className="relative mb-1 flex h-24 w-24 items-center justify-center">
+          <span className={`absolute h-20 w-20 rounded-full ${halo}`} />
+          <span className={`absolute h-20 w-20 rounded-full border-2 ${ring} animate-stamp-ring`} style={{ animationDelay: "0.16s" }} />
+          {/* Paw burst radiating from the mascot (on-time only) */}
           {!late && (
-            <span
-              className={`absolute h-24 w-24 rounded-full border-2 ${ring} animate-stamp-ring`}
-              style={{ animationDelay: "0.16s" }}
-            />
+            <div className="pointer-events-none absolute left-1/2 top-1/2">
+              {PAWS.map((p, i) => (
+                <span
+                  key={i}
+                  className="animate-paw absolute text-2xl leading-none"
+                  style={{ "--dx": p.dx, "--dy": p.dy, "--rot": p.rot, animationDelay: p.delay } as CSSProperties}
+                  aria-hidden
+                >
+                  🐾
+                </span>
+              ))}
+            </div>
           )}
-          {/* badge */}
-          <div className={`animate-pop-in flex h-24 w-24 items-center justify-center rounded-full ${disc} shadow-pop`}>
-            {/* Dark tick on amber (caution chip = crisp on mobile); white on green. */}
-            <Check className={`h-11 w-11 ${late ? "text-bark" : "text-cream"}`} strokeWidth={3} aria-hidden />
-          </div>
+          <span className="animate-cat-bounce text-6xl leading-none" style={{ animationDelay: "0.1s" }} aria-hidden>
+            {late ? "🙀" : "😸"}
+          </span>
         </div>
 
-        <div className="fade-up flex flex-col items-center gap-1">
-          <span className="rounded-full bg-panel/95 px-4 py-1.5 text-sm font-bold text-ink shadow-pop backdrop-blur-sm">
-            {late ? t.late(lateMinutes) : t.onTime}
-          </span>
-          <span className="text-xs font-medium text-muted">{t.clockedIn}</span>
-        </div>
+        <p className={`fade-up font-display text-lg font-bold ${title}`} style={{ animationDelay: "0.22s" }}>
+          {late ? t.lateTitle(lateMinutes) : t.onTimeTitle}
+        </p>
+        <p className="fade-up text-sm text-muted" style={{ animationDelay: "0.3s" }}>
+          {late ? t.lateSub : t.onTimeSub}
+        </p>
       </div>
     </div>,
     document.body,
