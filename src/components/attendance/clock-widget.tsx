@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -258,14 +258,11 @@ export function ClockWidget({
   holidayToday = false,
   holidayName = null,
   todayRecord = null,
-  stampPreview = false,
 }: {
   geofence: TeamGeofence;
   requireLocation: boolean;
   requirePhoto: boolean;
   shiftLabel?: string;
-  /** Owner-only: show buttons to preview the clock-in animation (on-time / late). */
-  stampPreview?: boolean;
   /** Hari kerja karyawan (0=Min..6=Sab); clock-in di luar ini → modal pilihan. */
   workDays?: number[];
   /** Hari ini libur nasional/keagamaan yang berlaku untuk karyawan ini →
@@ -283,9 +280,6 @@ export function ClockWidget({
   // Drives the one-shot clock-in/out feedback animation (null = idle).
   // dir: "in"|"out"; flag: late (in) / overtime (out); minutes: the count.
   const [stamp, setStamp] = useState<{ dir: "in" | "out"; flag: boolean; minutes: number } | null>(null);
-  // Owner preview: when set, the next camera capture shows the stamp WITHOUT
-  // hitting the API — so the test walks the real face-capture → animation flow.
-  const previewPending = useRef<{ dir: "in" | "out"; flag: boolean; minutes: number } | null>(null);
   const router = useRouter();
   // Seed from today's server record so a refresh keeps state: clocked in (no out
   // yet) → "in"; clocked in AND out → "done"; nothing yet → "out".
@@ -386,14 +380,6 @@ export function ClockWidget({
   }
 
   async function onCapture(dataUrl: string) {
-    // Preview mode: photo taken → play the animation, skip the real record.
-    if (previewPending.current) {
-      const p = previewPending.current;
-      previewPending.current = null;
-      setFlow("idle");
-      setStamp(p);
-      return;
-    }
     setFlow("submitting");
     await submit(geo, dataUrl, oorMode);
   }
@@ -631,7 +617,6 @@ export function ClockWidget({
         onCancel={() => {
           setFlow("idle");
           setOorMode(false);
-          previewPending.current = null;
         }}
       />
 
@@ -648,33 +633,6 @@ export function ClockWidget({
       />
 
       <OffDayModal open={oodPending != null} t={t} holidayName={holidayName} onChoose={chooseOffDay} onCancel={() => setOodPending(null)} />
-
-      {stampPreview && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line bg-panel/60 px-3 py-2 text-xs">
-          <span className="w-full font-medium text-faint">{locale === "en" ? "Preview animation:" : "Pratinjau animasi:"}</span>
-          <button
-            type="button"
-            onClick={() => { setNotice(null); previewPending.current = { dir: "in", flag: false, minutes: 0 }; setFlow("camera"); }}
-            className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
-          >
-            {locale === "en" ? "In · on-time" : "Masuk · tepat"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNotice(null); previewPending.current = { dir: "in", flag: true, minutes: 8 }; setFlow("camera"); }}
-            className="rounded-lg bg-gold px-2.5 py-1 font-semibold text-bark active:scale-95"
-          >
-            {locale === "en" ? "In · late" : "Masuk · telat"}
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNotice(null); previewPending.current = { dir: "out", flag: false, minutes: 0 }; setFlow("camera"); }}
-            className="rounded-lg bg-forest-600 px-2.5 py-1 font-semibold text-cream active:scale-95"
-          >
-            {locale === "en" ? "Clock-out" : "Pulang"}
-          </button>
-        </div>
-      )}
 
       {stamp && (
         <ClockStamp
