@@ -7,9 +7,9 @@
  * sways, and it gently breathes (motion in globals.css).
  */
 
-import type { ReactElement } from "react";
+import { memo, type ReactElement } from "react";
 
-export function CatMascot({
+function CatMascotImpl({
   expression,
   tone,
   backpack = false,
@@ -259,6 +259,9 @@ export function CatMascot({
     </svg>
   );
 }
+
+/** Memoised so the parent's ticking clock doesn't re-render the ~220-node cat. */
+export const CatMascot = memo(CatMascotImpl);
 
 /** A cream paw with three little toe lines. */
 function Paw({ cx, cy, u }: { cx: number; cy: number; u: string }) {
