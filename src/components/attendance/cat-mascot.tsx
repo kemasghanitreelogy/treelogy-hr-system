@@ -27,6 +27,7 @@ export function CatMascot({
     ? { light: "#f6c97c", base: "#e2963a", dark: "#bd7420", shade: "#96530f", stripe: "#a25e18", cream: "#fbeed0", creamSh: "#e6c793", inner: "#e7a288", iris1: "#a9c265", iris2: "#7a9a3f", iris3: "#38481d" }
     : { light: "#b9d27a", base: "#7d9c57", dark: "#556d3c", shade: "#37481f", stripe: "#42592c", cream: "#eef3d6", creamSh: "#d5deb4", inner: "#cfe0b0", iris1: "#e6b84f", iris2: "#c08f2b", iris3: "#4a3410" };
   const u = `${expression}-${tone}`;
+  const tilt = late ? -6 : -8;
 
   return (
     <svg viewBox="0 0 120 144" className={className} role="img" aria-hidden fill="none">
@@ -95,11 +96,32 @@ export function CatMascot({
         <ellipse cx="43" cy="132" rx="11" ry="7" fill={c.base} />
         <ellipse cx="77" cy="132" rx="11" ry="7" fill={c.base} />
 
-        {/* Forelegs — connect shoulders to the paws held together */}
-        <path d="M57 104 Q49 88 45 74" stroke={c.base} strokeWidth="15" strokeLinecap="round" />
-        <path d="M63 104 Q71 88 75 74" stroke={c.base} strokeWidth="15" strokeLinecap="round" />
-        <path d="M55 100 Q50 90 48 80" stroke={c.dark} strokeWidth="3" strokeLinecap="round" strokeOpacity="0.28" />
-        <path d="M65 100 Q70 90 72 80" stroke={c.light} strokeWidth="3" strokeLinecap="round" strokeOpacity="0.35" />
+        {/* Forelegs + paws — a distinct pose per emotion (posing to the feeling) */}
+        {expression === "happy" && (
+          <g>
+            {/* eager: both paws raised together near the chin */}
+            <path d="M45 76 Q40 94 54 86" stroke={c.base} strokeWidth="14" strokeLinecap="round" />
+            <path d="M75 76 Q80 94 66 86" stroke={c.base} strokeWidth="14" strokeLinecap="round" />
+            <Paw cx={54} cy={86} u={u} />
+            <Paw cx={66} cy={86} u={u} />
+          </g>
+        )}
+        {late && (
+          <g>
+            {/* timid: one paw hangs low, the other fidgets at the chest */}
+            <path d="M47 76 Q42 98 47 114" stroke={c.base} strokeWidth="14" strokeLinecap="round" />
+            <path d="M74 76 Q80 92 69 103" stroke={c.base} strokeWidth="14" strokeLinecap="round" />
+            <Paw cx={47} cy={116} u={u} />
+            <Paw cx={69} cy={105} u={u} />
+          </g>
+        )}
+        {sleepy && (
+          <g>
+            {/* heading home: one paw resting, the other waves (drawn after the head) */}
+            <path d="M46 76 Q42 96 50 110" stroke={c.base} strokeWidth="14" strokeLinecap="round" />
+            <Paw cx={50} cy={112} u={u} />
+          </g>
+        )}
 
         {/* Backpack shoulder straps over the chest (clock-out) */}
         {backpack && (
@@ -111,19 +133,11 @@ export function CatMascot({
           </g>
         )}
 
-        {/* Paws together */}
-        <ellipse cx="56" cy="105" rx="8.4" ry="7" fill={`url(#belly-${u})`} />
-        <ellipse cx="64" cy="105" rx="8.4" ry="7" fill={`url(#belly-${u})`} />
-        <g stroke="#cba86a" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.7">
-          <path d="M53 103 L53 107" /><path d="M56.5 103.5 L56.5 107.5" />
-          <path d="M63.5 103.5 L63.5 107.5" /><path d="M67 103 L67 107" />
-        </g>
-
         {/* Cast shadow from the head onto the chest */}
         <ellipse cx="60" cy="74" rx="26" ry="9" fill={c.shade} opacity="0.16" />
 
         {/* HEAD (slight tilt for life) */}
-        <g transform="rotate(-8 60 72)">
+        <g transform={`rotate(${tilt} 60 72)`}>
           <g className="cat-ear-l">
             <path d="M31 27 L20 -2 L57 19 Z" fill={`url(#head-${u})`} />
             <path d="M35 24 L27 7 L50 19 Z" fill={`url(#ear-${u})`} />
@@ -212,8 +226,30 @@ export function CatMascot({
             <path className="cat-sweat" d="M95 28 C91 34 91 39 95 39 C99 39 99 34 95 28 Z" fill="#8fbfe0" stroke="#4a7ba6" strokeWidth="0.6" />
           )}
         </g>
+
+        {/* Waving paw (drawn over the head so it reads as a goodbye) */}
+        {sleepy && (
+          <g>
+            <path d="M76 74 Q86 64 89 54" stroke={c.base} strokeWidth="13" strokeLinecap="round" />
+            <Paw cx={90} cy={52} u={u} />
+          </g>
+        )}
       </g>
     </svg>
+  );
+}
+
+/** A cream paw with three little toe lines. */
+function Paw({ cx, cy, u }: { cx: number; cy: number; u: string }) {
+  return (
+    <>
+      <ellipse cx={cx} cy={cy} rx="7.6" ry="6.4" fill={`url(#belly-${u})`} />
+      <g stroke="#cba86a" strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.7">
+        <path d={`M${cx - 3} ${cy - 2} L${cx - 3} ${cy + 2}`} />
+        <path d={`M${cx} ${cy - 2.5} L${cx} ${cy + 1.5}`} />
+        <path d={`M${cx + 3} ${cy - 2} L${cx + 3} ${cy + 2}`} />
+      </g>
+    </>
   );
 }
 
