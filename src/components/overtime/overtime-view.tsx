@@ -11,6 +11,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import type { ApprovalAction } from "@/lib/approval";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { RejectDialog } from "@/components/ui/reject-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RejectionNote } from "@/components/ui/rejection-note";
 import { formatDate, formatTime, rupiah } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
@@ -81,6 +82,10 @@ const STR: Record<
     proofLabel: string;
     noProof: string;
     openInNewTab: string;
+    confirmApproveTitle: string;
+    confirmApproveMsg: string;
+    confirmResetTitle: string;
+    confirmResetMsg: string;
   }
 > = {
   id: {
@@ -136,6 +141,10 @@ const STR: Record<
     proofLabel: "Bukti lampiran",
     noProof: "Tidak ada lampiran.",
     openInNewTab: "Buka di tab baru",
+    confirmApproveTitle: "Setujui lembur ini?",
+    confirmApproveMsg: "Pengajuan lembur ditandai disetujui.",
+    confirmResetTitle: "Ubah keputusan?",
+    confirmResetMsg: "Keputusan sebelumnya dibatalkan dan pengajuan kembali ke status menunggu.",
   },
   en: {
     processFailed: "Failed to process. Make sure you are authorized.",
@@ -190,6 +199,10 @@ const STR: Record<
     proofLabel: "Attached proof",
     noProof: "No attachment.",
     openInNewTab: "Open in new tab",
+    confirmApproveTitle: "Approve this overtime?",
+    confirmApproveMsg: "The overtime request is marked approved.",
+    confirmResetTitle: "Change decision?",
+    confirmResetMsg: "The previous decision is undone and the request returns to pending.",
   },
 };
 
@@ -222,6 +235,8 @@ export function OvertimeView({
   const [selected, setSelected] = useState<OvertimeRequest | null>(null);
   // Id of the request awaiting a rejection reason (drives the RejectDialog).
   const [rejectId, setRejectId] = useState<string | null>(null);
+  // Approve / reset go through a confirm step so an accidental tap can't decide.
+  const [confirmDecide, setConfirmDecide] = useState<{ id: string; action: Exclude<ApprovalAction, "reject"> } | null>(null);
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
   const router = useRouter();
@@ -337,7 +352,7 @@ export function OvertimeView({
               <div className="flex flex-wrap items-center justify-end gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
                 {canDecide(r) ? (
                   <>
-                    <Button size="sm" disabled={busyId === r.id} onClick={() => decide(r.id, "approve")} className="flex-1 sm:flex-none">
+                    <Button size="sm" disabled={busyId === r.id} onClick={() => setConfirmDecide({ id: r.id, action: "approve" })} className="flex-1 sm:flex-none">
                       <Check className="h-4 w-4" /> {t.approve}
                     </Button>
                     <Button size="sm" variant="outline" disabled={busyId === r.id} onClick={() => setRejectId(r.id)} className="flex-1 sm:flex-none">
@@ -394,7 +409,7 @@ export function OvertimeView({
               canDecide={canDecide(live)}
               canReset={canReset(live)}
               busy={busyId === live.id}
-              onDecide={(action) => (action === "reject" ? setRejectId(live.id) : decide(live.id, action))}
+              onDecide={(action) => (action === "reject" ? setRejectId(live.id) : setConfirmDecide({ id: live.id, action }))}
             />
           );
         })()}
@@ -405,6 +420,22 @@ export function OvertimeView({
         busy={busyId !== null && busyId === rejectId}
         onCancel={() => setRejectId(null)}
         onConfirm={(reason) => rejectId && decide(rejectId, "reject", reason)}
+      />
+
+      <ConfirmDialog
+        open={confirmDecide !== null}
+        title={confirmDecide?.action === "reset" ? t.confirmResetTitle : t.confirmApproveTitle}
+        message={confirmDecide?.action === "reset" ? t.confirmResetMsg : t.confirmApproveMsg}
+        confirmLabel={confirmDecide?.action === "reset" ? t.changeDecision : t.approve}
+        tone={confirmDecide?.action === "reset" ? "danger" : "primary"}
+        busy={confirmDecide !== null && busyId === confirmDecide.id}
+        onCancel={() => setConfirmDecide(null)}
+        onConfirm={async () => {
+          if (!confirmDecide) return;
+          const { id, action } = confirmDecide;
+          await decide(id, action);
+          setConfirmDecide(null);
+        }}
       />
     </div>
   );

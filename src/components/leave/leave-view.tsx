@@ -9,6 +9,7 @@ import { leaveHistory, type LeavePeriod } from "@/lib/leave-policy";
 import type { ApprovalAction } from "@/lib/approval";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { RejectDialog } from "@/components/ui/reject-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RejectionNote } from "@/components/ui/rejection-note";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -119,6 +120,10 @@ const STR: Record<
     setApproved: string;
     setRejected: string;
     setPending: string;
+    confirmApproveTitle: string;
+    confirmApproveMsg: string;
+    confirmResetTitle: string;
+    confirmResetMsg: string;
   }
 > = {
   id: {
@@ -195,6 +200,10 @@ const STR: Record<
     setApproved: "Jadikan Disetujui",
     setRejected: "Jadikan Ditolak",
     setPending: "Kembalikan ke Menunggu",
+    confirmApproveTitle: "Setujui pengajuan ini?",
+    confirmApproveMsg: "Pengajuan ditandai disetujui dan saldo karyawan ikut diperbarui.",
+    confirmResetTitle: "Ubah keputusan?",
+    confirmResetMsg: "Keputusan sebelumnya dibatalkan dan pengajuan kembali ke status menunggu.",
   },
   en: {
     decideFailed: "Failed to process. You can only approve employees in your own division.",
@@ -270,6 +279,10 @@ const STR: Record<
     setApproved: "Set Approved",
     setRejected: "Set Rejected",
     setPending: "Back to Pending",
+    confirmApproveTitle: "Approve this request?",
+    confirmApproveMsg: "The request is marked approved and the employee's balance is updated.",
+    confirmResetTitle: "Change decision?",
+    confirmResetMsg: "The previous decision is undone and the request returns to pending.",
   },
 };
 
@@ -309,6 +322,8 @@ export function LeaveView({
   const [selected, setSelected] = useState<LeaveRequest | null>(null);
   // Id of the request awaiting a rejection reason (drives the RejectDialog).
   const [rejectId, setRejectId] = useState<string | null>(null);
+  // Approve / reset go through a confirm step so an accidental tap can't decide.
+  const [confirmDecide, setConfirmDecide] = useState<{ id: string; action: Exclude<ApprovalAction, "reject"> } | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const toast = useToast();
@@ -443,7 +458,7 @@ export function LeaveView({
                 <div className="flex items-center gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
                   {canDecide(r) ? (
                     <>
-                      <Button size="sm" disabled={decidingId === r.id} onClick={() => decide(r.id, "approve")} className="flex-1 sm:flex-none">
+                      <Button size="sm" disabled={decidingId === r.id} onClick={() => setConfirmDecide({ id: r.id, action: "approve" })} className="flex-1 sm:flex-none">
                         <Check className="h-4 w-4" /> {t.approve}
                       </Button>
                       <Button size="sm" variant="outline" disabled={decidingId === r.id} onClick={() => setRejectId(r.id)} className="flex-1 sm:flex-none">
@@ -497,7 +512,7 @@ export function LeaveView({
               canDecide={canDecide(live)}
               canReset={canReset(live)}
               deciding={decidingId === live.id}
-              onDecide={(action) => (action === "reject" ? setRejectId(live.id) : decide(live.id, action))}
+              onDecide={(action) => (action === "reject" ? setRejectId(live.id) : setConfirmDecide({ id: live.id, action }))}
             />
           );
         })()}
@@ -508,6 +523,22 @@ export function LeaveView({
         busy={decidingId !== null && decidingId === rejectId}
         onCancel={() => setRejectId(null)}
         onConfirm={(reason) => rejectId && decide(rejectId, "reject", reason)}
+      />
+
+      <ConfirmDialog
+        open={confirmDecide !== null}
+        title={confirmDecide?.action === "reset" ? t.confirmResetTitle : t.confirmApproveTitle}
+        message={confirmDecide?.action === "reset" ? t.confirmResetMsg : t.confirmApproveMsg}
+        confirmLabel={confirmDecide?.action === "reset" ? t.changeDecision : t.approve}
+        tone={confirmDecide?.action === "reset" ? "danger" : "primary"}
+        busy={confirmDecide !== null && decidingId === confirmDecide.id}
+        onCancel={() => setConfirmDecide(null)}
+        onConfirm={async () => {
+          if (!confirmDecide) return;
+          const { id, action } = confirmDecide;
+          await decide(id, action);
+          setConfirmDecide(null);
+        }}
       />
     </div>
   );
