@@ -206,6 +206,16 @@
   50% { transform: scaleX(0.88); opacity: 0.12; }
 }
 .cat-shadow { transform-box: fill-box; transform-origin: 50% 50%; animation: cat-shadow 0.9s ease-in-out 0.85s 4 both; }
+/* Eye blink — quick vertical squash, twice across the moment (open eyes only). */
+@keyframes cat-blink {
+  0%, 43%, 100% { transform: scaleY(1); }
+  45.5% { transform: scaleY(0.08); }
+  48% { transform: scaleY(1); }
+  89% { transform: scaleY(1); }
+  91.5% { transform: scaleY(0.08); }
+  94% { transform: scaleY(1); }
+}
+.cat-blink { transform-box: fill-box; transform-origin: 50% 50%; animation: cat-blink 3.4s ease-in-out 0.7s 1 both; }
 /* Tail wag */
 @keyframes cat-tail {
   0%, 100% { transform: rotate(0deg); }

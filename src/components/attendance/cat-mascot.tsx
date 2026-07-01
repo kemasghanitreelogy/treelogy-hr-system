@@ -196,7 +196,7 @@ export function CatMascot({
               <path d="M64 44 Q74.5 52 85 44" />
             </g>
           ) : (
-            <g>
+            <g className="cat-blink">
               <ellipse cx="45" cy="43" rx="13" ry="15.5" fill="#fff" />
               <ellipse cx="75" cy="43" rx="13" ry="15.5" fill="#fff" />
               <circle cx="47.5" cy="44" r="11.8" fill={`url(#iris-${u})`} />
