@@ -100,8 +100,7 @@ export function ClockStamp({
   const c = STR[locale];
   const copy = dir === "in" ? (flag ? c.inLate(minutes) : c.inOn()) : flag ? c.outOt(minutes) : c.outNorm();
 
-  const halo = tone === "amber" ? "bg-gold-soft" : "bg-forest-100";
-  const ring = tone === "amber" ? "border-gold/60" : "border-forest-400/60";
+  const glow = tone === "amber" ? "bg-gold-soft" : "bg-forest-100";
   const title = tone === "amber" ? "text-[#8a6512]" : "text-forest-700";
 
   return createPortal(
@@ -113,12 +112,12 @@ export function ClockStamp({
       <div className="absolute inset-0 animate-overlay bg-bark/45 backdrop-blur-sm" />
 
       <div className="animate-dialog relative flex max-w-xs flex-col items-center gap-2 rounded-3xl bg-panel px-8 py-7 text-center shadow-pop">
-        <div className="relative mb-1 flex h-28 w-28 items-center justify-center">
-          <span className={`absolute h-20 w-20 rounded-full ${halo}`} />
-          <span className={`absolute h-20 w-20 rounded-full border-2 ${ring} animate-stamp-ring`} style={{ animationDelay: "0.16s" }} />
+        <div className="relative mb-1 flex h-32 w-32 items-center justify-center">
+          {/* Soft glow behind the head */}
+          <span className={`absolute -top-1 h-20 w-20 rounded-full ${glow} opacity-70 blur-lg`} />
           {/* Paw burst radiating from the mascot (celebratory moments) */}
           {celebrate && (
-            <div className="pointer-events-none absolute left-1/2 top-1/2">
+            <div className="pointer-events-none absolute left-1/2 top-1/3">
               {PAWS.map((p, i) => (
                 <span
                   key={i}
@@ -130,8 +129,8 @@ export function ClockStamp({
               ))}
             </div>
           )}
-          <span className="animate-cat-bounce" style={{ animationDelay: "0.1s" }}>
-            <CatMascot expression={expression} tone={tone} className="h-28 w-28" />
+          <span className="animate-cat-bounce relative" style={{ animationDelay: "0.1s" }}>
+            <CatMascot expression={expression} tone={tone} className="h-32 w-32" />
           </span>
           {/* Twinkling sparkles around the mascot (celebratory moments) */}
           {celebrate &&
