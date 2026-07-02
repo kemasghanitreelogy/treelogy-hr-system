@@ -1,9 +1,16 @@
-import { Banknote, Briefcase, Mail, ShieldCheck, UserRound, Wallet } from "lucide-react";
-import type { Employee } from "@/lib/types";
+import { Banknote, Briefcase, FileSignature, Mail, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import type { ContractType, Employee, EmployeeContract } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
+import { ContractsCard } from "@/components/employees/contracts-card";
 import type { Locale } from "@/lib/i18n";
+
+/** Headline employment status shown on the profile. */
+const CT_LABEL: Record<Locale, Record<ContractType, string>> = {
+  id: { pkwt: "PKWT (Kontrak)", pkwtt: "PKWTT (Tetap)" },
+  en: { pkwt: "Fixed-term (PKWT)", pkwtt: "Permanent (PKWTT)" },
+};
 
 const STR: Record<Locale, {
   active: string;
@@ -124,6 +131,8 @@ export function ProfileView({
   roleName,
   fallbackName,
   fallbackEmail,
+  contracts = [],
+  contractType = null,
   locale = "id",
 }: {
   emp?: Employee;
@@ -131,11 +140,14 @@ export function ProfileView({
   roleName: string;
   fallbackName: string;
   fallbackEmail: string;
+  contracts?: EmployeeContract[];
+  contractType?: ContractType | null;
   locale?: Locale;
 }) {
   const t = STR[locale];
   const name = emp?.name ?? fallbackName;
   const team = emp ? TEAM_META[emp.team] : null;
+  const contractLabel = contractType ? CT_LABEL[locale][contractType] : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 fade-up">
@@ -163,6 +175,11 @@ export function ProfileView({
                   {emp.status === "active" ? t.active : t.inactive}
                 </span>
               )}
+              {contractLabel && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-cream/15 px-2.5 py-1 text-xs font-semibold text-cream ring-1 ring-cream/25">
+                  <FileSignature className="h-3.5 w-3.5 text-lime" /> {contractLabel}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -183,6 +200,7 @@ export function ProfileView({
             <Info label="Lokasi" value={emp.location} />
             <Info label="Jam kerja" value={`${emp.workStart ?? "08:00"} – ${emp.workEnd ?? "17:00"} WITA`} />
             <Info label="Status" value={emp.status === "active" ? "Aktif" : "Nonaktif"} />
+            <Info label={locale === "en" ? "Employment status" : "Status kepegawaian"} value={contractLabel} />
           </Section>
 
           <Section title="Kontak" icon={Mail}>
@@ -221,6 +239,9 @@ export function ProfileView({
             <Info label="Bank" value={emp.bankName} />
             <Info label="Nomor rekening" value={emp.bankAccount} />
           </Section>
+
+          {/* Own contracts — read-only history (type, dates, document). */}
+          <ContractsCard employeeId={emp.id} contracts={contracts} canManage={false} />
         </>
       )}
 
