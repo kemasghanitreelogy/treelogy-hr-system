@@ -1,4 +1,5 @@
-import { CalendarDays, CalendarOff, CheckCircle2, ClipboardList, Clock, MapPin, Timer } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, CalendarOff, CheckCircle2, ChevronRight, ClipboardList, MapPin, Timer } from "lucide-react";
 import { ClockWidget } from "@/components/attendance/clock-widget";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
@@ -51,12 +52,13 @@ function itemMeta(
   item: PendingItem,
   t: { leave: Record<string, string>; overtime: string; clock: Record<string, string> },
 ) {
-  if (item.kind === "leave") return { icon: CalendarDays, label: t.leave[item.subtype] ?? item.subtype, tone: "text-sky" };
-  if (item.kind === "overtime") return { icon: Timer, label: t.overtime, tone: "text-[#8a6512]" };
+  if (item.kind === "leave") return { icon: CalendarDays, label: t.leave[item.subtype] ?? item.subtype, tone: "text-sky", href: "/leave" };
+  if (item.kind === "overtime") return { icon: Timer, label: t.overtime, tone: "text-[#8a6512]", href: "/overtime" };
   return {
     icon: item.subtype === "off_day" ? CalendarOff : MapPin,
     label: t.clock[item.subtype] ?? item.subtype,
     tone: "text-forest-600",
+    href: "/attendance",
   };
 }
 
@@ -138,19 +140,22 @@ export function SelfDashboard({
                   ? `${formatDate(item.startDate, "short", locale)} – ${formatDate(item.endDate, "short", locale)}`
                   : formatDate(item.startDate, "short", locale);
                 return (
-                  <li key={`${item.kind}-${item.id}`} className="flex items-center gap-3 px-3 py-3">
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cream ${meta.tone}`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink">{meta.label}</p>
-                      <p className="truncate text-xs text-muted">
-                        {range} · {t.submitted} {formatDate(item.requestedAt, "short", locale)}
-                      </p>
-                    </div>
-                    <Badge tone="gold" dot>
-                      {item.stage === "manager" ? t.waitingMgr : t.waitingHr}
-                    </Badge>
+                  <li key={`${item.kind}-${item.id}`}>
+                    <Link href={meta.href} className="flex items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-cream/60">
+                      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cream ${meta.tone}`}>
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-ink">{meta.label}</p>
+                        <p className="truncate text-xs text-muted">
+                          {range} · {t.submitted} {formatDate(item.requestedAt, "short", locale)}
+                        </p>
+                      </div>
+                      <Badge tone="gold" dot>
+                        {item.stage === "manager" ? t.waitingMgr : t.waitingHr}
+                      </Badge>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-line" />
+                    </Link>
                   </li>
                 );
               })}
