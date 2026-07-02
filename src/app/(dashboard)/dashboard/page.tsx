@@ -16,26 +16,23 @@ import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge, Badge, RequestBadge } from "@/components/ui/badge";
 import { AttendanceTrendChart, TeamDonut } from "@/components/dashboard/charts";
 import { PushManager } from "@/components/pwa/push-manager";
-import { SelfDashboard } from "@/components/dashboard/self-dashboard";
 import { TEAM_META } from "@/lib/constants";
 import { formatDate, rupiah } from "@/lib/utils";
 import {
   liveToday,
-  livePeriod,
-  liveAsOfDate,
-  computeRecap,
   getAttendance,
   getAttendanceSettings,
   getDashboardData,
   getEmployee,
   getHolidayToday,
-  getLeaveBalances,
-  getContracts,
+  getLeaveRequests,
+  getOvertimeRequests,
+  getClockApprovals,
 } from "@/lib/data";
-import { applyTenureQuota } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
 import { getLocale } from "@/lib/locale-server";
+import { SelfDashboard, type PendingItem } from "@/components/dashboard/self-dashboard";
 import type { Locale } from "@/lib/i18n";
 
 const LEAVE_LABEL: Record<Locale, Record<string, string>> = {
@@ -162,37 +159,54 @@ export default async function DashboardPage() {
 
   // Front-line worker → clock-first self-service home.
   if (user && audienceFromPermissions(user.permissions) === "self") {
-    const [settings, attendance, balances, me, myContracts] = await Promise.all([
+    const meId = user.employeeId ?? "";
+    const [settings, attendance, me, leave, overtime, clockApprovals] = await Promise.all([
       getAttendanceSettings(),
       getAttendance(),
-      getLeaveBalances(),
       user.employeeId ? getEmployee(user.employeeId) : Promise.resolve(undefined),
-      user.employeeId ? getContracts(user.employeeId) : Promise.resolve([]),
+      getLeaveRequests(),
+      getOvertimeRequests(),
+      getClockApprovals(),
     ]);
-    const recap = computeRecap(attendance, user.employeeId ?? "", livePeriod());
     // Today's record so the clock widget survives a refresh.
     const today = liveToday();
-    const todayRecord = attendance.find((r) => r.employeeId === user.employeeId && r.date === today) ?? null;
-    const rawBalance = balances.find((b) => b.employeeId === user.employeeId);
-    // Annual leave only accrues after 1 full year of service (from contract start).
-    const balance = rawBalance && me ? applyTenureQuota([rawBalance], [me], myContracts, liveAsOfDate())[0] : rawBalance;
+    const todayRecord = attendance.find((r) => r.employeeId === meId && r.date === today) ?? null;
     const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
     const holidayToday = await getHolidayToday(me?.religion);
+
+    // Stage: waiting on the manager only if the worker actually has one and the
+    // manager step isn't done yet; otherwise it's on HR (clock approvals skip the
+    // manager entirely).
+    const hasManager = !!me?.managerId;
+    const dualStage = (managerApprover?: string | null): "manager" | "hr" =>
+      managerApprover ? "hr" : hasManager ? "manager" : "hr";
+
+    // Everything the worker has submitted that still awaits confirmation.
+    const pending: PendingItem[] = [
+      ...leave
+        .filter((l) => l.employeeId === meId && l.status === "pending")
+        .map((l) => ({ id: l.id, kind: "leave" as const, subtype: l.type, startDate: l.startDate, endDate: l.endDate, requestedAt: l.requestedAt, stage: dualStage(l.managerApprover) })),
+      ...overtime
+        .filter((o) => o.employeeId === meId && o.status === "pending")
+        .map((o) => ({ id: o.id, kind: "overtime" as const, subtype: "overtime", startDate: o.date, endDate: null, requestedAt: o.requestedAt, stage: dualStage(o.managerApprover) })),
+      ...clockApprovals
+        .filter((cA) => cA.employeeId === meId && cA.status === "pending")
+        .map((cA) => ({ id: cA.id, kind: "clock" as const, subtype: cA.kind, startDate: cA.date, endDate: null, requestedAt: cA.requestedAt, stage: "hr" as const })),
+    ].sort((a, b) => (b.requestedAt || "").localeCompare(a.requestedAt || ""));
+
     return (
       <SelfDashboard
         firstName={firstName}
         geofence={geofence}
         requireLocation={settings.requireLocation}
         requirePhoto={settings.requirePhoto}
-        recap={recap}
-        balance={balance}
-        canPayroll={can(user, "payroll.view")}
         scheduleLabel={scheduleLabel}
         workDays={me?.workDays}
         holidayToday={holidayToday != null}
         holidayName={holidayToday?.name ?? null}
         todayRecord={todayRecord}
+        pending={pending}
         locale={locale}
       />
     );

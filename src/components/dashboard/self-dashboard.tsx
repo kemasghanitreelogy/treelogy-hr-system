@@ -1,90 +1,96 @@
-import Link from "next/link";
-import { CalendarDays, Clock, PiggyBank, Wallet } from "lucide-react";
+import { CalendarDays, CalendarOff, CheckCircle2, ClipboardList, Clock, MapPin, Timer } from "lucide-react";
 import { ClockWidget } from "@/components/attendance/clock-widget";
-import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { minutesToHM } from "@/lib/utils";
-import type { AttendanceRecap } from "@/lib/data";
-import type { AttendanceRecord, LeaveBalance, TeamGeofence } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
+import type { AttendanceRecord, TeamGeofence } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 
-const STR: Record<Locale, {
-  greeting: (name: string) => string;
-  reminder: string;
-  presentDays: string;
-  overtimeMonth: string;
-  holidaySavings: string;
-  annualLeaveLeft: string;
-  days: (n: number, quota: number) => string;
-  notEligibleYet: string;
-  requestLeave: string;
-  myPayslip: string;
-  attendanceHistory: string;
-}> = {
+/** One of the worker's own submissions still awaiting confirmation. */
+export interface PendingItem {
+  id: string;
+  kind: "leave" | "overtime" | "clock";
+  /** LeaveType, "overtime", or a clock-approval kind (out_of_area / off_day). */
+  subtype: string;
+  startDate: string;
+  endDate?: string | null;
+  requestedAt: string;
+  /** Who it's currently waiting on. */
+  stage: "manager" | "hr";
+}
+
+const STR = {
   id: {
-    greeting: (name) => `Halo, ${name} 🌿`,
+    greeting: (name: string) => `Halo, ${name} 🌿`,
     reminder: "Jangan lupa absen ya. Semangat bekerja hari ini!",
-    presentDays: "Hari hadir bulan ini",
-    overtimeMonth: "Lembur bulan ini",
-    holidaySavings: "Tabungan libur (hari)",
-    annualLeaveLeft: "Sisa Cuti Tahunan",
-    days: (n, quota) => `${n}/${quota} hari`,
-    notEligibleYet: "Belum berhak (< 1 thn)",
-    requestLeave: "Ajukan Cuti / Izin",
-    myPayslip: "Slip Gaji Saya",
-    attendanceHistory: "Riwayat Absensi",
+    pendingTitle: "Menunggu Konfirmasi",
+    pendingDesc: "Pengajuan Anda yang masih menunggu persetujuan HR.",
+    empty: "Tidak ada pengajuan yang menunggu. Semua beres! 🎉",
+    waitingHr: "Menunggu HR",
+    waitingMgr: "Menunggu atasan",
+    submitted: "Diajukan",
+    leave: { annual: "Cuti tahunan", sick: "Sakit", unpaid: "Cuti tanpa gaji", "tukar-libur": "Tukar libur", company: "Dinas / tugas" } as Record<string, string>,
+    overtime: "Lembur",
+    clock: { out_of_area: "Absensi di luar area", off_day: "Absensi di hari libur" } as Record<string, string>,
   },
   en: {
-    greeting: (name) => `Hello, ${name} 🌿`,
+    greeting: (name: string) => `Hello, ${name} 🌿`,
     reminder: "Don't forget to clock in. Have a great workday!",
-    presentDays: "Days present this month",
-    overtimeMonth: "Overtime this month",
-    holidaySavings: "Banked days off (days)",
-    annualLeaveLeft: "Annual Leave Remaining",
-    days: (n, quota) => `${n}/${quota} days`,
-    notEligibleYet: "Not eligible yet (< 1 yr)",
-    requestLeave: "Request Leave / Permit",
-    myPayslip: "My Payslip",
-    attendanceHistory: "Attendance History",
+    pendingTitle: "Awaiting Confirmation",
+    pendingDesc: "Your submissions still waiting for HR approval.",
+    empty: "Nothing awaiting confirmation. All caught up! 🎉",
+    waitingHr: "Awaiting HR",
+    waitingMgr: "Awaiting manager",
+    submitted: "Submitted",
+    leave: { annual: "Annual leave", sick: "Sick leave", unpaid: "Unpaid leave", "tukar-libur": "Day-off swap", company: "Business trip" } as Record<string, string>,
+    overtime: "Overtime",
+    clock: { out_of_area: "Out-of-area clock", off_day: "Holiday clock" } as Record<string, string>,
   },
-};
+} as const;
+
+function itemMeta(
+  item: PendingItem,
+  t: { leave: Record<string, string>; overtime: string; clock: Record<string, string> },
+) {
+  if (item.kind === "leave") return { icon: CalendarDays, label: t.leave[item.subtype] ?? item.subtype, tone: "text-sky" };
+  if (item.kind === "overtime") return { icon: Timer, label: t.overtime, tone: "text-[#8a6512]" };
+  return {
+    icon: item.subtype === "off_day" ? CalendarOff : MapPin,
+    label: t.clock[item.subtype] ?? item.subtype,
+    tone: "text-forest-600",
+  };
+}
 
 /**
  * Front-line worker home. Clock-in is the #1 daily action → top, in the thumb
- * zone, visually dominant (Fitts + Von Restorff). Everything else is the
- * worker's own status, not company analytics.
+ * zone (Fitts + Von Restorff). Below it: exactly what the worker submitted that
+ * still needs HR confirmation — so nothing they're waiting on gets lost.
  */
 export function SelfDashboard({
   firstName,
   geofence,
   requireLocation,
   requirePhoto,
-  recap,
-  balance,
-  canPayroll,
   scheduleLabel,
   workDays,
   holidayToday = false,
   holidayName = null,
   todayRecord = null,
+  pending = [],
   locale = "id",
 }: {
   firstName: string;
   geofence: TeamGeofence;
   requireLocation: boolean;
   requirePhoto: boolean;
-  recap: AttendanceRecap;
-  balance?: LeaveBalance;
-  canPayroll: boolean;
   scheduleLabel?: string;
   workDays?: number[];
   holidayToday?: boolean;
   holidayName?: string | null;
   todayRecord?: Pick<AttendanceRecord, "clockIn" | "clockOut"> | null;
+  pending?: PendingItem[];
   locale?: Locale;
 }) {
   const t = STR[locale];
-  const annualLeft = balance ? balance.annualQuota - balance.annualUsed : 0;
   return (
     <div className="space-y-5 fade-up">
       <div>
@@ -106,68 +112,52 @@ export function SelfDashboard({
         />
       </div>
 
-      {/* Personal status */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card className="p-4">
-          <Clock className="h-5 w-5 text-forest-600" />
-          <p className="mt-2 font-display text-2xl font-bold text-ink">{recap.presentDays}</p>
-          <p className="text-xs text-muted">{t.presentDays}</p>
-        </Card>
-        <Card className="p-4">
-          <Clock className="h-5 w-5 text-[#8a6512]" />
-          <p className="mt-2 font-display text-2xl font-bold text-ink">{minutesToHM(recap.totalOvertimeMinutes, locale)}</p>
-          <p className="text-xs text-muted">{t.overtimeMonth}</p>
-        </Card>
-        <Card className="p-4">
-          <PiggyBank className="h-5 w-5 text-matcha" />
-          <p className="mt-2 font-display text-2xl font-bold text-ink">{balance?.tabunganLibur ?? 0}</p>
-          <p className="text-xs text-muted">{t.holidaySavings}</p>
-        </Card>
-      </div>
+      {/* Awaiting HR confirmation — the worker's open submissions */}
+      <section className="card overflow-hidden">
+        <header className="flex items-center gap-2 border-b border-line px-5 py-3.5">
+          <ClipboardList className="h-4 w-4 text-forest-600" />
+          <h3 className="text-sm font-semibold text-ink">{t.pendingTitle}</h3>
+          {pending.length > 0 && (
+            <span className="ml-auto rounded-full bg-gold-soft px-2 py-0.5 text-xs font-bold text-[#8a6512]">{pending.length}</span>
+          )}
+        </header>
 
-      {/* Leave balance */}
-      <Card>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-ink">{t.annualLeaveLeft}</p>
-            <span className="text-sm text-muted">
-              {balance?.annualQuota === 0 ? t.notEligibleYet : t.days(annualLeft, balance?.annualQuota ?? 12)}
-            </span>
+        {pending.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 px-5 py-10 text-center">
+            <CheckCircle2 className="h-8 w-8 text-matcha" />
+            <p className="text-sm text-muted">{t.empty}</p>
           </div>
-          <Progress value={balance?.annualUsed ?? 0} max={Math.max(balance?.annualQuota ?? 12, 1)} className="mt-2" />
-        </CardContent>
-      </Card>
-
-      {/* Quick links — the worker's next-most actions */}
-      <div className="grid grid-cols-2 gap-3">
-        <QuickLink href="/leave" icon={CalendarDays} label={t.requestLeave} tone="bg-sky-soft text-[#2c5775]" />
-        {canPayroll ? (
-          <QuickLink href="/payroll" icon={Wallet} label={t.myPayslip} tone="bg-[#e9f0d8] text-forest-700" />
         ) : (
-          <QuickLink href="/attendance" icon={Clock} label={t.attendanceHistory} tone="bg-gold-soft text-[#8a6512]" />
+          <>
+            <p className="px-5 pt-3 text-xs text-faint">{t.pendingDesc}</p>
+            <ul className="divide-y divide-line px-2 py-1">
+              {pending.map((item) => {
+                const meta = itemMeta(item, t);
+                const Icon = meta.icon;
+                const range = item.endDate && item.endDate !== item.startDate
+                  ? `${formatDate(item.startDate, "short", locale)} – ${formatDate(item.endDate, "short", locale)}`
+                  : formatDate(item.startDate, "short", locale);
+                return (
+                  <li key={`${item.kind}-${item.id}`} className="flex items-center gap-3 px-3 py-3">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cream ${meta.tone}`}>
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-ink">{meta.label}</p>
+                      <p className="truncate text-xs text-muted">
+                        {range} · {t.submitted} {formatDate(item.requestedAt, "short", locale)}
+                      </p>
+                    </div>
+                    <Badge tone="gold" dot>
+                      {item.stage === "manager" ? t.waitingMgr : t.waitingHr}
+                    </Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
-      </div>
+      </section>
     </div>
-  );
-}
-
-function QuickLink({
-  href,
-  icon: Icon,
-  label,
-  tone,
-}: {
-  href: string;
-  icon: typeof Clock;
-  label: string;
-  tone: string;
-}) {
-  return (
-    <Link href={href} className="card flex items-center gap-3 p-4 transition-colors hover:bg-cream/60">
-      <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone}`}>
-        <Icon className="h-5 w-5" />
-      </span>
-      <span className="text-sm font-medium text-ink">{label}</span>
-    </Link>
   );
 }
