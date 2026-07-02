@@ -1,6 +1,7 @@
 import { ProfileView } from "@/components/profile/profile-view";
 import { getContracts, getEmployees } from "@/lib/data";
 import { getSessionUser } from "@/lib/auth";
+import { witaToday } from "@/lib/utils";
 import type { ContractType } from "@/lib/types";
 
 export const metadata = { title: "Profil — Treelogy HR" };
@@ -18,6 +19,12 @@ export default async function ProfilePage() {
   const contractType: ContractType | null =
     emp?.contractType ?? (active ? (active.type === "pkwtt" ? "pkwtt" : "pkwt") : null);
 
+  // Heads-up when a fixed-term (has end_date) active contract is ending soon.
+  const endDate = active?.status === "active" ? active.endDate ?? null : null;
+  const endsInDays = endDate
+    ? Math.round((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${witaToday()}T00:00:00Z`)) / 86_400_000)
+    : null;
+
   return (
     <ProfileView
       emp={emp}
@@ -27,6 +34,8 @@ export default async function ProfilePage() {
       fallbackEmail={user?.email ?? ""}
       contracts={contracts}
       contractType={contractType}
+      contractEndDate={endDate}
+      contractEndsInDays={endsInDays}
     />
   );
 }

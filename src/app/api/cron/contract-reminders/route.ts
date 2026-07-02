@@ -5,8 +5,11 @@ import { pushNotifications, type NewNotification } from "@/lib/notify";
 
 export const runtime = "nodejs";
 
-// Remind at these many days before a contract's end_date.
-const MILESTONES = [60, 30];
+// Escalating reminders at these days-remaining buckets (ascending). Each contract
+// fires each bucket at most once — so the employee gets a heads-up that gets
+// closer as the end date nears.
+const MILESTONES = [1, 7, 14, 30, 60];
+const MAX_MILESTONE = 60;
 // Only probation (→ PKWTT decision) and PKWT (→ renewal) need a heads-up.
 const TYPES = ["probation", "pkwt"];
 
@@ -18,6 +21,10 @@ function addDays(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+/** Whole days from `today` (WITA) to a YYYY-MM-DD date; >=0 for future dates. */
+function daysUntil(today: string, iso: string): number {
+  return Math.round((Date.parse(iso + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86_400_000);
 }
 function fmtDate(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
@@ -47,16 +54,17 @@ export async function GET(req: Request) {
   if (!admin) return NextResponse.json({ error: "unavailable" }, { status: 503 });
 
   const today = witaToday();
-  const targets = MILESTONES.map((m) => ({ milestone: m, date: addDays(today, m) }));
-  const dateToMilestone = new Map(targets.map((t) => [t.date, t.milestone]));
+  const windowEnd = addDays(today, MAX_MILESTONE);
 
-  // Active probation/PKWT contracts ending exactly on a milestone date.
+  // Active probation/PKWT contracts ending within the reminder window. Using a
+  // window (not exact milestone dates) keeps it robust if a daily run is missed.
   const { data: contracts, error } = await admin
     .from("employee_contracts")
     .select("id, employee_id, type, end_date, employees(name, email)")
     .eq("status", "active")
     .in("type", TYPES)
-    .in("end_date", targets.map((t) => t.date));
+    .gte("end_date", today)
+    .lte("end_date", windowEnd);
   if (error) {
     return NextResponse.json({ error: "query_failed", detail: error.message }, { status: 500 });
   }
@@ -82,24 +90,27 @@ export async function GET(req: Request) {
   const emailTasks: Promise<unknown>[] = [];
 
   for (const c of rows) {
-    const milestone = dateToMilestone.get(c.end_date);
+    const daysLeft = daysUntil(today, c.end_date);
+    // Tightest bucket that applies (smallest milestone >= days remaining).
+    const milestone = MILESTONES.find((m) => daysLeft <= m);
     if (!milestone) continue;
     if (sent.has(`${c.id}:${milestone}`)) continue;
 
     const empName = c.employees?.name ?? "Karyawan";
     const empEmail = c.employees?.email ?? null;
     const when = fmtDate(c.end_date);
+    const left = daysLeft <= 0 ? "hari ini" : daysLeft === 1 ? "besok (1 hari lagi)" : `${daysLeft} hari lagi`;
     const isProbation = c.type === "probation";
 
     // Tailored copy: HR gets an action; the employee gets a softer heads-up.
     const hrTitle = isProbation ? "Masa percobaan akan berakhir" : "Kontrak PKWT akan berakhir";
     const hrBody = isProbation
-      ? `Masa percobaan ${empName} berakhir ${when} (H-${milestone}). Tinjau untuk pengangkatan PKWTT.`
-      : `Kontrak PKWT ${empName} berakhir ${when} (H-${milestone}). Proses keputusan perpanjangan kontrak.`;
+      ? `Masa percobaan ${empName} berakhir ${when} — ${left}. Tinjau untuk pengangkatan PKWTT.`
+      : `Kontrak PKWT ${empName} berakhir ${when} — ${left}. Proses keputusan perpanjangan kontrak.`;
     const empTitle = isProbation ? "Masa percobaanmu akan berakhir" : "Kontrak kerjamu akan berakhir";
     const empBody = isProbation
-      ? `Masa percobaanmu berakhir ${when} (H-${milestone}). HR akan meninjau status kepegawaianmu.`
-      : `Kontrak kerjamu berakhir ${when} (H-${milestone}). HR akan menghubungimu terkait perpanjangan.`;
+      ? `Masa percobaanmu berakhir ${when} — ${left}. HR akan meninjau status kepegawaianmu.`
+      : `Kontrak kerjamu berakhir ${when} — ${left}. HR akan menghubungimu terkait perpanjangan.`;
 
     // HR ids excluding the affected employee (they get the employee copy instead).
     const hrIds = hrList.map((h) => h.employee_id).filter((id) => id !== c.employee_id);

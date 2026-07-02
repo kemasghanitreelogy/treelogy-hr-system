@@ -1,4 +1,4 @@
-import { Banknote, Briefcase, FileSignature, Mail, ShieldCheck, UserRound, Wallet } from "lucide-react";
+import { Banknote, Briefcase, CalendarClock, FileSignature, Mail, ShieldCheck, UserRound, Wallet } from "lucide-react";
 import type { ContractType, Employee, EmployeeContract } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -133,6 +133,8 @@ export function ProfileView({
   fallbackEmail,
   contracts = [],
   contractType = null,
+  contractEndDate = null,
+  contractEndsInDays = null,
   locale = "id",
 }: {
   emp?: Employee;
@@ -142,12 +144,22 @@ export function ProfileView({
   fallbackEmail: string;
   contracts?: EmployeeContract[];
   contractType?: ContractType | null;
+  contractEndDate?: string | null;
+  contractEndsInDays?: number | null;
   locale?: Locale;
 }) {
   const t = STR[locale];
   const name = emp?.name ?? fallbackName;
   const team = emp ? TEAM_META[emp.team] : null;
   const contractLabel = contractType ? CT_LABEL[locale][contractType] : null;
+  // Show a heads-up when the active fixed-term contract ends within ~2 months.
+  const endingSoon = contractEndDate != null && contractEndsInDays != null && contractEndsInDays >= 0 && contractEndsInDays <= 60;
+  const endsText =
+    contractEndsInDays === 0
+      ? locale === "en" ? "today" : "hari ini"
+      : contractEndsInDays === 1
+        ? locale === "en" ? "tomorrow" : "besok"
+        : locale === "en" ? `in ${contractEndsInDays} days` : `dalam ${contractEndsInDays} hari`;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 fade-up">
@@ -191,6 +203,17 @@ export function ProfileView({
         </div>
       ) : (
         <>
+          {endingSoon && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-gold/40 bg-gold-soft/60 px-4 py-3">
+              <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-[#8a6512]" />
+              <p className="text-sm text-[#8a6512]">
+                {locale === "en"
+                  ? `Your contract ends ${endsText} (${formatDate(contractEndDate!, "long", locale)}). HR will reach out about renewal.`
+                  : `Kontrak kamu berakhir ${endsText} (${formatDate(contractEndDate!, "long", locale)}). HR akan menghubungimu terkait perpanjangan.`}
+              </p>
+            </div>
+          )}
+
           <Section title="Kepegawaian" icon={Briefcase}>
             <Info label="NIK" value={emp.nik} />
             <Info label="Jabatan" value={emp.position} />
