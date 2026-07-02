@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CalendarDays, CalendarOff, CheckCircle2, ChevronRight, ClipboardList, MapPin, Timer } from "lucide-react";
 import { ClockWidget } from "@/components/attendance/clock-widget";
+import { NotifyNudge } from "@/components/pwa/notify-nudge";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import type { AttendanceRecord, TeamGeofence } from "@/lib/types";
@@ -113,6 +114,9 @@ export function SelfDashboard({
           todayRecord={todayRecord}
         />
       </div>
+
+      {/* Gentle nudge for anyone who hasn't turned on push yet */}
+      <NotifyNudge />
 
       {/* Awaiting HR confirmation — the worker's open submissions */}
       <section className="card overflow-hidden">
