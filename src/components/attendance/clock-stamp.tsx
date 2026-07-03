@@ -103,11 +103,18 @@ export function ClockStamp({
   const glow = tone === "amber" ? "bg-gold-soft" : "bg-forest-100";
   const title = tone === "amber" ? "text-[#8a6512]" : "text-forest-700";
 
+  // Tap anywhere on the overlay to skip early (still blocks the background).
+  const close = () => {
+    setLeaving(true);
+    window.setTimeout(() => onDoneRef.current(), 200);
+  };
+
   return createPortal(
     <div
-      className={`pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6 transition-opacity duration-200 ${leaving ? "opacity-0" : "opacity-100"}`}
+      className={`fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-6 transition-opacity duration-200 ${leaving ? "opacity-0" : "opacity-100"}`}
       role="status"
       aria-live="polite"
+      onClick={close}
     >
       <div className="absolute inset-0 animate-overlay bg-bark/45 backdrop-blur-sm" />
 
