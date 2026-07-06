@@ -130,7 +130,9 @@ export function CameraCapture({
     ctx.translate(size, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    // 0.7 keeps the selfie clear while trimming the payload so the clock request
+    // stays small enough for `keepalive` to finish it even if the app is closed.
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
     stop(); // freeze the still — stop the live feed
     setCaptured(dataUrl);
   }

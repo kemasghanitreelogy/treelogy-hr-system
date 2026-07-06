@@ -30,6 +30,48 @@ import { CameraCapture } from "./camera-capture";
 type Phase = "out" | "in" | "done";
 type Flow = "idle" | "locating" | "camera" | "submitting";
 
+/**
+ * Resilient clock POST. The attendance write is idempotent (upsert on
+ * employee_id+date), so we can safely:
+ *  - retry a few times with backoff → survives a flaky/moving-vehicle network;
+ *  - time each attempt out → never hangs on a dead zone;
+ *  - use `keepalive` → the request can still finish if the app is closed.
+ * Returns the server Response (any HTTP status < 500 is a definitive answer);
+ * throws only when every attempt fails at the network level.
+ */
+async function postClock(body: unknown): Promise<Response> {
+  const payload = JSON.stringify(body);
+  // `keepalive` caps the body at ~64KB and rejects outright if exceeded, so only
+  // opt in when we're safely under — a large selfie must never break the request.
+  const keepalive = new Blob([payload]).size < 60_000;
+  const backoffs = [0, 700, 1800]; // 3 attempts
+  let lastErr: unknown;
+  for (let i = 0; i < backoffs.length; i++) {
+    if (backoffs[i]) await new Promise((r) => setTimeout(r, backoffs[i]));
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch("/api/attendance/clock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive,
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.status >= 500) {
+        lastErr = new Error(`server_${res.status}`);
+        continue; // transient server error → retry
+      }
+      return res; // 2xx / 4xx = definitive, don't retry
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e; // network error / timeout → retry
+    }
+  }
+  throw lastErr ?? new Error("network");
+}
+
 const STR: Record<
   Locale,
   {
@@ -292,7 +334,7 @@ export function ClockWidget({
     todayRecord?.clockOut ? new Date(todayRecord.clockOut) : null,
   );
   const [flow, setFlow] = useState<Flow>("idle");
-  const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string; retry?: () => void } | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
   // Alur "di luar area": modal danger → catatan opsional → kirim sebagai
   // pengajuan konfirmasi HR (absensi tidak langsung tercatat).
@@ -416,20 +458,16 @@ export function ClockWidget({
     }
     setFlow("submitting");
     try {
-      const res = await fetch("/api/attendance/clock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          direction: pendingDir,
-          lat: coords?.lat,
-          lng: coords?.lng,
-          photo,
-          confirmOutOfRange: asOutOfRange || undefined,
-          note: asOutOfRange ? oorNote.trim() || undefined : offDayNote?.trim() || undefined,
-          offDayChoice,
-        }),
+      const res = await postClock({
+        direction: pendingDir,
+        lat: coords?.lat,
+        lng: coords?.lng,
+        photo,
+        confirmOutOfRange: asOutOfRange || undefined,
+        note: asOutOfRange ? oorNote.trim() || undefined : offDayNote?.trim() || undefined,
+        offDayChoice,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.error === "out_of_range") {
           setNotice({ tone: "error", text: t.outOfRange(formatDistance(data.distance), data.maxRadius) });
@@ -488,7 +526,13 @@ export function ClockWidget({
       // tanpa memblokir UI — cache router diinvalidasi lalu di-prefetch ulang.
       router.refresh();
     } catch {
-      setNotice({ tone: "error", text: t.connectionProblem });
+      // Every network attempt failed. Keep the captured photo + fix so the user
+      // can re-send in one tap instead of re-taking the selfie.
+      setNotice({
+        tone: "error",
+        text: t.connectionProblem,
+        retry: () => submit(coords, photo, asOutOfRange, offDayChoice, offDayNote),
+      });
     } finally {
       setFlow("idle");
     }
@@ -572,7 +616,17 @@ export function ClockWidget({
               )}
             >
               {notice.tone === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
-              <span>{notice.text}</span>
+              <span className="flex-1">{notice.text}</span>
+              {notice.retry && (
+                <button
+                  type="button"
+                  onClick={notice.retry}
+                  disabled={busy}
+                  className="shrink-0 rounded-lg bg-[#8c3c1f] px-2.5 py-1 text-xs font-semibold text-cream active:scale-95 disabled:opacity-60"
+                >
+                  {locale === "en" ? "Try again" : "Coba lagi"}
+                </button>
+              )}
             </div>
           )}
 
