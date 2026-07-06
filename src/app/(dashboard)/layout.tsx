@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { LocaleProvider } from "@/components/layout/locale-context";
 import { NotifyPrompt } from "@/components/pwa/notify-prompt";
 import { PushAutoSync } from "@/components/pwa/push-auto-sync";
+import { ClockSync } from "@/components/attendance/clock-sync";
 import { getSessionUser } from "@/lib/auth";
 import { LOCALE_COOKIE, normalizeLocale } from "@/lib/i18n";
 
@@ -32,6 +33,7 @@ export default async function DashboardLayout({
       </AppShell>
       <NotifyPrompt />
       <PushAutoSync />
+      <ClockSync />
     </LocaleProvider>
   );
 }

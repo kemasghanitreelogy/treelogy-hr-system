@@ -37,6 +37,24 @@ interface Body {
   note?: string;
   /** Saat clock-in di hari libur: 'swap' (→tabungan) / 'overtime' (→lembur). */
   offDayChoice?: "swap" | "overtime";
+  /** ISO waktu tap sebenarnya di perangkat — dipakai agar absensi yang di-antre
+   *  offline tetap tercatat pada jam aslinya, bukan jam saat sinkron. */
+  clientTime?: string;
+}
+
+/**
+ * The moment to record. Use the device's real tap time when it's sane — not in
+ * the future (2min skew allowed) and not more than 12h stale — so an offline
+ * queued clock keeps its true time; otherwise fall back to the server clock.
+ */
+function effectiveNow(clientTime?: string): Date {
+  const server = new Date();
+  if (!clientTime) return server;
+  const t = new Date(clientTime);
+  if (Number.isNaN(t.getTime())) return server;
+  const diff = server.getTime() - t.getTime(); // >0 → client in the past
+  if (diff < -120_000 || diff > 12 * 3_600_000) return server;
+  return t;
 }
 
 export async function POST(req: Request) {
@@ -87,8 +105,10 @@ export async function POST(req: Request) {
   // Hari libur = bukan hari kerja menurut jadwal, ATAU hari libur (nasional /
   // keagamaan sesuai agama karyawan).
   const workDays = Array.isArray(emp?.work_days) ? emp!.work_days!.map(Number) : [1, 2, 3, 4, 5];
-  const todayStr = witaDateStr(new Date());
-  let isOffDay = !workDays.includes(witaDow(new Date()));
+  // The single source of "now" for this clock — the real tap time when valid.
+  const clockAt = effectiveNow(body.clientTime);
+  const todayStr = witaDateStr(clockAt);
+  let isOffDay = !workDays.includes(witaDow(clockAt));
   if (!isOffDay) {
     const { data: hol } = await supabase.from("holidays").select("type, religion").eq("date", todayStr);
     if ((hol ?? []).some((h) => h.type === "public" || (h.type === "religious" && h.religion === emp?.religion))) {
@@ -145,7 +165,7 @@ export async function POST(req: Request) {
     try {
       const base64 = body.photo.split(",")[1];
       const buffer = Buffer.from(base64, "base64");
-      const path = `${user.id}/${witaDateStr(new Date())}-${direction}${body.confirmOutOfRange ? "-oor" : ""}.jpg`;
+      const path = `${user.id}/${witaDateStr(clockAt)}-${direction}${body.confirmOutOfRange ? "-oor" : ""}.jpg`;
       const { error: upErr } = await supabase.storage
         .from("attendance-selfies")
         .upload(path, buffer, { contentType: "image/jpeg", upsert: true });
@@ -159,7 +179,7 @@ export async function POST(req: Request) {
   // pengajuan pending; HR menyetujui → absensi ditulis dengan waktu pengajuan.
   if (outOfRange) {
     if (!profile?.employee_id) return NextResponse.json({ error: "no_employee" }, { status: 400 });
-    const today = witaDateStr(new Date());
+    const today = witaDateStr(clockAt);
     const { error: reqErr } = await supabase.from("clock_approval_requests").insert({
       employee_id: profile.employee_id,
       date: today,
@@ -185,8 +205,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, pending: true, distance });
   }
 
-  const today = witaDateStr(new Date());
-  const nowIso = new Date().toISOString();
+  const today = witaDateStr(clockAt);
+  const nowIso = clockAt.toISOString();
 
   // HARI LIBUR → TAHAN: jangan tulis absensi. Jadikan pengajuan konfirmasi HR
   // dengan pilihan tukar-libur/lembur. Absensi + tabungan/lembur dicatat saat
@@ -239,7 +259,7 @@ export async function POST(req: Request) {
     if (direction === "in") {
       // Telat = selisih jam masuk vs jadwal mulai (WITA).
       const workStart = (emp?.work_start as string) ?? "08:00";
-      const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
+      const [ch, cm] = witaHHMM(clockAt).split(":").map(Number);
       const [sh, sm] = workStart.split(":").map(Number);
       lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
 
@@ -270,7 +290,7 @@ export async function POST(req: Request) {
     } else {
       // Menit lembur (informasi absensi) = selisih pulang vs jadwal selesai (WITA).
       const workEnd = (emp?.work_end as string) ?? "17:00";
-      const [ch, cm] = witaHHMM(new Date()).split(":").map(Number);
+      const [ch, cm] = witaHHMM(clockAt).split(":").map(Number);
       const [eh, em] = workEnd.split(":").map(Number);
       overtimeMinutes = Math.max(0, ch * 60 + cm - (eh * 60 + em));
 

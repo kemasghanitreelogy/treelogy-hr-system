@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { ClockStamp } from "@/components/attendance/clock-stamp";
+import { postClock, isFinalClockResponse } from "@/lib/clock-post";
+import { enqueueClock, removeClock } from "@/lib/clock-queue";
 import type { AttendanceRecord, TeamGeofence } from "@/lib/types";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
@@ -29,48 +31,6 @@ import { CameraCapture } from "./camera-capture";
 
 type Phase = "out" | "in" | "done";
 type Flow = "idle" | "locating" | "camera" | "submitting";
-
-/**
- * Resilient clock POST. The attendance write is idempotent (upsert on
- * employee_id+date), so we can safely:
- *  - retry a few times with backoff → survives a flaky/moving-vehicle network;
- *  - time each attempt out → never hangs on a dead zone;
- *  - use `keepalive` → the request can still finish if the app is closed.
- * Returns the server Response (any HTTP status < 500 is a definitive answer);
- * throws only when every attempt fails at the network level.
- */
-async function postClock(body: unknown): Promise<Response> {
-  const payload = JSON.stringify(body);
-  // `keepalive` caps the body at ~64KB and rejects outright if exceeded, so only
-  // opt in when we're safely under — a large selfie must never break the request.
-  const keepalive = new Blob([payload]).size < 60_000;
-  const backoffs = [0, 700, 1800]; // 3 attempts
-  let lastErr: unknown;
-  for (let i = 0; i < backoffs.length; i++) {
-    if (backoffs[i]) await new Promise((r) => setTimeout(r, backoffs[i]));
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
-    try {
-      const res = await fetch("/api/attendance/clock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-        keepalive,
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (res.status >= 500) {
-        lastErr = new Error(`server_${res.status}`);
-        continue; // transient server error → retry
-      }
-      return res; // 2xx / 4xx = definitive, don't retry
-    } catch (e) {
-      clearTimeout(timer);
-      lastErr = e; // network error / timeout → retry
-    }
-  }
-  throw lastErr ?? new Error("network");
-}
 
 const STR: Record<
   Locale,
@@ -88,6 +48,7 @@ const STR: Record<
     clockInOk: string;
     clockOutOk: string;
     connectionProblem: string;
+    clockQueued: string;
     status: string;
     working: string;
     notClockedIn: string;
@@ -146,6 +107,7 @@ const STR: Record<
     clockInOk: "Clock-in berhasil terekam ✓",
     clockOutOk: "Clock-out berhasil terekam ✓",
     connectionProblem: "Koneksi bermasalah. Coba lagi.",
+    clockQueued: "Sinyal lemah — absen disimpan & terkirim otomatis saat online.",
     status: "Status",
     working: "Sedang Bekerja",
     notClockedIn: "Belum Clock-In",
@@ -203,6 +165,7 @@ const STR: Record<
     clockInOk: "Clock-in recorded ✓",
     clockOutOk: "Clock-out recorded ✓",
     connectionProblem: "Connection problem. Try again.",
+    clockQueued: "Weak signal — attendance saved & sent automatically once online.",
     status: "Status",
     working: "Currently Working",
     notClockedIn: "Not Clocked In",
@@ -457,16 +420,28 @@ export function ClockWidget({
       return;
     }
     setFlow("submitting");
+    // Real tap moment — the server records this (validated), so an offline
+    // queued clock keeps its true time instead of the sync time.
+    const clientTime = new Date().toISOString();
+    const payload = {
+      direction: pendingDir,
+      lat: coords?.lat,
+      lng: coords?.lng,
+      photo,
+      confirmOutOfRange: asOutOfRange || undefined,
+      note: asOutOfRange ? oorNote.trim() || undefined : offDayNote?.trim() || undefined,
+      offDayChoice,
+      clientTime,
+    };
+    // Persist BEFORE sending → if the app is closed mid-submit, ClockSync replays
+    // it on reopen. Removed as soon as the server has answered.
+    const qid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`;
+    void enqueueClock({ id: qid, dir: pendingDir, payload, at: Date.now() });
     try {
-      const res = await postClock({
-        direction: pendingDir,
-        lat: coords?.lat,
-        lng: coords?.lng,
-        photo,
-        confirmOutOfRange: asOutOfRange || undefined,
-        note: asOutOfRange ? oorNote.trim() || undefined : offDayNote?.trim() || undefined,
-        offDayChoice,
-      });
+      const res = await postClock(payload);
+      // Drop the queued copy only on a final answer; keep it for auth/transient
+      // (401/408/429/5xx) so ClockSync can retry.
+      if (isFinalClockResponse(res.status)) void removeClock(qid);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.error === "out_of_range") {
@@ -526,11 +501,22 @@ export function ClockWidget({
       // tanpa memblokir UI — cache router diinvalidasi lalu di-prefetch ulang.
       router.refresh();
     } catch {
-      // Every network attempt failed. Keep the captured photo + fix so the user
-      // can re-send in one tap instead of re-taking the selfie.
+      // Fully offline — the clock is safely queued (persisted above); ClockSync
+      // re-sends it on reconnect/reopen. Reflect the action optimistically for a
+      // normal in-area clock so the worker sees it registered.
+      const normalClock = !asOutOfRange && !offDayChoice && !offDayToday;
+      if (normalClock) {
+        if (pendingDir === "in") {
+          setClockInAt(new Date(clientTime));
+          setPhase("in");
+        } else {
+          setClockOutAt(new Date(clientTime));
+          setPhase("done");
+        }
+      }
       setNotice({
-        tone: "error",
-        text: t.connectionProblem,
+        tone: "ok",
+        text: t.clockQueued,
         retry: () => submit(coords, photo, asOutOfRange, offDayChoice, offDayNote),
       });
     } finally {
