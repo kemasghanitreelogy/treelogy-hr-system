@@ -42,10 +42,17 @@ interface Body {
   clientTime?: string;
 }
 
+// How far in the past the device's tap time may be and still be trusted. A
+// clock-in must be inside the geofence, so an offline gap is only the minutes
+// until signal returns at the office — a tight window covers that while bounding
+// any backdating. Beyond it we fall back to the (tamper-proof) server clock.
+const CLIENT_TIME_MAX_STALE_MS = 15 * 60_000; // 15 minutes
+const CLIENT_TIME_MAX_SKEW_MS = 120_000; // 2 min future skew tolerance
+
 /**
  * The moment to record. Use the device's real tap time when it's sane — not in
- * the future (2min skew allowed) and not more than 12h stale — so an offline
- * queued clock keeps its true time; otherwise fall back to the server clock.
+ * the future (small skew) and not more than 15min stale — so an offline queued
+ * clock keeps its true time; otherwise fall back to the server clock.
  */
 function effectiveNow(clientTime?: string): Date {
   const server = new Date();
@@ -53,7 +60,7 @@ function effectiveNow(clientTime?: string): Date {
   const t = new Date(clientTime);
   if (Number.isNaN(t.getTime())) return server;
   const diff = server.getTime() - t.getTime(); // >0 → client in the past
-  if (diff < -120_000 || diff > 12 * 3_600_000) return server;
+  if (diff < -CLIENT_TIME_MAX_SKEW_MS || diff > CLIENT_TIME_MAX_STALE_MS) return server;
   return t;
 }
 
