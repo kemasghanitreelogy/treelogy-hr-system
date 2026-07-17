@@ -16,10 +16,10 @@ import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 
 type CType = EmployeeContract["type"];
-const TYPES: CType[] = ["probation", "pkwt", "pkwtt", "magang", "harian"];
+const TYPES: CType[] = ["probation", "pkwt", "pkwtt", "parttime", "magang", "harian"];
 const TYPE_LABEL: Record<Locale, Record<CType, string>> = {
-  id: { probation: "Masa percobaan", pkwt: "PKWT (kontrak)", pkwtt: "PKWTT (tetap)", magang: "Magang", harian: "Harian" },
-  en: { probation: "Probation", pkwt: "Fixed-term (PKWT)", pkwtt: "Permanent (PKWTT)", magang: "Internship", harian: "Daily" },
+  id: { probation: "Masa percobaan", pkwt: "PKWT (kontrak)", pkwtt: "PKWTT (tetap)", parttime: "Part Time", magang: "Magang", harian: "Harian" },
+  en: { probation: "Probation", pkwt: "Fixed-term (PKWT)", pkwtt: "Permanent (PKWTT)", parttime: "Part-time", magang: "Internship", harian: "Daily" },
 };
 
 const STR: Record<Locale, {

@@ -5,9 +5,9 @@ import { notifyApprovers, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { applyApproval, type ApprovalAction } from "@/lib/approval";
-import { overtimePay, overtimeRatePerHour } from "@/lib/overtime";
+import { contractRatePerHour, overtimePayEstimate, parseContractType } from "@/lib/overtime";
 import { can, getSessionUser } from "@/lib/auth";
-import type { ContractType, RequestStatus } from "@/lib/types";
+import type { RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -85,17 +85,18 @@ export async function POST(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
-  // Snapshot the hourly rate + contract type from the employee. PKWT is paid
-  // flat; PKWTT pays 1.5× the first hour then 2× the rest.
+  // Snapshot the hourly rate + contract type from the employee. PKWT and
+  // part-time are paid flat (part-time at its own hourly wage); PKWTT pays
+  // 1.5× the first hour then 2× the rest.
   const { data: emp } = await supabase!
     .from("employees")
-    .select("base_salary, name, team, contract_type")
+    .select("base_salary, hourly_rate, name, team, contract_type")
     .eq("id", body.employeeId)
     .maybeSingle();
   const baseSalary = Number(emp?.base_salary) || 0;
-  const contractType: ContractType = emp?.contract_type === "pkwtt" ? "pkwtt" : "pkwt";
-  const ratePerHour = overtimeRatePerHour(baseSalary);
-  const amount = overtimePay(baseSalary, hours, contractType);
+  const contractType = parseContractType(emp?.contract_type);
+  const ratePerHour = contractRatePerHour(contractType, baseSalary, Number(emp?.hourly_rate) || 0);
+  const amount = overtimePayEstimate(ratePerHour, hours, contractType);
 
   // Optional proof file. Preferred: client uploaded straight to storage and
   // sent the path. Fallback: base64 data URL uploaded here (demo / no Supabase).

@@ -6,6 +6,9 @@ import type { ContractType, Employee, EmployeeContract, Religion, Team } from "@
 import { ContractsCard } from "./contracts-card";
 import type { Locale } from "@/lib/i18n";
 
+const CONTRACT_TYPES: ContractType[] = ["pkwt", "pkwtt", "parttime"];
+const CONTRACT_LABEL: Record<ContractType, string> = { pkwt: "PKWT", pkwtt: "PKWTT", parttime: "Part Time" };
+
 const RELIGIONS: Religion[] = ["islam", "kristen", "katolik", "hindu", "buddha", "konghucu"];
 const RELIGION_LABEL: Record<Locale, Record<Religion, string>> = {
   id: { islam: "Islam", kristen: "Kristen", katolik: "Katolik", hindu: "Hindu", buddha: "Buddha", konghucu: "Konghucu" },
@@ -124,7 +127,13 @@ const ID_STR = {
   emailHint: "Wajib — akun login dibuat otomatis (sandi awal = email).",
   baseSalaryRp: "Gaji pokok (Rp)",
   allowanceRp: "Tunjangan (Rp)",
+  hourlyRateRp: "Upah per jam (Rp)",
+  hourlyRateLabel: "Upah per jam",
+  perHourSuffix: "/jam",
   contractType: "Tipe kontrak",
+  rangeStart: "Jam mulai",
+  rangeEnd: "Jam selesai",
+  scheduleRangeHint: "Range jam kerja part time (WITA) — dasar hitung gaji per jam & patokan telat.",
   clockInHint: "Patokan telat (WITA)",
   bank: "Bank",
   bankAccount: "No. rekening",
@@ -222,7 +231,13 @@ const STR: Record<Locale, typeof ID_STR> = {
     emailPlaceholder: "name@treelogy.com",
     baseSalaryRp: "Base salary (Rp)",
     allowanceRp: "Allowance (Rp)",
+    hourlyRateRp: "Hourly wage (Rp)",
+    hourlyRateLabel: "Hourly wage",
+    perHourSuffix: "/hr",
     contractType: "Contract type",
+    rangeStart: "Start time",
+    rangeEnd: "End time",
+    scheduleRangeHint: "Part-time working-hour range (WITA) — the basis for hourly pay & the late benchmark.",
     clockInHint: "Late benchmark (WITA)",
     bank: "Bank",
     bankAccount: "Account number",
@@ -399,7 +414,9 @@ export function EmployeesView({
                   </td>
                   <td className="px-5 py-3 text-muted">{e.position}</td>
                   <td className="px-5 py-3 text-muted">{formatDate(e.joinDate, "short", locale)}</td>
-                  <td className="px-5 py-3 text-right font-medium text-ink">{rupiah(e.baseSalary)}</td>
+                  <td className="px-5 py-3 text-right font-medium text-ink">
+                    {e.contractType === "parttime" ? `${rupiah(e.hourlyRate ?? 0)}${t.perHourSuffix}` : rupiah(e.baseSalary)}
+                  </td>
                   <td className="px-5 py-3">
                     <EmployeeStatusBadge status={e.status} />
                   </td>
@@ -430,7 +447,11 @@ export function EmployeesView({
                 <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", TEAM_META[e.team].chip)}>
                   {TEAM_META[e.team].label}
                 </span>
-                <span className="text-xs text-muted">{rupiah(e.baseSalary, { compact: true })}</span>
+                <span className="text-xs text-muted">
+                  {e.contractType === "parttime"
+                    ? `${rupiah(e.hourlyRate ?? 0, { compact: true })}${t.perHourSuffix}`
+                    : rupiah(e.baseSalary, { compact: true })}
+                </span>
               </div>
             </div>
           </button>
@@ -634,9 +655,13 @@ function EmployeeDetail({
           <Wallet className="h-4 w-4 text-forest-600" /> {t.compensationTax}
         </h3>
         <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
-          <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
+          {emp.contractType === "parttime" ? (
+            <Stat label={t.hourlyRateLabel} value={`${rupiah(emp.hourlyRate ?? 0)}${t.perHourSuffix}`} />
+          ) : (
+            <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
+          )}
           <Stat label={t.allowance} value={rupiah(emp.allowance)} />
-          <Stat label={t.contractType} value={emp.contractType ? emp.contractType.toUpperCase() : "PKWT"} />
+          <Stat label={t.contractType} value={CONTRACT_LABEL[emp.contractType ?? "pkwt"]} />
           <Stat label={t.religion} value={emp.religion ? RELIGION_LABEL[locale][emp.religion] : "—"} />
           <Stat label={t.npwp} value={emp.npwp ?? "—"} />
           <Stat label={t.bpjsKes} value={emp.bpjsKes ? t.activeLabel : "—"} />
@@ -773,6 +798,7 @@ function EmployeeForm({
     phone: initial?.phone ?? "",
     baseSalary: String(initial?.baseSalary ?? "3500000"),
     allowance: String(initial?.allowance ?? "500000"),
+    hourlyRate: String(initial?.hourlyRate ?? "25000"),
     contractType: (initial?.contractType ?? "pkwt") as ContractType,
     religion: (initial?.religion ?? "") as Religion | "",
     birthPlace: initial?.birthPlace ?? "",
@@ -809,6 +835,7 @@ function EmployeeForm({
         phone: form.phone,
         baseSalary: Number(form.baseSalary) || 0,
         allowance: Number(form.allowance) || 0,
+        hourlyRate: Number(form.hourlyRate) || 0,
         contractType: form.contractType,
         religion: form.religion || null,
         birthPlace: form.birthPlace || null,
@@ -866,19 +893,36 @@ function EmployeeForm({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t.baseSalaryRp}>
-          <Input type="number" value={form.baseSalary} onChange={(e) => set("baseSalary", e.target.value)} />
-        </Field>
+        {form.contractType === "parttime" ? (
+          <Field label={t.hourlyRateRp}>
+            <Input type="number" value={form.hourlyRate} onChange={(e) => set("hourlyRate", e.target.value)} />
+          </Field>
+        ) : (
+          <Field label={t.baseSalaryRp}>
+            <Input type="number" value={form.baseSalary} onChange={(e) => set("baseSalary", e.target.value)} />
+          </Field>
+        )}
         <Field label={t.allowanceRp}>
           <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
         </Field>
       </div>
       <Field label={t.contractType}>
         <Select value={form.contractType} onChange={(e) => set("contractType", e.target.value as ContractType)}>
-          <option value="pkwt">PKWT</option>
-          <option value="pkwtt">PKWTT</option>
+          {CONTRACT_TYPES.map((ct) => (
+            <option key={ct} value={ct}>{CONTRACT_LABEL[ct]}</option>
+          ))}
         </Select>
       </Field>
+      {form.contractType === "parttime" && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t.rangeStart} hint={t.scheduleRangeHint}>
+            <Input type="time" value={form.workStart} onChange={(e) => set("workStart", e.target.value)} />
+          </Field>
+          <Field label={t.rangeEnd}>
+            <Input type="time" value={form.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
+          </Field>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.religion}>
           <Select value={form.religion} onChange={(e) => set("religion", e.target.value as Religion)}>

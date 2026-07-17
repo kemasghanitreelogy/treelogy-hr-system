@@ -12,12 +12,13 @@ export default async function ProfilePage() {
   const emp = user?.employeeId ? employees.find((e) => e.id === user.employeeId) : undefined;
   const manager = emp?.managerId ? employees.find((e) => e.id === emp.managerId) : undefined;
 
-  // The employee's own contracts + a headline PKWT/PKWTT status. Prefer the
-  // employee's summary field; otherwise derive it from the active contract.
+  // The employee's own contracts + a headline PKWT/PKWTT/part-time status.
+  // Prefer the employee's summary field; otherwise derive from the active contract.
   const contracts = emp ? await getContracts(emp.id) : [];
   const active = contracts.find((c) => c.status === "active") ?? contracts[0];
   const contractType: ContractType | null =
-    emp?.contractType ?? (active ? (active.type === "pkwtt" ? "pkwtt" : "pkwt") : null);
+    emp?.contractType ??
+    (active ? (active.type === "pkwtt" || active.type === "parttime" ? active.type : "pkwt") : null);
 
   // Heads-up when a fixed-term (has end_date) active contract is ending soon.
   const endDate = active?.status === "active" ? active.endDate ?? null : null;

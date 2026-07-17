@@ -132,6 +132,7 @@ export const mapEmployee = (r: Row): Employee => ({
   scheduleTemplateId: (r.schedule_template_id as string) ?? null,
   managerId: (r.manager_id as string) ?? null,
   contractType: (r.contract_type as Employee["contractType"]) ?? "pkwt",
+  hourlyRate: n(r.hourly_rate),
 });
 
 export const mapHoliday = (r: Row): Holiday => ({
@@ -704,9 +705,24 @@ export function computeRecap(
   return recap;
 }
 
+/** Jam kerja terjadwal per hari dari range jam (workStart–workEnd). */
+function scheduledHoursPerDay(employee: Employee): number {
+  const toMin = (t?: string) => {
+    const m = /^(\d{2}):(\d{2})$/.exec(t ?? "");
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const start = toMin(employee.workStart);
+  const end = toMin(employee.workEnd);
+  if (start == null || end == null || end <= start) return 8;
+  return (end - start) / 60;
+}
+
 /**
  * Gaji bersih sederhana: pokok + tunjangan + lembur (dari modul Lembur yang
  * DISETUJUI pada periode itu) − potongan ketidakhadiran. Tanpa BPJS/PPh.
+ *
+ * Part-time: pokok = upah/jam × jam terjadwal (range jam) × hari hadir.
+ * Tidak ada potongan absen/cuti tanpa gaji — tidak kerja = tidak dibayar.
  */
 export function buildPayslip(
   employee: Employee,
@@ -720,6 +736,20 @@ export function buildPayslip(
   const ot = overtime.filter((o) => o.employeeId === employee.id && o.status === "approved" && o.date.startsWith(period));
   const overtimePay = ot.reduce((s, o) => s + o.amount, 0);
   const overtimeHours = Math.round(ot.reduce((s, o) => s + o.hours, 0) * 10) / 10;
+
+  if (employee.contractType === "parttime") {
+    const paidHours = scheduledHoursPerDay(employee) * recap.presentDays;
+    const basePay = Math.round((employee.hourlyRate ?? 0) * paidHours);
+    const grossPay = basePay + employee.allowance + overtimePay;
+    return {
+      id: `${runId}-${employee.id}`, runId, employeeId: employee.id, period,
+      workingDays: recap.workingDays, presentDays: recap.presentDays,
+      baseSalary: basePay, allowance: employee.allowance,
+      overtimePay, overtimeHours, absenceDeduction: 0,
+      unpaidLeaveDays: 0, unpaidLeaveDeduction: 0, grossPay, netPay: grossPay,
+    };
+  }
+
   const dailyRate = recap.workingDays > 0 ? employee.baseSalary / recap.workingDays : 0;
   const absenceDeduction = Math.round(dailyRate * recap.absentDays);
   // Unpaid leave: approved 'unpaid' requests in this period, docked at the

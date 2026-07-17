@@ -1,5 +1,6 @@
 import { OvertimeView } from "@/components/overtime/overtime-view";
 import { getEmployees, getOvertimeRequests } from "@/lib/data";
+import { contractRatePerHour } from "@/lib/overtime";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
@@ -44,7 +45,7 @@ export default async function OvertimePage() {
         canRequestForOthers={can(user, "leave.approve")}
         canApproveAll={canApproveAll}
         approverTeam={approverTeam}
-        selfRatePerHour={me ? Math.round(me.baseSalary / (20 * 8)) : 0}
+        selfRatePerHour={me ? contractRatePerHour(me.contractType ?? "pkwt", me.baseSalary, me.hourlyRate ?? 0) : 0}
         selfContractType={me?.contractType ?? "pkwt"}
       />
     </div>

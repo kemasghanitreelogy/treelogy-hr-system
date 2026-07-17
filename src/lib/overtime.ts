@@ -8,6 +8,19 @@ export function overtimeRatePerHour(baseSalary: number): number {
   return Math.round((Number(baseSalary) || 0) / OVERTIME_DIVISOR);
 }
 
+/** Narrow a raw DB value to a ContractType (unknown → 'pkwt'). */
+export function parseContractType(v: unknown): ContractType {
+  return v === "pkwtt" || v === "parttime" ? v : "pkwt";
+}
+
+/**
+ * Hourly rate per contract type: part-timers already carry an explicit
+ * hourly wage; monthly staff derive it from the base salary (÷160).
+ */
+export function contractRatePerHour(type: ContractType, baseSalary: number, hourlyRate: number): number {
+  return type === "parttime" ? Math.round(Number(hourlyRate) || 0) : overtimeRatePerHour(baseSalary);
+}
+
 /** Apply the contract-type multipliers to an hourly rate (unrounded). */
 function payFromRate(rate: number, hours: number, type: ContractType): number {
   const h = Math.max(Number(hours) || 0, 0);
@@ -15,7 +28,7 @@ function payFromRate(rate: number, hours: number, type: ContractType): number {
     // 1 jam pertama 1.5×, sisanya 2× (per pengajuan lembur).
     return rate * 1.5 * Math.min(h, 1) + rate * 2 * Math.max(h - 1, 0);
   }
-  // PKWT: flat 1× per jam.
+  // PKWT & part-time: flat 1× per jam.
   return rate * h;
 }
 

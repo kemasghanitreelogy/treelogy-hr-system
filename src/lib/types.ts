@@ -36,12 +36,14 @@ export interface Employee {
   scheduleTemplateId?: string | null;
   /** Direct supervisor (employee id); null = top of their division. Drives the org tree. */
   managerId?: string | null;
-  /** Employment contract type — governs overtime pay (PKWT flat, PKWTT 1.5×/2×). */
+  /** Employment contract type — governs overtime pay (PKWT/part-time flat, PKWTT 1.5×/2×). */
   contractType?: ContractType;
+  /** Upah per jam (Rp) — hanya dipakai saat contractType = 'parttime'. */
+  hourlyRate?: number;
 }
 
-/** Employment contract type: PKWT (fixed-term) vs PKWTT (permanent). */
-export type ContractType = "pkwt" | "pkwtt";
+/** Employment contract type: PKWT (fixed-term), PKWTT (permanent), part-time (paid hourly). */
+export type ContractType = "pkwt" | "pkwtt" | "parttime";
 
 /** Hari libur: 'public' = semua off; 'religious' = hanya karyawan seagama off. */
 export interface Holiday {
@@ -56,7 +58,7 @@ export interface Holiday {
 export interface EmployeeContract {
   id: string;
   employeeId: string;
-  type: "probation" | "pkwt" | "pkwtt" | "magang" | "harian";
+  type: "probation" | "pkwt" | "pkwtt" | "magang" | "harian" | "parttime";
   startDate: string;
   endDate?: string | null; // null = berkelanjutan
   status: "active" | "ended";
@@ -158,7 +160,7 @@ export interface OvertimeRequest {
   hours: number; // duration in hours (decimal)
   reason: string;
   ratePerHour: number; // baseSalary / 20 / 8, snapshotted at request time
-  amount: number; // total pay per contract type (PKWT flat; PKWTT 1.5×/2×)
+  amount: number; // total pay per contract type (PKWT/part-time flat; PKWTT 1.5×/2×)
   /** Contract type snapshotted at request time, so `amount` stays explainable. */
   contractType?: ContractType;
   status: RequestStatus; // approval flow

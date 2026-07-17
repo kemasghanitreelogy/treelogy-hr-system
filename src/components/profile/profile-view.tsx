@@ -8,8 +8,8 @@ import type { Locale } from "@/lib/i18n";
 
 /** Headline employment status shown on the profile. */
 const CT_LABEL: Record<Locale, Record<ContractType, string>> = {
-  id: { pkwt: "PKWT (Kontrak)", pkwtt: "PKWTT (Tetap)" },
-  en: { pkwt: "Fixed-term (PKWT)", pkwtt: "Permanent (PKWTT)" },
+  id: { pkwt: "PKWT (Kontrak)", pkwtt: "PKWTT (Tetap)", parttime: "Part Time (per jam)" },
+  en: { pkwt: "Fixed-term (PKWT)", pkwtt: "Permanent (PKWTT)", parttime: "Part-time (hourly)" },
 };
 
 const STR: Record<Locale, {
@@ -251,7 +251,11 @@ export function ProfileView({
           </Section>
 
           <Section title="Kompensasi" icon={Banknote}>
-            <Info label="Gaji pokok" value={rupiah(emp.baseSalary)} />
+            {contractType === "parttime" ? (
+              <Info label="Upah per jam" value={`${rupiah(emp.hourlyRate ?? 0)}/jam`} />
+            ) : (
+              <Info label="Gaji pokok" value={rupiah(emp.baseSalary)} />
+            )}
             <Info label="Tunjangan" value={rupiah(emp.allowance)} />
             <Info label="NPWP" value={emp.npwp} />
             <Info label="BPJS Kesehatan" value={emp.bpjsKes ? "Aktif" : "Tidak"} />

@@ -3,9 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { mapClockApproval } from "@/lib/data";
 import { adjustTabungan } from "@/lib/balance";
 import { pushNotifications } from "@/lib/notify";
-import { overtimePay, overtimeRatePerHour } from "@/lib/overtime";
+import { contractRatePerHour, overtimePayEstimate, parseContractType } from "@/lib/overtime";
 import { formatDate } from "@/lib/utils";
-import type { ContractType, RequestStatus } from "@/lib/types";
+import type { RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -85,7 +85,7 @@ export async function PATCH(req: Request) {
     const requestedAt = String(prev.requested_at);
     const { data: emp } = await supabase!
       .from("employees")
-      .select("work_start, work_end, base_salary, contract_type")
+      .select("work_start, work_end, base_salary, hourly_rate, contract_type")
       .eq("id", employeeId)
       .maybeSingle();
 
@@ -138,7 +138,8 @@ export async function PATCH(req: Request) {
           if (!existing) {
             const hours = Math.round((mins / 60) * 100) / 100;
             const baseSalary = Number(emp?.base_salary) || 0;
-            const contractType: ContractType = emp?.contract_type === "pkwtt" ? "pkwtt" : "pkwt";
+            const contractType = parseContractType(emp?.contract_type);
+            const ratePerHour = contractRatePerHour(contractType, baseSalary, Number(emp?.hourly_rate) || 0);
             await supabase!.from("overtime_requests").insert({
               employee_id: employeeId,
               date,
@@ -146,8 +147,8 @@ export async function PATCH(req: Request) {
               end_time: witaHHMM(clockOutAt),
               hours,
               reason: "Kerja di hari libur (disetujui HR)",
-              rate_per_hour: overtimeRatePerHour(baseSalary),
-              amount: overtimePay(baseSalary, hours, contractType),
+              rate_per_hour: ratePerHour,
+              amount: overtimePayEstimate(ratePerHour, hours, contractType),
               contract_type: contractType,
               status: "approved",
               approver: body.approver?.trim() || null,

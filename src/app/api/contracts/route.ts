@@ -6,7 +6,7 @@ import { isValidUploadedPath } from "@/lib/storage-path";
 export const runtime = "nodejs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const TYPES = ["probation", "pkwt", "pkwtt", "magang", "harian"];
+const TYPES = ["probation", "pkwt", "pkwtt", "magang", "harian", "parttime"];
 const DOC_EXTS = ["pdf", "jpg", "jpeg", "png", "webp"];
 
 // --- Contract document upload (private `contract-docs` bucket; PDF or image) ---
