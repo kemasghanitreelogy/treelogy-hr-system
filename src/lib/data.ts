@@ -130,6 +130,8 @@ export const mapEmployee = (r: Row): Employee => ({
   workEnd: r.work_end ? hhmm(r.work_end) : "17:00",
   workDays: Array.isArray(r.work_days) ? (r.work_days as number[]).map(Number) : [1, 2, 3, 4, 5],
   scheduleTemplateId: (r.schedule_template_id as string) ?? null,
+  // Kolom baru — baris lama tanpa kolom dianggap sudah diatur (jangan menagih).
+  scheduleSet: r.schedule_set == null ? true : Boolean(r.schedule_set),
   managerId: (r.manager_id as string) ?? null,
   contractType: (r.contract_type as Employee["contractType"]) ?? "pkwt",
   hourlyRate: n(r.hourly_rate),

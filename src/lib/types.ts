@@ -34,6 +34,8 @@ export interface Employee {
   workDays: number[];
   /** Template jadwal yang sedang diikuti (null = jadwal kustom). */
   scheduleTemplateId?: string | null;
+  /** False = jadwal belum pernah diatur HR (masih default) → tampil badge di menu Jadwal. */
+  scheduleSet?: boolean;
   /** Direct supervisor (employee id); null = top of their division. Drives the org tree. */
   managerId?: string | null;
   /** Employment contract type — governs overtime pay (PKWT/part-time flat, PKWTT 1.5×/2×). */

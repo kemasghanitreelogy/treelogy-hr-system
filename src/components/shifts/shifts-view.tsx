@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarRange, Check, Clock, Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { CalendarRange, Check, CircleAlert, Clock, Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
 import type { Employee, ScheduleTemplate, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { useLocale } from "@/components/layout/locale-context";
@@ -19,7 +19,10 @@ import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-ta
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
-type Emp = Pick<Employee, "id" | "name" | "team" | "position" | "workDays" | "workStart" | "workEnd" | "scheduleTemplateId">;
+type Emp = Pick<
+  Employee,
+  "id" | "name" | "team" | "position" | "workDays" | "workStart" | "workEnd" | "scheduleTemplateId" | "scheduleSet"
+>;
 
 // Tampilan minggu mulai Senin → Sabtu → Minggu (getDay: 0=Min..6=Sab).
 const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -77,6 +80,7 @@ const STR: Record<
     dayOffEveryday: string;
     followsTemplate: (name: string) => string;
     customSchedule: string;
+    scheduleNotSet: string;
     editScheduleTitle: (name: string) => string;
     editScheduleDesc: string;
     saveScheduleFailed: string;
@@ -160,6 +164,7 @@ const STR: Record<
     dayOffEveryday: "Belum ada hari kerja",
     followsTemplate: (name) => `Template: ${name}`,
     customSchedule: "Jadwal kustom",
+    scheduleNotSet: "Jadwal belum diatur",
     editScheduleTitle: (name) => `Edit Jadwal · ${name}`,
     editScheduleDesc: "Pilih hari & jam kerja karyawan ini.",
     saveScheduleFailed: "Gagal menyimpan jadwal. Pastikan Anda berhak.",
@@ -241,6 +246,7 @@ const STR: Record<
     dayOffEveryday: "No work days set",
     followsTemplate: (name) => `Template: ${name}`,
     customSchedule: "Custom schedule",
+    scheduleNotSet: "Schedule not set",
     editScheduleTitle: (name) => `Edit Schedule · ${name}`,
     editScheduleDesc: "Pick this employee's work days & hours.",
     saveScheduleFailed: "Failed to save the schedule. Make sure you are authorized.",
@@ -332,18 +338,28 @@ export function ShiftsView({
   employees,
   currentEmployeeId = null,
   canManageShifts = false,
+  focusEmployeeId = null,
 }: {
   templates: ScheduleTemplate[];
   employees: Emp[];
   currentEmployeeId?: string | null;
   /** HR/admin atau pemegang shifts.manage: boleh kelola template & jadwal. */
   canManageShifts?: boolean;
+  /** Deep-link ?employee=<id> — langsung buka editor jadwal karyawan tsb. */
+  focusEmployeeId?: string | null;
 }) {
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   // Scope: HR/pengelola → Semua/Data Saya (default Data Saya).
   const scopeOpts = scopeOptionsFor(canManageShifts, false);
   const [scope, setScope] = useStickyTab<Scope>("schedule.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
   const self = currentEmployeeId ? empMap.get(currentEmployeeId) : undefined;
+
+  // Deep-link handoff: paksa tab "Semua" agar daftar jadwal karyawan tampil.
+  // Effect ini berjalan SETELAH effect internal useStickyTab, jadi menang.
+  useEffect(() => {
+    if (focusEmployeeId && canManageShifts) setScope("all");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusEmployeeId, canManageShifts]);
 
   return (
     <div className="space-y-5 fade-up">
@@ -352,7 +368,7 @@ export function ShiftsView({
       {canManageShifts && scope === "all" ? (
         <>
           <TemplatesSection templates={templates} employees={employees} />
-          <EmployeeSchedules employees={employees} templates={templates} />
+          <EmployeeSchedules employees={employees} templates={templates} focusEmployeeId={focusEmployeeId} />
         </>
       ) : (
         self && <MyScheduleCard emp={self} />
@@ -662,7 +678,15 @@ function ApplyTemplateForm({
 
 /* ---------------- Jadwal per karyawan ---------------- */
 
-function EmployeeSchedules({ employees, templates }: { employees: Emp[]; templates: ScheduleTemplate[] }) {
+function EmployeeSchedules({
+  employees,
+  templates,
+  focusEmployeeId = null,
+}: {
+  employees: Emp[];
+  templates: ScheduleTemplate[];
+  focusEmployeeId?: string | null;
+}) {
   const locale = useLocale();
   const t = STR[locale];
   const router = useRouter();
@@ -673,7 +697,25 @@ function EmployeeSchedules({ employees, templates }: { employees: Emp[]; templat
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [employees],
   );
-  const [editing, setEditing] = useState<Emp | null>(null);
+  // Deep-link: langsung buka editor jadwal karyawan yang difokus.
+  const [editing, setEditing] = useState<Emp | null>(
+    () => (focusEmployeeId ? employees.find((e) => e.id === focusEmployeeId) ?? null : null),
+  );
+  // Sorot baris fokus lalu pudar ("yellow fade") + scroll ke tengah layar.
+  const [flash, setFlash] = useState(!!focusEmployeeId);
+  const focusRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!focusEmployeeId) return;
+    focusRef.current?.scrollIntoView({ block: "center" });
+    const timer = setTimeout(() => setFlash(false), 2500);
+    return () => clearTimeout(timer);
+  }, [focusEmployeeId]);
+
+  /** Tutup editor; untuk sesi deep-link, bersihkan ?employee= dari URL. */
+  function closeEditor() {
+    setEditing(null);
+    if (focusEmployeeId) router.replace("/shifts", { scroll: false });
+  }
 
   return (
     <Card>
@@ -686,8 +728,16 @@ function EmployeeSchedules({ employees, templates }: { employees: Emp[]; templat
       <div className="divide-y divide-line">
         {rows.map((e) => {
           const tpl = e.scheduleTemplateId ? tplMap.get(e.scheduleTemplateId) : undefined;
+          const isFocus = e.id === focusEmployeeId;
           return (
-            <div key={e.id} className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
+            <div
+              key={e.id}
+              ref={isFocus ? focusRef : undefined}
+              className={cn(
+                "flex flex-col gap-3 px-4 py-3.5 transition-colors duration-1000 sm:flex-row sm:items-center sm:px-5",
+                isFocus && flash && "bg-[#eef4df]",
+              )}
+            >
               <div className="flex items-center gap-3 sm:w-56">
                 <Avatar name={e.name} size="sm" />
                 <div className="min-w-0">
@@ -701,7 +751,13 @@ function EmployeeSchedules({ employees, templates }: { employees: Emp[]; templat
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <DayChips days={e.workDays} locale={locale} />
                   <span className="text-sm text-muted">{e.workStart}–{e.workEnd}</span>
-                  <span className="text-xs text-faint">{tpl ? t.followsTemplate(tpl.name) : t.customSchedule}</span>
+                  {e.scheduleSet === false ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#f3ead1] px-2 py-0.5 text-[11px] font-medium text-[#8a6d1a]">
+                      <CircleAlert className="h-3 w-3" /> {t.scheduleNotSet}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-faint">{tpl ? t.followsTemplate(tpl.name) : t.customSchedule}</span>
+                  )}
                 </div>
               </div>
               <Button size="sm" variant="outline" className="shrink-0 sm:w-auto" onClick={() => setEditing(e)}>
@@ -712,16 +768,16 @@ function EmployeeSchedules({ employees, templates }: { employees: Emp[]; templat
         })}
       </div>
 
-      <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing ? t.editScheduleTitle(editing.name) : ""} description={t.editScheduleDesc}>
+      <Sheet open={editing !== null} onClose={closeEditor} title={editing ? t.editScheduleTitle(editing.name) : ""} description={t.editScheduleDesc}>
         {editing && (
           <ScheduleForm
             key={editing.id}
             emp={editing}
             onDone={() => {
-              setEditing(null);
+              closeEditor();
               router.refresh();
             }}
-            onCancel={() => setEditing(null)}
+            onCancel={closeEditor}
           />
         )}
       </Sheet>

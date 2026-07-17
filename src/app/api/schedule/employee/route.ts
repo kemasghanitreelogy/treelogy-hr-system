@@ -59,6 +59,7 @@ export async function PATCH(req: Request) {
         work_start: tpl.work_start,
         work_end: tpl.work_end,
         schedule_template_id: body.templateId,
+        schedule_set: true,
       })
       .in("id", body.employeeIds);
     if (error) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
@@ -80,6 +81,7 @@ export async function PATCH(req: Request) {
       work_start: body.workStart,
       work_end: body.workEnd,
       schedule_template_id: null, // jadwal kustom → lepas dari template
+      schedule_set: true,
     })
     .eq("id", body.employeeId);
   if (error) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });

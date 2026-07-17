@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Upload, UserX, Wallet } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Building2, CalendarRange, CheckCircle2, Clock, Loader2, Mail, Phone, Plus, Search, ShieldCheck, Upload, UserX, Wallet } from "lucide-react";
 import type { ContractType, Employee, EmployeeContract, Religion, Team } from "@/lib/types";
 import { ContractsCard } from "./contracts-card";
 import type { Locale } from "@/lib/i18n";
@@ -131,10 +132,17 @@ const ID_STR = {
   hourlyRateLabel: "Upah per jam",
   perHourSuffix: "/jam",
   contractType: "Tipe kontrak",
-  rangeStart: "Jam mulai",
-  rangeEnd: "Jam selesai",
-  scheduleRangeHint: "Range jam kerja part time (WITA) — dasar hitung gaji per jam & patokan telat.",
+  partTimeContractHint: "Gaji dihitung per jam × jam kerja terjadwal — atur range jam di langkah berikutnya.",
   clockInHint: "Patokan telat (WITA)",
+  // post-create success step
+  createdTitle: "Karyawan Ditambahkan",
+  createdDesc: "1 langkah lagi: atur jadwal kerjanya",
+  createdNextStep: "Atur hari & jam kerja",
+  createdScheduleNote: "Jadwal masih default (Sen–Jum · 08:00–17:00). Jadwal menentukan absensi, telat, dan hari libur.",
+  createdPartTimeNote: "Karyawan part time — gaji dihitung dari upah per jam × range jam kerja, jadi jadwalnya wajib diatur.",
+  setScheduleCta: "Atur jadwal kerja",
+  laterCta: "Nanti saja",
+  laterHint: "Bisa diatur kapan saja di menu Jadwal.",
   bank: "Bank",
   bankAccount: "No. rekening",
   cancel: "Batal",
@@ -235,10 +243,17 @@ const STR: Record<Locale, typeof ID_STR> = {
     hourlyRateLabel: "Hourly wage",
     perHourSuffix: "/hr",
     contractType: "Contract type",
-    rangeStart: "Start time",
-    rangeEnd: "End time",
-    scheduleRangeHint: "Part-time working-hour range (WITA) — the basis for hourly pay & the late benchmark.",
+    partTimeContractHint: "Pay = hourly wage × scheduled hours — set the hour range in the next step.",
     clockInHint: "Late benchmark (WITA)",
+    // post-create success step
+    createdTitle: "Employee Added",
+    createdDesc: "One step left: set their work schedule",
+    createdNextStep: "Set working days & hours",
+    createdScheduleNote: "The schedule is still the default (Mon–Fri · 08:00–17:00). It drives attendance, lateness, and days off.",
+    createdPartTimeNote: "Part-time employee — pay is hourly wage × scheduled hour range, so the schedule must be set.",
+    setScheduleCta: "Set work schedule",
+    laterCta: "Maybe later",
+    laterHint: "You can set it anytime from the Schedule menu.",
     bank: "Bank",
     bankAccount: "Account number",
     cancel: "Cancel",
@@ -272,12 +287,15 @@ export function EmployeesView({
   const [selected, setSelected] = useState<Employee | null>(null);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [adding, setAdding] = useState(false);
+  // Karyawan yang baru dibuat → success step dengan CTA "Atur jadwal kerja".
+  const [created, setCreated] = useState<Employee | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [roleMap, setRoleMap] = useState<Record<string, string>>(roleByEmployee);
   const [confirmDeactivate, setConfirmDeactivate] = useState<Employee | null>(null);
   const toast = useToast();
   const locale = useLocale();
   const t = STR[locale];
+  const router = useRouter();
 
   const filtered = useMemo(() => {
     return list.filter((e) => {
@@ -332,8 +350,15 @@ export function EmployeesView({
     upsertLocal(emp);
     setAdding(false);
     setEditing(null);
-    setSelected(emp);
-    toast.success(mode === "create" ? t.added(emp.name) : t.changesSaved);
+    if (mode === "create") {
+      // Jangan langsung tutup: tampilkan success step yang mengarahkan HR
+      // mengatur jadwal karyawan ini di halaman Jadwal (deep-link).
+      setCreated(emp);
+      toast.success(t.added(emp.name));
+    } else {
+      setSelected(emp);
+      toast.success(t.changesSaved);
+    }
   }
 
   return (
@@ -519,6 +544,25 @@ export function EmployeesView({
       {/* Add form */}
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.addTitle} description={t.addDescription}>
         <EmployeeForm onSaved={(e) => onSaved(e, "create")} onCancel={() => setAdding(false)} />
+      </Sheet>
+
+      {/* Post-create success step — next-step CTA: set the work schedule */}
+      <Sheet open={!!created} onClose={() => setCreated(null)} title={t.createdTitle} description={t.createdDesc}>
+        {created && (
+          <PostCreatePanel
+            emp={created}
+            onSetSchedule={() => {
+              const id = created.id;
+              setCreated(null);
+              router.push(`/shifts?employee=${encodeURIComponent(id)}`);
+            }}
+            onLater={() => {
+              const emp = created;
+              setCreated(null);
+              setSelected(emp);
+            }}
+          />
+        )}
       </Sheet>
 
       {/* Edit form */}
@@ -780,6 +824,65 @@ function EmptyRow() {
   );
 }
 
+/**
+ * Success step setelah karyawan dibuat. Jadwal sengaja TIDAK diatur di form —
+ * langkah ini mengarahkan HR ke halaman Jadwal (deep-link per karyawan).
+ */
+function PostCreatePanel({
+  emp,
+  onSetSchedule,
+  onLater,
+}: {
+  emp: Employee;
+  onSetSchedule: () => void;
+  onLater: () => void;
+}) {
+  const locale = useLocale();
+  const t = STR[locale];
+  const isPartTime = emp.contractType === "parttime";
+  return (
+    <div className="space-y-5">
+      {/* Konfirmasi: siapa yang baru dibuat */}
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-panel px-4 py-6 text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e9f0d8] text-forest-600">
+          <CheckCircle2 className="h-7 w-7" />
+        </span>
+        <div>
+          <p className="font-semibold text-ink">{emp.name}</p>
+          <p className="mt-0.5 text-sm text-muted">
+            {emp.nik} · {TEAM_META[emp.team].label}
+            {emp.position ? ` · ${emp.position}` : ""}
+          </p>
+        </div>
+        <span className={cn("rounded-full px-2.5 py-1 text-xs font-medium", isPartTime ? "bg-[#f3ead1] text-[#8a6d1a]" : "bg-forest-100 text-forest-700")}>
+          {CONTRACT_LABEL[emp.contractType ?? "pkwt"]}
+        </span>
+      </div>
+
+      {/* Next step: atur jadwal */}
+      <div className="rounded-2xl border border-line bg-panel p-4">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <CalendarRange className="h-4 w-4 text-forest-600" /> {t.createdNextStep}
+        </h3>
+        <p className="mt-2 flex items-start gap-2 text-sm text-muted">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-faint" />
+          <span>{isPartTime ? t.createdPartTimeNote : t.createdScheduleNote}</span>
+        </p>
+      </div>
+
+      <div className="space-y-2 pt-1">
+        <Button className="w-full" onClick={onSetSchedule}>
+          <CalendarRange className="h-4 w-4" /> {t.setScheduleCta}
+        </Button>
+        <Button variant="outline" className="w-full" onClick={onLater}>
+          {t.laterCta}
+        </Button>
+        <p className="text-center text-xs text-faint">{t.laterHint}</p>
+      </div>
+    </div>
+  );
+}
+
 function EmployeeForm({
   initial,
   onSaved,
@@ -807,8 +910,6 @@ function EmployeeForm({
     ktpNik: initial?.ktpNik ?? "",
     bankName: initial?.bankName ?? "BCA",
     bankAccount: initial?.bankAccount ?? "",
-    workStart: initial?.workStart ?? "08:00",
-    workEnd: initial?.workEnd ?? "17:00",
   });
   // KTP scan as a data URL, only set when the user picks a new file.
   const [ktpPhotoFile, setKtpPhotoFile] = useState<string | null>(null);
@@ -845,8 +946,6 @@ function EmployeeForm({
         ...(ktpPhotoFile ? { ktpPhotoFile } : {}),
         bankName: form.bankName,
         bankAccount: form.bankAccount,
-        workStart: form.workStart,
-        workEnd: form.workEnd,
       };
       const res = await fetch("/api/employees", {
         method: isEdit ? "PATCH" : "POST",
@@ -906,23 +1005,13 @@ function EmployeeForm({
           <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
         </Field>
       </div>
-      <Field label={t.contractType}>
+      <Field label={t.contractType} hint={form.contractType === "parttime" ? t.partTimeContractHint : undefined}>
         <Select value={form.contractType} onChange={(e) => set("contractType", e.target.value as ContractType)}>
           {CONTRACT_TYPES.map((ct) => (
             <option key={ct} value={ct}>{CONTRACT_LABEL[ct]}</option>
           ))}
         </Select>
       </Field>
-      {form.contractType === "parttime" && (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t.rangeStart} hint={t.scheduleRangeHint}>
-            <Input type="time" value={form.workStart} onChange={(e) => set("workStart", e.target.value)} />
-          </Field>
-          <Field label={t.rangeEnd}>
-            <Input type="time" value={form.workEnd} onChange={(e) => set("workEnd", e.target.value)} />
-          </Field>
-        </div>
-      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.religion}>
           <Select value={form.religion} onChange={(e) => set("religion", e.target.value as Religion)}>
