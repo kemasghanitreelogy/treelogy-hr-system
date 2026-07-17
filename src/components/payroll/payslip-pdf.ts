@@ -11,6 +11,7 @@ const STR: Record<
     netPayBox: string;
     earnings: string;
     baseSalary: string;
+    hourlyLine: (hours: number, rate: string) => string;
     fixedAllowance: string;
     gross: string;
     overtimeNote: string;
@@ -41,6 +42,7 @@ const STR: Record<
     netPayBox: "Gaji bersih (take-home pay)",
     earnings: "Pendapatan",
     baseSalary: "Gaji pokok",
+    hourlyLine: (hours, rate) => `Upah per jam (${hours} jam × ${rate}/jam)`,
     fixedAllowance: "Tunjangan tetap",
     gross: "Total pendapatan",
     overtimeNote: "Lembur yang disetujui pada bulan ini sudah termasuk di gaji.",
@@ -70,6 +72,7 @@ const STR: Record<
     netPayBox: "Net pay (take-home pay)",
     earnings: "Earnings",
     baseSalary: "Base salary",
+    hourlyLine: (hours, rate) => `Hourly pay (${hours} h × ${rate}/hr)`,
     fixedAllowance: "Fixed allowance",
     gross: "Total earnings",
     overtimeNote: "Approved overtime this month is already included in the salary.",
@@ -194,7 +197,10 @@ async function buildPayslipPdf(slip: Payslip, emp: Employee, locale: Locale = "i
 
   // ---- Pendapatan ----
   section(t.earnings);
-  line(t.baseSalary, rp(slip.baseSalary));
+  line(
+    slip.paidHours != null ? t.hourlyLine(slip.paidHours, rp(slip.hourlyRate ?? 0)) : t.baseSalary,
+    rp(slip.baseSalary),
+  );
   line(t.fixedAllowance, rp(slip.allowance));
   if (slip.overtimePay > 0) line(t.overtimeLine(slip.overtimeHours), rp(slip.overtimePay));
   line(t.gross, rp(slip.grossPay), { strong: true });

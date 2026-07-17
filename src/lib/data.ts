@@ -740,13 +740,15 @@ export function buildPayslip(
   const overtimeHours = Math.round(ot.reduce((s, o) => s + o.hours, 0) * 10) / 10;
 
   if (employee.contractType === "parttime") {
-    const paidHours = scheduledHoursPerDay(employee) * recap.presentDays;
-    const basePay = Math.round((employee.hourlyRate ?? 0) * paidHours);
+    const hourlyRate = employee.hourlyRate ?? 0;
+    const paidHours = Math.round(scheduledHoursPerDay(employee) * recap.presentDays * 10) / 10;
+    const basePay = Math.round(hourlyRate * paidHours);
     const grossPay = basePay + employee.allowance + overtimePay;
     return {
       id: `${runId}-${employee.id}`, runId, employeeId: employee.id, period,
       workingDays: recap.workingDays, presentDays: recap.presentDays,
       baseSalary: basePay, allowance: employee.allowance,
+      hourlyRate, paidHours,
       overtimePay, overtimeHours, absenceDeduction: 0,
       unpaidLeaveDays: 0, unpaidLeaveDeduction: 0, grossPay, netPay: grossPay,
     };

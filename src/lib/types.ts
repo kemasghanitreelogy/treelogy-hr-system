@@ -288,6 +288,10 @@ export interface Payslip {
   presentDays: number;
   baseSalary: number;
   allowance: number;
+  /** Part-time saja: upah per jam yang dipakai (snapshot saat slip dihitung). */
+  hourlyRate?: number;
+  /** Part-time saja: total jam dibayar = jam terjadwal (range jam) × hari hadir. */
+  paidHours?: number;
   overtimePay: number;
   overtimeHours: number;
   absenceDeduction: number;

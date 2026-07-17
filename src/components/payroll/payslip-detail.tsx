@@ -26,6 +26,7 @@ const STR: Record<
     attendance: (present: number, working: number) => string;
     earnings: string;
     baseSalary: string;
+    hourlyLine: (hours: number, rate: string) => string;
     fixedAllowance: string;
     gross: string;
     overtimeNote: string;
@@ -62,6 +63,7 @@ const STR: Record<
     attendance: (present, working) => `${present} hari hadir dari ${working} hari kerja`,
     earnings: "Pendapatan",
     baseSalary: "Gaji pokok",
+    hourlyLine: (hours, rate) => `Upah per jam (${hours} jam × ${rate}/jam)`,
     fixedAllowance: "Tunjangan tetap",
     gross: "Total pendapatan",
     overtimeNote: "Lembur yang disetujui pada bulan ini sudah termasuk di gaji.",
@@ -97,6 +99,7 @@ const STR: Record<
     attendance: (present, working) => `${present} days present of ${working} working days`,
     earnings: "Earnings",
     baseSalary: "Base salary",
+    hourlyLine: (hours, rate) => `Hourly pay (${hours} h × ${rate}/hr)`,
     fixedAllowance: "Fixed allowance",
     gross: "Total earnings",
     overtimeNote: "Approved overtime this month is already included in the salary.",
@@ -199,7 +202,10 @@ export function PayslipDetail({ slip, emp }: { slip: Payslip; emp: Employee }) {
       </div>
 
       <Section title={t.earnings}>
-        <Line label={t.baseSalary} value={rupiah(slip.baseSalary)} />
+        <Line
+          label={slip.paidHours != null ? t.hourlyLine(slip.paidHours, rupiah(slip.hourlyRate ?? 0)) : t.baseSalary}
+          value={rupiah(slip.baseSalary)}
+        />
         <Line label={t.fixedAllowance} value={rupiah(slip.allowance)} />
         {slip.overtimePay > 0 && <Line label={t.overtimeLine(slip.overtimeHours)} value={rupiah(slip.overtimePay)} />}
         <Line label={t.gross} value={rupiah(slip.grossPay)} strong />
