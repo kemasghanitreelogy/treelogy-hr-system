@@ -34,6 +34,7 @@ const MESSAGES: Record<string, Msg> = {
   location_required: { id: "Lokasi wajib diisi.", en: "Location is required." },
   religion_required: { id: "Agama wajib dipilih.", en: "Religion is required." },
   invalid_email: { id: "Format email tidak valid.", en: "Email format is invalid." },
+  email_exists: { id: "Email ini sudah dipakai karyawan lain.", en: "This email is already used by another employee." },
   invalid_code: { id: "Kode karyawan tidak valid.", en: "Employee code is invalid." },
   weak_password: { id: "Kata sandi terlalu lemah (min. 6 karakter).", en: "Password is too weak (min. 6 characters)." },
   no_account: { id: "Karyawan ini belum punya akun login.", en: "This employee has no login account yet." },

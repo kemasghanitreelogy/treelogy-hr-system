@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { distanceMeters } from "@/lib/geo";
-import { notifyApprovers } from "@/lib/notify";
+import { notifyHr } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -202,7 +202,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "request_failed" }, { status: 403 });
     }
     if (!reqErr && emp?.team) {
-      await notifyApprovers(profile.employee_id, {
+      // Acc clock di luar area hanya oleh HR — atasan tidak perlu dinotifikasi.
+      await notifyHr(profile.employee_id, {
         type: "attendance",
         title: `${emp.name ?? "Karyawan"} clock-${direction} di luar area`,
         body: `${formatDate(today)} · ${distance == null ? "" : `${Math.round(distance)} m dari lokasi · `}perlu konfirmasi Anda`,
@@ -238,7 +239,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "request_failed" }, { status: 403 });
       }
       if (!error && emp?.team) {
-        await notifyApprovers(profile.employee_id, {
+        // Konfirmasi kerja hari libur juga hanya ke HR.
+        await notifyHr(profile.employee_id, {
           type: "attendance",
           title: `${emp.name ?? "Karyawan"} kerja di hari libur`,
           body: `${formatDate(today)} · ${choice === "swap" ? "tukar libur" : "lembur"} · perlu konfirmasi Anda`,

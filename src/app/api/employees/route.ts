@@ -149,6 +149,19 @@ async function auth() {
   return { supabase };
 }
 
+/**
+ * True bila email sudah dipakai karyawan lain (case-insensitive). Satu email =
+ * satu karyawan — akun login dibuat dari email, jadi duplikat akan saling
+ * menimpa profil. Dilapisi unique index lower(email) di DB (migration 0042).
+ */
+async function emailTaken(supabase: SbClient, email: string, excludeId?: string): Promise<boolean> {
+  const pattern = email.trim().replace(/[%_\\]/g, "\\$&"); // ilike tanpa wildcard = equality case-insensitive
+  let q = supabase.from("employees").select("id").ilike("email", pattern).limit(1);
+  if (excludeId) q = q.neq("id", excludeId);
+  const { data } = await q.maybeSingle();
+  return !!data;
+}
+
 // ---- Create ----
 export async function POST(req: Request) {
   let body: Payload;
@@ -163,6 +176,11 @@ export async function POST(req: Request) {
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
+
+  // Satu email hanya boleh dipakai satu karyawan.
+  if (body.email?.trim() && (await emailTaken(supabase!, body.email))) {
+    return NextResponse.json({ error: "email_exists" }, { status: 409 });
+  }
 
   // Auto-generate the next NIK within the team (TRL-<prefix><seq>).
   const prefix = TEAM_PREFIX[body.team] ?? "04";
@@ -188,6 +206,8 @@ export async function POST(req: Request) {
 
   const { data, error } = await supabase!.from("employees").insert(row).select("*").single();
   if (error || !data) {
+    // 23505 = unique index lower(email) — balapan dengan request lain.
+    if (error?.code === "23505") return NextResponse.json({ error: "email_exists" }, { status: 409 });
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
   let saved = data;
@@ -218,6 +238,11 @@ export async function PATCH(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
+  // Ganti email → pastikan tidak bentrok dengan karyawan lain.
+  if (body.email?.trim() && (await emailTaken(supabase!, body.email, body.id))) {
+    return NextResponse.json({ error: "email_exists" }, { status: 409 });
+  }
+
   const row = toRow(body);
   if (body.ktpPhotoFile) {
     const path = await uploadKtpPhoto(supabase!, body.id, body.ktpPhotoFile);
@@ -237,6 +262,7 @@ export async function PATCH(req: Request) {
 
   // RLS filters non-HR writes to 0 rows (no error) — treat as forbidden.
   if (error || !data) {
+    if (error?.code === "23505") return NextResponse.json({ error: "email_exists" }, { status: 409 });
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
   return NextResponse.json({ ok: true, employee: mapEmployee(data) });

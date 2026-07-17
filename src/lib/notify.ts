@@ -66,6 +66,30 @@ export async function pushNotifications(rows: NewNotification[]): Promise<{ sent
   return { sent, failed };
 }
 
+/**
+ * Notify HR/admin ONLY (no direct atasan). Dipakai untuk persetujuan clock
+ * in/out — acc-nya memang hanya di tangan HR (RLS is_hr), jadi atasan tidak
+ * perlu dimintai konfirmasi.
+ */
+export async function notifyHr(
+  requesterEmployeeId: string,
+  content: { type: string; title: string; body?: string; href?: string },
+): Promise<void> {
+  const admin = createAdminClient();
+  if (!admin) return;
+  try {
+    const { data } = await admin.rpc("hr_employees", {
+      req_employee: requesterEmployeeId,
+    });
+    const ids: string[] = (data ?? []).map((r: { employee_id: string }) => r.employee_id);
+    await pushNotifications(
+      ids.map((id) => ({ employeeId: id, tone: "pending" as const, ...content })),
+    );
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Notify the people who can act on a request: HR/admin + the requester's direct atasan. */
 export async function notifyApprovers(
   requesterEmployeeId: string,
