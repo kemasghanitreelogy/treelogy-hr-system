@@ -78,6 +78,7 @@ export function SelfDashboard({
   holidayToday = false,
   holidayName = null,
   todayRecord = null,
+  todayPending = null,
   pending = [],
   locale = "id",
 }: {
@@ -90,6 +91,7 @@ export function SelfDashboard({
   holidayToday?: boolean;
   holidayName?: string | null;
   todayRecord?: Pick<AttendanceRecord, "clockIn" | "clockOut"> | null;
+  todayPending?: { clockIn: string | null; clockOut: string | null; kind: "off_day" | "out_of_area" } | null;
   pending?: PendingItem[];
   locale?: Locale;
 }) {
@@ -112,6 +114,7 @@ export function SelfDashboard({
           holidayToday={holidayToday}
           holidayName={holidayName}
           todayRecord={todayRecord}
+          todayPending={todayPending}
         />
       </div>
 

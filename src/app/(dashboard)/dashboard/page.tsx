@@ -28,6 +28,7 @@ import {
   getLeaveRequests,
   getOvertimeRequests,
   getClockApprovals,
+  todayPendingClock,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
@@ -168,9 +169,12 @@ export default async function DashboardPage() {
       getOvertimeRequests(),
       getClockApprovals(),
     ]);
-    // Today's record so the clock widget survives a refresh.
+    // Today's record so the clock widget survives a refresh. A clock-in that's
+    // still pending HR (off-day / luar area) has no attendance row yet, so also
+    // seed from the pending approval — else the button reverts to "Clock In".
     const today = liveToday();
     const todayRecord = attendance.find((r) => r.employeeId === meId && r.date === today) ?? null;
+    const todayPending = todayPendingClock(clockApprovals, meId, today);
     const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
     const holidayToday = await getHolidayToday(me?.religion);
@@ -206,6 +210,7 @@ export default async function DashboardPage() {
         holidayToday={holidayToday != null}
         holidayName={holidayToday?.name ?? null}
         todayRecord={todayRecord}
+        todayPending={todayPending}
         pending={pending}
         locale={locale}
       />

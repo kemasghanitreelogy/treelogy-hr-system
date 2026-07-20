@@ -89,6 +89,7 @@ const STR: Record<
     swapSent: string;
     overtimeSent: string;
     offDayPending: string;
+    awaitingHr: string;
   }
 > = {
   id: {
@@ -148,6 +149,7 @@ const STR: Record<
     swapSent: "Tercatat — diajukan jadi tabungan libur ✓",
     overtimeSent: "Tercatat sebagai lembur — selesaikan dengan clock-out ✓",
     offDayPending: "Kerja di hari libur diajukan — menunggu konfirmasi HR ✓",
+    awaitingHr: "Menunggu konfirmasi HR",
   },
   en: {
     loading: "Loading…",
@@ -206,6 +208,7 @@ const STR: Record<
     swapSent: "Recorded — submitted as leave savings ✓",
     overtimeSent: "Recorded as overtime — finish by clocking out ✓",
     offDayPending: "Holiday work submitted — awaiting HR confirmation ✓",
+    awaitingHr: "Awaiting HR confirmation",
   },
 };
 
@@ -263,6 +266,7 @@ export function ClockWidget({
   holidayToday = false,
   holidayName = null,
   todayRecord = null,
+  todayPending = null,
 }: {
   geofence: TeamGeofence;
   requireLocation: boolean;
@@ -276,6 +280,9 @@ export function ClockWidget({
   holidayName?: string | null;
   /** Today's attendance record (WITA) so the widget survives a page refresh. */
   todayRecord?: Pick<AttendanceRecord, "clockIn" | "clockOut"> | null;
+  /** Clock-in hari ini yang MENUNGGU konfirmasi HR (off-day / luar area) —
+   *  belum ada baris attendance, tapi alur in→out harus tetap berjalan. */
+  todayPending?: { clockIn: string | null; clockOut: string | null; kind: "off_day" | "out_of_area" } | null;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -286,16 +293,20 @@ export function ClockWidget({
   // dir: "in"|"out"; flag: late (in) / overtime (out); minutes: the count.
   const [stamp, setStamp] = useState<{ dir: "in" | "out"; flag: boolean; minutes: number } | null>(null);
   const router = useRouter();
-  // Seed from today's server record so a refresh keeps state: clocked in (no out
-  // yet) → "in"; clocked in AND out → "done"; nothing yet → "out".
-  const initialPhase: Phase = todayRecord?.clockIn ? (todayRecord.clockOut ? "done" : "in") : "out";
+  // Seed from today's server state so a refresh keeps the flow: clocked in (no
+  // out yet) → "in"; clocked in AND out → "done"; nothing yet → "out". A clock
+  // still PENDING HR (off-day / luar area) has no attendance row yet, so fall
+  // back to the pending approval — otherwise the button wrongly reverts to
+  // "Clock In" and the worker can't clock out.
+  const seedIn = todayRecord?.clockIn ?? todayPending?.clockIn ?? null;
+  const seedOut = todayRecord?.clockOut ?? todayPending?.clockOut ?? null;
+  const initialPhase: Phase = seedIn ? (seedOut ? "done" : "in") : "out";
   const [phase, setPhase] = useState<Phase>(initialPhase);
-  const [clockInAt, setClockInAt] = useState<Date | null>(
-    todayRecord?.clockIn ? new Date(todayRecord.clockIn) : null,
-  );
-  const [clockOutAt, setClockOutAt] = useState<Date | null>(
-    todayRecord?.clockOut ? new Date(todayRecord.clockOut) : null,
-  );
+  // True selama state hari ini masih bersandar pada pengajuan pending (belum
+  // tertulis di attendance) → satu indikator "menunggu HR" yang menetap.
+  const [pendingHr, setPendingHr] = useState<boolean>(!todayRecord?.clockIn && !!todayPending?.clockIn);
+  const [clockInAt, setClockInAt] = useState<Date | null>(seedIn ? new Date(seedIn) : null);
+  const [clockOutAt, setClockOutAt] = useState<Date | null>(seedOut ? new Date(seedOut) : null);
   const [flow, setFlow] = useState<Flow>("idle");
   const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string; retry?: () => void } | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
@@ -458,21 +469,21 @@ export function ClockWidget({
         return;
       }
       // Pengajuan MENUNGGU konfirmasi HR (luar area / kerja hari libur).
+      // Alurnya tetap linier in→out seperti clock biasa — cuma ditandai
+      // "menunggu HR" yang menetap — supaya karyawan bisa clock-out (durasi
+      // lembur off-day terhitung) dan state tak hilang saat refresh.
       if (data.pending) {
         setOorMode(false);
         setOorNote("");
-        if (data.offDay) {
-          // Off-day ditahan: izinkan tetap clock-out agar durasi lembur terhitung.
-          if (pendingDir === "in") {
-            setClockInAt(new Date());
-            setPhase("in");
-          } else {
-            setPhase("out");
-          }
-          setNotice({ tone: "ok", text: t.offDayPending });
+        setPendingHr(true);
+        if (pendingDir === "in") {
+          setClockInAt(new Date());
+          setPhase("in");
         } else {
-          setNotice({ tone: "ok", text: t.pendingSent(pendingDir) });
+          setClockOutAt(new Date());
+          setPhase("done");
         }
+        setNotice({ tone: "ok", text: data.offDay ? t.offDayPending : t.pendingSent(pendingDir) });
         router.refresh();
         return;
       }
@@ -570,6 +581,13 @@ export function ClockWidget({
               </div>
             )}
           </div>
+
+          {/* Satu indikator menetap: clock hari ini masih menunggu acc HR. */}
+          {pendingHr && phase !== "out" && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl bg-gold-soft px-4 py-2.5 text-sm font-medium text-[#8a6512]">
+              <Clock className="h-4 w-4 shrink-0" /> {t.awaitingHr}
+            </div>
+          )}
 
           {phase === "in" && (
             <div className="mb-4 rounded-xl bg-[#e9f0d8] px-4 py-2.5 text-sm text-forest-700">

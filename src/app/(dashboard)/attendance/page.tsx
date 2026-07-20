@@ -11,6 +11,7 @@ import {
   getHolidays,
   getHolidayToday,
   getOvertimeRequests,
+  todayPendingClock,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
@@ -70,7 +71,10 @@ export default async function AttendancePage() {
   // ini karena Beranda mereka berisi dashboard operasional (tanpa widget).
   const showClockWidget = audienceFromPermissions(user?.permissions ?? []) === "ops";
   // Today's record so the clock widget reflects clocked-in state on refresh.
+  // Include a still-pending (off-day / luar area) clock-in so the button stays
+  // "Clock Out" instead of reverting to "Clock In".
   const todayRecord = all.find((r) => r.employeeId === user?.employeeId && r.date === today) ?? null;
+  const todayPending = todayPendingClock(approvalsAll, user?.employeeId ?? null, today);
 
   const view = (
     <AttendanceView
@@ -102,6 +106,7 @@ export default async function AttendancePage() {
           holidayToday={holidayToday != null}
           holidayName={holidayToday?.name ?? null}
           todayRecord={todayRecord}
+          todayPending={todayPending}
         />
       </div>
       <div className="space-y-4">

@@ -164,6 +164,40 @@ export const mapScheduleTemplate = (r: Row): ScheduleTemplate => ({
   workEnd: hhmm(r.work_end),
 });
 
+/**
+ * Clock-in yang MENUNGGU konfirmasi HR (di luar area / hari libur) belum menulis
+ * baris `attendance`, jadi widget clock harus menyeimbangkan state darinya juga —
+ * kalau tidak, tombol "balik" ke Clock In setelah refresh dan karyawan tak bisa
+ * clock-out. Kembalikan clock-in/out efektif hari ini dari pengajuan pending.
+ *
+ * off_day  : satu baris (direction 'in') menampung clock-in (requested_at) &
+ *            clock-out (clock_out_at).
+ * out_of_area: dua baris terpisah (direction 'in' / 'out').
+ */
+export interface PendingClockState {
+  clockIn: string | null;
+  clockOut: string | null;
+  kind: "off_day" | "out_of_area";
+}
+export function todayPendingClock(
+  approvals: ClockApprovalRequest[],
+  employeeId: string | null,
+  today: string,
+): PendingClockState | null {
+  if (!employeeId) return null;
+  const mine = approvals.filter(
+    (a) => a.employeeId === employeeId && a.date === today && a.status === "pending",
+  );
+  const inReq = mine.find((a) => a.direction === "in");
+  if (!inReq) return null;
+  const kind = inReq.kind === "off_day" ? "off_day" : "out_of_area";
+  const clockOut =
+    kind === "off_day"
+      ? inReq.clockOutAt ?? null
+      : mine.find((a) => a.direction === "out")?.requestedAt ?? null;
+  return { clockIn: inReq.requestedAt, clockOut, kind };
+}
+
 /** True jika `date` adalah hari kerja menurut jadwal (workDays: 0=Min..6=Sab). */
 export function isWorkday(workDays: number[] | undefined, date: Date): boolean {
   return (workDays ?? [1, 2, 3, 4, 5]).includes(date.getDay());
