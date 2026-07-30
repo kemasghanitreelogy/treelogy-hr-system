@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, ImageOff, Pencil, Trash2 } from "lucide-react";
 import type { InventoryItem } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { formatDate, rupiah } from "@/lib/utils";
@@ -15,6 +15,7 @@ import {
 import { useLocale } from "@/components/layout/locale-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ItemPhoto } from "./item-photo";
 import { QrPanel } from "./qr-panel";
 
 const STR: Record<
@@ -38,6 +39,7 @@ const STR: Record<
     delete: string;
     createdTitle: (code: string) => string;
     createdHint: string;
+    noPhoto: string;
     photoAlt: (name: string) => string;
   }
 > = {
@@ -60,6 +62,7 @@ const STR: Record<
     delete: "Hapus",
     createdTitle: (code) => `Tersimpan — kode aset ${code}`,
     createdHint: "QR di bawah sudah jadi. Unduh atau cetak labelnya, lalu tempel di barang.",
+    noPhoto: "Belum ada foto — tambahkan lewat Ubah.",
     photoAlt: (name) => `Foto ${name}`,
   },
   en: {
@@ -81,6 +84,7 @@ const STR: Record<
     delete: "Delete",
     createdTitle: (code) => `Saved — asset code ${code}`,
     createdHint: "The QR below is ready. Download or print the label, then stick it on the item.",
+    noPhoto: "No photo yet — add one via Edit.",
     photoAlt: (name) => `Photo of ${name}`,
   },
 };
@@ -89,7 +93,9 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return (
     <div className="flex items-start justify-between gap-4 px-3 py-2.5">
       <span className="shrink-0 text-xs font-medium text-faint">{label}</span>
-      <span className="min-w-0 text-right text-sm text-ink">{children}</span>
+      {/* break-words: nomor seri / catatan panjang tanpa spasi tidak boleh
+          melebarkan panel dan memicu scroll horizontal di sheet. */}
+      <span className="min-w-0 break-words text-right text-sm text-ink">{children}</span>
     </div>
   );
 }
@@ -124,16 +130,14 @@ export function ItemDetail({
           </div>
         </div>
       )}
-      {item.photoPath && (
-        // Signed URL berumur pendek dari route API — bucket-nya privat, jadi
-        // next/image tidak bisa mengoptimalkan host yang berubah-ubah.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/api/inventory/photo?path=${encodeURIComponent(item.photoPath)}`}
-          alt={t.photoAlt(item.name)}
-          loading="lazy"
-          className="h-44 w-full rounded-2xl border border-line object-cover"
-        />
+      {item.photoPath ? (
+        <ItemPhoto path={item.photoPath} alt={t.photoAlt(item.name)} className="h-48 w-full" />
+      ) : (
+        canManage && (
+          <div className="flex h-20 items-center justify-center gap-2 rounded-2xl border border-dashed border-line bg-cream/40 text-xs text-faint">
+            <ImageOff className="h-4 w-4" /> {t.noPhoto}
+          </div>
+        )
       )}
 
       <div>

@@ -7,6 +7,7 @@ import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { rupiah } from "@/lib/utils";
 import { prepareFileForBucket } from "@/lib/upload";
+import { ItemPhoto } from "./item-photo";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
@@ -47,6 +48,7 @@ const STR: Record<
     purchaseDate: string;
     price: string;
     photo: string;
+    photoHint: string;
     photoAdd: string;
     photoReplace: string;
     photoRemove: string;
@@ -80,6 +82,7 @@ const STR: Record<
     purchaseDate: "Tanggal beli",
     price: "Harga beli (Rp)",
     photo: "Foto barang",
+    photoHint: "Otomatis dikompres ke WebP mendekati lossless — tetap tajam, ukuran jauh lebih kecil.",
     photoAdd: "Pilih foto",
     photoReplace: "Ganti foto",
     photoRemove: "Hapus foto",
@@ -112,6 +115,7 @@ const STR: Record<
     purchaseDate: "Purchase date",
     price: "Purchase price (IDR)",
     photo: "Item photo",
+    photoHint: "Compressed to near-lossless WebP automatically — stays sharp, much smaller.",
     photoAdd: "Choose photo",
     photoReplace: "Replace photo",
     photoRemove: "Remove photo",
@@ -274,7 +278,9 @@ export function ItemForm({
         </Field>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      {/* Jumlah + satuan berpasangan; nomor seri butuh lebar penuh — dipaksa
+          jadi kolom ketiga, teksnya terpotong di lebar sheet ponsel. */}
+      <div className="grid grid-cols-2 gap-3">
         <Field label={t.quantity}>
           <Input
             type="number"
@@ -293,10 +299,11 @@ export function ItemForm({
             ))}
           </Select>
         </Field>
-        <Field label={t.serial} className="col-span-1">
-          <Input value={form.serialNo} onChange={(e) => set("serialNo", e.target.value)} placeholder={t.serialPh} />
-        </Field>
       </div>
+
+      <Field label={t.serial}>
+        <Input value={form.serialNo} onChange={(e) => set("serialNo", e.target.value)} placeholder={t.serialPh} />
+      </Field>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label={t.condition}>
@@ -353,22 +360,48 @@ export function ItemForm({
         </Field>
       </div>
 
-      <Field label={t.photo}>
-        <div className="flex items-center gap-2">
+      {/* Pratinjau wajib ada: tanpa ini pengguna menekan "Pilih foto" lalu tidak
+          melihat apa pun, dan tak tahu unggahannya berhasil atau salah berkas. */}
+      <Field label={t.photo} hint={t.photoHint}>
+        <div className="flex items-start gap-3">
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pickPhoto} />
-          <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-            {uploading ? t.uploading : form.photoPath ? t.photoReplace : t.photoAdd}
-          </Button>
-          {form.photoPath && (
+          {uploading ? (
+            <div className="flex h-20 w-20 shrink-0 animate-pulse items-center justify-center rounded-xl bg-sand">
+              <Loader2 className="h-5 w-5 animate-spin text-muted" />
+            </div>
+          ) : form.photoPath ? (
+            <ItemPhoto path={form.photoPath} alt={t.photo} rounded="rounded-xl" className="h-20 w-20 shrink-0" />
+          ) : (
             <button
               type="button"
-              onClick={() => set("photoPath", null)}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-clay-soft hover:text-[#8c3c1f]"
+              onClick={() => fileRef.current?.click()}
+              aria-label={t.photoAdd}
+              className="flex h-20 w-20 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line bg-cream/50 text-faint transition-colors hover:border-forest-300 hover:text-forest-600"
             >
-              <Trash2 className="h-3.5 w-3.5" /> {t.photoRemove}
+              <ImagePlus className="h-5 w-5" />
             </button>
           )}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+              {uploading ? t.uploading : form.photoPath ? t.photoReplace : t.photoAdd}
+            </Button>
+            {form.photoPath && !uploading && (
+              <button
+                type="button"
+                onClick={() => set("photoPath", null)}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-clay-soft hover:text-[#8c3c1f]"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> {t.photoRemove}
+              </button>
+            )}
+          </div>
         </div>
       </Field>
 

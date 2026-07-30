@@ -154,9 +154,18 @@ const STR: Record<
 /** Delay stagger di-cap: daftar panjang tetap tiba dalam satu ketukan (≤ 0.32s). */
 const MAX_STAGGER = 8;
 
-/** Kolom sejajar di layar lebar; di ponsel menyusut jadi QR · barang · status. */
+/**
+ * Kolom sejajar di layar lebar; di ponsel menyusut jadi QR · barang · status.
+ *
+ * Setiap kolom teks memakai `minmax(0, X)` — batas ATAS, bukan lebar tetap.
+ * Dengan lebar tetap, jumlah kolom yang melebihi ruang akan mendorong halaman
+ * dan memunculkan scroll horizontal; dengan minmax(0,…) kolom menyusut lebih
+ * dulu dan teksnya di-truncate. `min-w-0` di sel teks wajib, kalau tidak konten
+ * grid tetap memakai ukuran minimum kontennya dan meluber.
+ */
 const COLS =
-  "grid-cols-[36px_minmax(0,1fr)_auto] lg:grid-cols-[36px_minmax(0,1fr)_180px_92px_150px_116px_20px]";
+  "grid-cols-[36px_minmax(0,1fr)_auto] " +
+  "xl:grid-cols-[36px_minmax(0,1fr)_minmax(0,150px)_minmax(0,80px)_minmax(0,130px)_minmax(0,112px)_16px]";
 
 export function InventoryView({
   items,
@@ -311,9 +320,11 @@ export function InventoryView({
 
   return (
     <div className="space-y-3">
-      {/* Baris aksi — tanpa panel pembungkus, langsung ke alat yang dipakai */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      {/* Baris aksi — tanpa panel pembungkus, langsung ke alat yang dipakai.
+          Di ponsel kontrol dibagi dua kolom penuh (bukan empat berdesakan dalam
+          satu baris); mulai sm semuanya kembali sebaris. */}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <Input
             value={query}
@@ -323,8 +334,13 @@ export function InventoryView({
             className="pl-9"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-auto flex-1 sm:flex-none">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+          <Select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            aria-label={t.allCategories}
+            className="min-w-0 sm:w-40"
+          >
             <option value="all">{t.allCategories}</option>
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>
@@ -332,7 +348,12 @@ export function InventoryView({
               </option>
             ))}
           </Select>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto flex-1 sm:flex-none">
+          <Select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            aria-label={t.allStatuses}
+            className="min-w-0 sm:w-36"
+          >
             <option value="all">{t.allStatuses}</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -341,8 +362,7 @@ export function InventoryView({
             ))}
           </Select>
           <Button variant="outline" onClick={() => setScanning(true)} className="shrink-0">
-            <ScanLine className="h-4 w-4" />
-            <span className="hidden sm:inline">{t.scan}</span>
+            <ScanLine className="h-4 w-4" /> {t.scan}
           </Button>
           {canManage && (
             <Button onClick={() => setAdding(true)} className="hidden shrink-0 lg:inline-flex">
@@ -422,7 +442,7 @@ export function InventoryView({
           {/* Kepala kolom hanya di layar lebar */}
           <div
             className={cn(
-              "hidden items-center gap-3 border-b border-line bg-cream/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-faint lg:grid",
+              "hidden items-center gap-3 border-b border-line bg-cream/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-faint xl:grid",
               COLS,
             )}
           >
@@ -461,47 +481,51 @@ export function InventoryView({
                   <span className="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-sand" />
                 )}
 
-                <span className="min-w-0">
-                  <span className="flex items-baseline gap-2">
+                <span className="block min-w-0">
+                  {/* min-w-0 pada flex-nya juga: tanpa itu `truncate` di anak
+                      tidak pernah aktif karena flex item memakai lebar kontennya. */}
+                  <span className="flex min-w-0 items-baseline gap-2">
                     <span className="shrink-0 font-mono text-[11px] font-semibold text-faint tabular-nums">
                       {item.code}
                     </span>
                     <span className="truncate text-sm font-medium text-ink">{item.name}</span>
                   </span>
-                  {/* Di ponsel kolom-kolom lain disembunyikan → ringkas di satu baris meta */}
-                  <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-faint lg:hidden">
+                  {/* Di ponsel kolom lain disembunyikan → ringkas di satu baris meta.
+                      Blok, bukan flex: `truncate` hanya bekerja pada kotak teks. */}
+                  <span className="mt-0.5 block truncate text-xs text-faint xl:hidden">
                     {item.location || "—"} · {item.quantity} {item.unit}
                     {item.condition !== "baik" && (
                       <span className={CONDITION_TEXT[item.condition]}>
-                        · {CONDITION_LABEL[locale][item.condition]}
+                        {" · "}
+                        {CONDITION_LABEL[locale][item.condition]}
                       </span>
                     )}
                   </span>
                 </span>
 
-                <span className="hidden truncate text-sm text-muted lg:block">{item.location || "—"}</span>
-                <span className="hidden text-right text-sm text-muted tabular-nums lg:block">
+                <span className="hidden min-w-0 truncate text-sm text-muted xl:block">{item.location || "—"}</span>
+                <span className="hidden min-w-0 truncate text-right text-sm text-muted tabular-nums xl:block">
                   {item.quantity} <span className="text-faint">{item.unit}</span>
                 </span>
-                <span className="hidden truncate text-sm text-muted lg:block">
+                <span className="hidden min-w-0 truncate text-sm text-muted xl:block">
                   {item.assignedTo ? (empName.get(item.assignedTo) ?? "—") : t.unassigned}
                 </span>
-                <span className="hidden lg:block">
-                  <Badge tone={STATUS_TONE[item.status]} dot className="!px-2 !py-0.5 !text-[10px]">
-                    {STATUS_LABEL[locale][item.status]}
+                <span className="hidden min-w-0 xl:block">
+                  <Badge tone={STATUS_TONE[item.status]} dot className="max-w-full !px-2 !py-0.5 !text-[10px]">
+                    <span className="truncate">{STATUS_LABEL[locale][item.status]}</span>
                   </Badge>
                   {item.condition !== "baik" && (
-                    <span className={cn("mt-1 block text-[10px] font-medium", CONDITION_TEXT[item.condition])}>
+                    <span className={cn("mt-1 block truncate text-[10px] font-medium", CONDITION_TEXT[item.condition])}>
                       {CONDITION_LABEL[locale][item.condition]}
                     </span>
                   )}
                 </span>
 
                 {/* Ponsel: status sebagai chip; layar lebar: chevron penanda bisa dibuka */}
-                <Badge tone={STATUS_TONE[item.status]} dot className="shrink-0 !px-2 !py-0.5 !text-[10px] lg:hidden">
+                <Badge tone={STATUS_TONE[item.status]} dot className="shrink-0 !px-2 !py-0.5 !text-[10px] xl:hidden">
                   {STATUS_LABEL[locale][item.status]}
                 </Badge>
-                <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint lg:block" />
+                <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
               </button>
             ))}
           </div>
