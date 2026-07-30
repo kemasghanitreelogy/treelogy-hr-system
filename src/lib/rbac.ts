@@ -164,6 +164,15 @@ export const roles: Role[] = [
     permissionIds: EMPLOYEE_PERMS,
   },
   {
+    id: "role-inventory",
+    name: "Pengelola Inventaris",
+    description: "Hak karyawan biasa, plus kelola penuh inventaris kantor.",
+    color: "#4a7ba6",
+    // Peran terpisah, bukan menambah inventory.manage ke Karyawan — kalau tidak,
+    // SEMUA karyawan ikut bisa menghapus aset.
+    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage"],
+  },
+  {
     id: "role-payroll",
     name: "Payroll Staff",
     description: "Khusus memproses payroll dan ekspor transfer bank.",
