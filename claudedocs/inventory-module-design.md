@@ -118,6 +118,12 @@ src/components/layout/nav-items.ts       menu entry
 
 ## 6. Keputusan yang sengaja diambil
 
+- **Daftar padat, bukan grid kartu.** Halaman utama memakai satu panel berisi baris
+  (QR kecil · kode+nama · lokasi · jumlah · pemegang · status), dengan kepala kolom
+  yang muncul di layar lebar dan menyusut jadi tiga kolom di ponsel. Ringkasan
+  angka ditulis sebagai satu baris teks, bukan empat kotak statistik — tujuan
+  halaman ini menemukan barang, bukan memandangi metrik.
+
 - **Tanpa tabel mutasi/peminjaman.** Permintaan = "CRUD + QR". Riwayat pergerakan
   adalah modul tersendiri; `assigned_to` + `status` sudah menjawab "siapa pegang".
 - **Kode dibuat DB, bukan client.** Client tidak pernah menebak kode → tidak ada

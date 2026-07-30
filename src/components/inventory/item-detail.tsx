@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, Pencil, Trash2 } from "lucide-react";
 import type { InventoryItem } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { formatDate, rupiah } from "@/lib/utils";
@@ -36,6 +36,8 @@ const STR: Record<
     updated: string;
     edit: string;
     delete: string;
+    createdTitle: (code: string) => string;
+    createdHint: string;
     photoAlt: (name: string) => string;
   }
 > = {
@@ -56,6 +58,8 @@ const STR: Record<
     updated: "Diperbarui",
     edit: "Ubah",
     delete: "Hapus",
+    createdTitle: (code) => `Tersimpan — kode aset ${code}`,
+    createdHint: "QR di bawah sudah jadi. Unduh atau cetak labelnya, lalu tempel di barang.",
     photoAlt: (name) => `Foto ${name}`,
   },
   en: {
@@ -75,6 +79,8 @@ const STR: Record<
     updated: "Updated",
     edit: "Edit",
     delete: "Delete",
+    createdTitle: (code) => `Saved — asset code ${code}`,
+    createdHint: "The QR below is ready. Download or print the label, then stick it on the item.",
     photoAlt: (name) => `Photo of ${name}`,
   },
 };
@@ -92,12 +98,15 @@ export function ItemDetail({
   item,
   employeeName,
   canManage,
+  justCreated = false,
   onEdit,
   onDelete,
 }: {
   item: InventoryItem;
   employeeName?: string;
   canManage: boolean;
+  /** Baru saja dibuat → sorot kode & QR yang otomatis dibuat sistem. */
+  justCreated?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -106,6 +115,15 @@ export function ItemDetail({
 
   return (
     <div className="animate-flip-in space-y-4">
+      {justCreated && (
+        <div className="animate-pop-in flex items-start gap-2.5 rounded-2xl border border-forest-200 bg-forest-50 px-3.5 py-3">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-forest-600" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-forest-700">{t.createdTitle(item.code)}</p>
+            <p className="mt-0.5 text-xs text-forest-700/80">{t.createdHint}</p>
+          </div>
+        </div>
+      )}
       {item.photoPath && (
         // Signed URL berumur pendek dari route API — bucket-nya privat, jadi
         // next/image tidak bisa mengoptimalkan host yang berubah-ubah.

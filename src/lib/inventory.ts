@@ -68,6 +68,14 @@ export const CONDITION_TONE: Record<InventoryCondition, Tone> = {
   hilang: "neutral",
 };
 
+/** Warna teks kondisi saat ditulis polos (tanpa chip) — sejalan dengan tone di atas. */
+export const CONDITION_TEXT: Record<InventoryCondition, string> = {
+  baik: "text-forest-600",
+  perlu_servis: "text-[#8a6512]",
+  rusak: "text-clay",
+  hilang: "text-faint",
+};
+
 export const STATUS_TONE: Record<InventoryStatus, Tone> = {
   tersedia: "forest",
   dipakai: "sky",

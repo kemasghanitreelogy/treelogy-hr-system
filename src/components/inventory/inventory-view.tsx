@@ -2,18 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Boxes,
-  Coins,
-  PackageSearch,
-  Plus,
-  Printer,
-  QrCode as QrIcon,
-  ScanLine,
-  Search,
-  TriangleAlert,
-  Wrench,
-} from "lucide-react";
+import { ChevronRight, PackageSearch, Plus, Printer, ScanLine, Search } from "lucide-react";
 import type { InventoryItem } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -23,7 +12,7 @@ import {
   CATEGORIES,
   CATEGORY_LABEL,
   CONDITION_LABEL,
-  CONDITION_TONE,
+  CONDITION_TEXT,
   STATUSES,
   STATUS_LABEL,
   STATUS_TONE,
@@ -46,11 +35,6 @@ import { downloadInventoryLabels } from "./labels-pdf";
 const STR: Record<
   Locale,
   {
-    statItems: string;
-    statUnits: string;
-    statValue: string;
-    statAttention: string;
-    statItemsSub: (n: number) => string;
     searchPh: string;
     allCategories: string;
     allStatuses: string;
@@ -59,9 +43,21 @@ const STR: Record<
     printAll: (n: number) => string;
     printBusy: string;
     printFailed: string;
-    count: (shown: number, total: number) => string;
+    sumItems: (n: number) => string;
+    sumUnits: (n: number) => string;
+    sumAttention: (n: number) => string;
+    filteredOf: (total: number) => string;
+    colItem: string;
+    colLocation: string;
+    colQty: string;
+    colHolder: string;
+    colStatus: string;
     empty: string;
+    emptyHint: string;
+    emptyCta: string;
+    fab: string;
     emptyFiltered: string;
+    reset: string;
     detailTitle: string;
     addTitle: string;
     editTitle: string;
@@ -72,18 +68,12 @@ const STR: Record<
     created: string;
     updated: string;
     deleted: string;
-    deleteFailed: string;
     connection: string;
     notFound: (code: string) => string;
     unassigned: string;
   }
 > = {
   id: {
-    statItems: "Jenis barang",
-    statUnits: "Total unit",
-    statValue: "Nilai aset",
-    statAttention: "Perlu perhatian",
-    statItemsSub: (n) => `${n} unit tercatat`,
     searchPh: "Cari nama, kode, merk, lokasi…",
     allCategories: "Semua kategori",
     allStatuses: "Semua status",
@@ -92,9 +82,21 @@ const STR: Record<
     printAll: (n) => `Cetak ${n} label`,
     printBusy: "Menyiapkan…",
     printFailed: "Gagal membuat label PDF.",
-    count: (shown, total) => (shown === total ? `${total} barang` : `${shown} dari ${total} barang`),
+    sumItems: (n) => `${n} barang`,
+    sumUnits: (n) => `${n} unit`,
+    sumAttention: (n) => `${n} perlu perhatian`,
+    filteredOf: (total) => `dari ${total}`,
+    colItem: "Barang",
+    colLocation: "Lokasi",
+    colQty: "Jumlah",
+    colHolder: "Pemegang",
+    colStatus: "Status",
     empty: "Belum ada barang inventaris.",
-    emptyFiltered: "Tidak ada barang yang cocok dengan filter ini.",
+    emptyHint: "Cukup isi namanya. Kode aset dan QR dibuat otomatis — Anda tidak perlu menomori apa pun.",
+    emptyCta: "Tambah barang pertama",
+    fab: "Tambah barang",
+    emptyFiltered: "Tidak ada barang yang cocok.",
+    reset: "Hapus filter",
     detailTitle: "Detail Barang",
     addTitle: "Tambah Barang",
     editTitle: "Ubah Barang",
@@ -105,17 +107,11 @@ const STR: Record<
     created: "Barang ditambahkan ✓",
     updated: "Barang diperbarui ✓",
     deleted: "Barang dihapus ✓",
-    deleteFailed: "Gagal menghapus barang.",
     connection: "Koneksi bermasalah. Coba lagi.",
     notFound: (code) => `Barang ${code} tidak ditemukan.`,
-    unassigned: "Belum ditentukan",
+    unassigned: "—",
   },
   en: {
-    statItems: "Item types",
-    statUnits: "Total units",
-    statValue: "Asset value",
-    statAttention: "Needs attention",
-    statItemsSub: (n) => `${n} units recorded`,
     searchPh: "Search name, code, brand, location…",
     allCategories: "All categories",
     allStatuses: "All statuses",
@@ -124,9 +120,21 @@ const STR: Record<
     printAll: (n) => `Print ${n} labels`,
     printBusy: "Preparing…",
     printFailed: "Failed to build the label PDF.",
-    count: (shown, total) => (shown === total ? `${total} items` : `${shown} of ${total} items`),
+    sumItems: (n) => `${n} items`,
+    sumUnits: (n) => `${n} units`,
+    sumAttention: (n) => `${n} need attention`,
+    filteredOf: (total) => `of ${total}`,
+    colItem: "Item",
+    colLocation: "Location",
+    colQty: "Qty",
+    colHolder: "Holder",
+    colStatus: "Status",
     empty: "No inventory items yet.",
-    emptyFiltered: "No items match these filters.",
+    emptyHint: "Just type the name. The asset code and QR are generated for you — no numbering to remember.",
+    emptyCta: "Add the first item",
+    fab: "Add item",
+    emptyFiltered: "No matching items.",
+    reset: "Clear filters",
     detailTitle: "Item Detail",
     addTitle: "Add Item",
     editTitle: "Edit Item",
@@ -137,46 +145,18 @@ const STR: Record<
     created: "Item added ✓",
     updated: "Item updated ✓",
     deleted: "Item deleted ✓",
-    deleteFailed: "Failed to delete the item.",
     connection: "Connection problem. Try again.",
     notFound: (code) => `Item ${code} was not found.`,
-    unassigned: "Unassigned",
+    unassigned: "—",
   },
 };
 
 /** Delay stagger di-cap: daftar panjang tetap tiba dalam satu ketukan (≤ 0.32s). */
 const MAX_STAGGER = 8;
 
-function Stat({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  tone,
-  pulse,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: typeof Boxes;
-  tone: string;
-  pulse: string;
-}) {
-  return (
-    <div className="card p-3.5 sm:p-4">
-      <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl", tone)}>
-        <Icon className="h-4.5 w-4.5" />
-      </span>
-      {/* key = nilai → elemen di-remount tiap angka berubah, jadi animasi
-          count-up berjalan lagi setiap filter diubah. */}
-      <p key={pulse} className="animate-count-up mt-2.5 font-display text-xl font-bold tracking-tight text-ink sm:text-2xl">
-        {value}
-      </p>
-      <p className="mt-0.5 text-xs font-medium text-muted">{label}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-faint">{sub}</p>}
-    </div>
-  );
-}
+/** Kolom sejajar di layar lebar; di ponsel menyusut jadi QR · barang · status. */
+const COLS =
+  "grid-cols-[36px_minmax(0,1fr)_auto] lg:grid-cols-[36px_minmax(0,1fr)_180px_92px_150px_116px_20px]";
 
 export function InventoryView({
   items,
@@ -201,6 +181,8 @@ export function InventoryView({
   const [status, setStatus] = useState<string>("all");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Barang yang baru saja dibuat — detailnya menyorot QR baru sekali saja. */
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -252,15 +234,27 @@ export function InventoryView({
     const units = filtered.reduce((sum, i) => sum + i.quantity, 0);
     const value = filtered.reduce((sum, i) => sum + itemValue(i), 0);
     const attention = filtered.filter(needsAttention).length;
-    return { types: filtered.length, units, value, attention };
+    return { units, value, attention };
   }, [filtered]);
 
   const selected = list.find((i) => i.id === selectedId) ?? null;
+  const isFiltered = query.trim() !== "" || category !== "all" || status !== "all";
+
+  function clearFilters() {
+    setQuery("");
+    setCategory("all");
+    setStatus("all");
+  }
 
   function upsert(saved: InventoryItem, mode: "create" | "update") {
     setList((cur) => (mode === "create" ? [saved, ...cur] : cur.map((i) => (i.id === saved.id ? saved : i))));
     toast.success(mode === "create" ? t.created : t.updated);
-    if (mode === "create") setSelectedId(saved.id);
+    // Barang baru langsung membuka detailnya: kode & QR yang baru dibuat
+    // ditampilkan saat itu juga, lengkap dengan ajakan mencetak labelnya.
+    if (mode === "create") {
+      setSelectedId(saved.id);
+      setJustCreatedId(saved.id);
+    }
     router.refresh();
   }
 
@@ -316,157 +310,230 @@ export function InventoryView({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Statistik — ikut filter, jadi selalu menjawab "yang sedang saya lihat" */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat
-          label={t.statItems}
-          value={String(stats.types)}
-          sub={t.statItemsSub(stats.units)}
-          icon={Boxes}
-          tone="bg-forest-100 text-forest-700"
-          pulse={`types-${stats.types}`}
-        />
-        <Stat
-          label={t.statUnits}
-          value={String(stats.units)}
-          icon={PackageSearch}
-          tone="bg-sky-soft text-[#2c5775]"
-          pulse={`units-${stats.units}`}
-        />
-        <Stat
-          label={t.statValue}
-          value={rupiah(stats.value, { compact: true })}
-          icon={Coins}
-          tone="bg-gold-soft text-[#8a6512]"
-          pulse={`value-${stats.value}`}
-        />
-        <Stat
-          label={t.statAttention}
-          value={String(stats.attention)}
-          icon={stats.attention > 0 ? TriangleAlert : Wrench}
-          tone={stats.attention > 0 ? "bg-clay-soft text-[#8c3c1f]" : "bg-[#e9f0d8] text-forest-600"}
-          pulse={`att-${stats.attention}`}
-        />
-      </div>
-
-      {/* Filter + aksi */}
-      <div className="rounded-2xl border border-line bg-panel p-3 sm:p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t.searchPh}
-              aria-label={t.searchPh}
-              className="pl-9"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-auto min-w-[10rem]">
-              <option value="all">{t.allCategories}</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABEL[locale][c]}
-                </option>
-              ))}
-            </Select>
-            <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto min-w-[9rem]">
-              <option value="all">{t.allStatuses}</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABEL[locale][s]}
-                </option>
-              ))}
-            </Select>
-            <Button variant="outline" onClick={() => setScanning(true)} className="relative">
-              <ScanLine className="h-4 w-4" /> {t.scan}
+    <div className="space-y-3">
+      {/* Baris aksi — tanpa panel pembungkus, langsung ke alat yang dipakai */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.searchPh}
+            aria-label={t.searchPh}
+            className="pl-9"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-auto flex-1 sm:flex-none">
+            <option value="all">{t.allCategories}</option>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {CATEGORY_LABEL[locale][c]}
+              </option>
+            ))}
+          </Select>
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto flex-1 sm:flex-none">
+            <option value="all">{t.allStatuses}</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABEL[locale][s]}
+              </option>
+            ))}
+          </Select>
+          <Button variant="outline" onClick={() => setScanning(true)} className="shrink-0">
+            <ScanLine className="h-4 w-4" />
+            <span className="hidden sm:inline">{t.scan}</span>
+          </Button>
+          {canManage && (
+            <Button onClick={() => setAdding(true)} className="hidden shrink-0 lg:inline-flex">
+              <Plus className="h-4 w-4" /> {t.add}
             </Button>
-            {canManage && (
-              <Button onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4" /> {t.add}
-              </Button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted">{t.count(filtered.length, list.length)}</p>
-        {canManage && filtered.length > 0 && (
-          <Button size="sm" variant="ghost" onClick={printAll} disabled={printBusy}>
-            <Printer className="h-4 w-4" /> {printBusy ? t.printBusy : t.printAll(filtered.length)}
-          </Button>
+      {/* Ringkasan satu baris — angka yang sama, tanpa empat kotak */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <span key={`i-${filtered.length}`} className="animate-count-up font-semibold text-ink tabular-nums">
+          {t.sumItems(filtered.length)}
+        </span>
+        {isFiltered && <span className="text-faint">{t.filteredOf(list.length)}</span>}
+        <span className="text-line">·</span>
+        <span key={`u-${stats.units}`} className="animate-count-up text-muted tabular-nums">
+          {t.sumUnits(stats.units)}
+        </span>
+        <span className="text-line">·</span>
+        <span key={`v-${stats.value}`} className="animate-count-up text-muted tabular-nums">
+          {rupiah(stats.value, { compact: true })}
+        </span>
+        {stats.attention > 0 && (
+          <>
+            <span className="text-line">·</span>
+            <span key={`a-${stats.attention}`} className="animate-count-up font-medium text-clay tabular-nums">
+              {t.sumAttention(stats.attention)}
+            </span>
+          </>
         )}
+        <span className="ml-auto flex items-center gap-1">
+          {isFiltered && (
+            <button
+              onClick={clearFilters}
+              className="cursor-pointer rounded-lg px-2 py-1 font-medium text-muted transition-colors hover:bg-sand hover:text-ink"
+            >
+              {t.reset}
+            </button>
+          )}
+          {canManage && filtered.length > 0 && (
+            <button
+              onClick={printAll}
+              disabled={printBusy}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 font-medium text-muted transition-colors hover:bg-sand hover:text-ink disabled:opacity-50"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              {printBusy ? t.printBusy : t.printAll(filtered.length)}
+            </button>
+          )}
+        </span>
       </div>
 
-      {/* Daftar barang */}
+      {/* Daftar padat: satu panel, baris demi baris */}
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-cream/40 px-5 py-12 text-center">
           <PackageSearch className="mx-auto h-8 w-8 text-faint" />
           <p className="mt-2 text-sm text-faint">{list.length === 0 ? t.empty : t.emptyFiltered}</p>
+          {/* Inventaris kosong tanpa ajakan = jalan buntu. Beri jalur langsung,
+              dan jelaskan bahwa kode + QR tidak perlu dipikirkan. */}
+          {list.length === 0 && canManage && (
+            <>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-faint">{t.emptyHint}</p>
+              <Button className="mt-4" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4" /> {t.emptyCta}
+              </Button>
+            </>
+          )}
+          {list.length > 0 && isFiltered && (
+            <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>
+              {t.reset}
+            </Button>
+          )}
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((item, i) => (
-            <button
-              key={item.id}
-              onClick={() => setSelectedId(item.id)}
-              style={{ ["--i" as string]: Math.min(i, MAX_STAGGER) }}
-              className={cn(
-                "stagger-item group flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-panel p-3 text-left transition-colors hover:border-forest-200 hover:bg-cream/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400",
-                removingId === item.id && "animate-row-out",
-              )}
-            >
-              {/* Thumbnail QR — kode aset terlihat langsung dari daftar */}
-              {origin ? (
-                <QrCode
-                  value={itemQrPayload(origin, item.code)}
-                  size={56}
-                  border={1}
-                  className="shrink-0 ring-1 ring-line"
-                  title={`QR ${item.code}`}
-                />
-              ) : (
-                <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl bg-sand" />
-              )}
+        <div className="overflow-hidden rounded-2xl border border-line bg-panel">
+          {/* Kepala kolom hanya di layar lebar */}
+          <div
+            className={cn(
+              "hidden items-center gap-3 border-b border-line bg-cream/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-faint lg:grid",
+              COLS,
+            )}
+          >
+            {/* Kolom QR tak berjudul — jumlah sel harus persis sama dengan baris data */}
+            <span />
+            <span>{t.colItem}</span>
+            <span>{t.colLocation}</span>
+            <span className="text-right">{t.colQty}</span>
+            <span>{t.colHolder}</span>
+            <span>{t.colStatus}</span>
+            <span />
+          </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <QrIcon className="h-3 w-3 shrink-0 text-faint" />
-                  <span className="font-mono text-[11px] font-semibold tracking-tight text-muted tabular-nums">
-                    {item.code}
+          <div className="divide-y divide-line">
+            {filtered.map((item, i) => (
+              <button
+                key={item.id}
+                onClick={() => setSelectedId(item.id)}
+                style={{ ["--i" as string]: Math.min(i, MAX_STAGGER) }}
+                className={cn(
+                  "stagger-item grid w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
+                  COLS,
+                  removingId === item.id && "animate-row-out",
+                )}
+              >
+                {/* QR kecil: penanda visual bahwa tiap barang punya kodenya sendiri */}
+                {origin ? (
+                  <QrCode
+                    value={itemQrPayload(origin, item.code)}
+                    size={36}
+                    border={1}
+                    className="shrink-0 ring-1 ring-line"
+                    title={`QR ${item.code}`}
+                  />
+                ) : (
+                  <span className="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-sand" />
+                )}
+
+                <span className="min-w-0">
+                  <span className="flex items-baseline gap-2">
+                    <span className="shrink-0 font-mono text-[11px] font-semibold text-faint tabular-nums">
+                      {item.code}
+                    </span>
+                    <span className="truncate text-sm font-medium text-ink">{item.name}</span>
                   </span>
-                </div>
-                <p className="mt-0.5 truncate text-sm font-semibold text-ink">{item.name}</p>
-                <p className="truncate text-xs text-faint">
-                  {item.location || "—"}
-                  {" · "}
-                  {item.quantity} {item.unit}
-                  {item.assignedTo && empName.has(item.assignedTo) ? ` · ${empName.get(item.assignedTo)}` : ""}
-                </p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  {/* Di ponsel kolom-kolom lain disembunyikan → ringkas di satu baris meta */}
+                  <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-faint lg:hidden">
+                    {item.location || "—"} · {item.quantity} {item.unit}
+                    {item.condition !== "baik" && (
+                      <span className={CONDITION_TEXT[item.condition]}>
+                        · {CONDITION_LABEL[locale][item.condition]}
+                      </span>
+                    )}
+                  </span>
+                </span>
+
+                <span className="hidden truncate text-sm text-muted lg:block">{item.location || "—"}</span>
+                <span className="hidden text-right text-sm text-muted tabular-nums lg:block">
+                  {item.quantity} <span className="text-faint">{item.unit}</span>
+                </span>
+                <span className="hidden truncate text-sm text-muted lg:block">
+                  {item.assignedTo ? (empName.get(item.assignedTo) ?? "—") : t.unassigned}
+                </span>
+                <span className="hidden lg:block">
                   <Badge tone={STATUS_TONE[item.status]} dot className="!px-2 !py-0.5 !text-[10px]">
                     {STATUS_LABEL[locale][item.status]}
                   </Badge>
                   {item.condition !== "baik" && (
-                    <Badge tone={CONDITION_TONE[item.condition]} className="!px-2 !py-0.5 !text-[10px]">
+                    <span className={cn("mt-1 block text-[10px] font-medium", CONDITION_TEXT[item.condition])}>
                       {CONDITION_LABEL[locale][item.condition]}
-                    </Badge>
+                    </span>
                   )}
-                </div>
-              </div>
-            </button>
-          ))}
+                </span>
+
+                {/* Ponsel: status sebagai chip; layar lebar: chevron penanda bisa dibuka */}
+                <Badge tone={STATUS_TONE[item.status]} dot className="shrink-0 !px-2 !py-0.5 !text-[10px] lg:hidden">
+                  {STATUS_LABEL[locale][item.status]}
+                </Badge>
+                <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint lg:block" />
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
+      {/* Tombol tambah mengambang — di ponsel, toolbar ada jauh di atas layar;
+          ini menaruh aksi utama di zona jempol, di atas bottom nav. */}
+      {canManage && list.length > 0 && (
+        <button
+          onClick={() => setAdding(true)}
+          aria-label={t.fab}
+          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-forest-600 text-cream shadow-pop transition-transform hover:bg-forest-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400 focus-visible:ring-offset-2 focus-visible:ring-offset-cream lg:hidden"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      )}
+
       {/* Detail */}
-      <Sheet open={selected !== null} onClose={() => setSelectedId(null)} title={t.detailTitle} width="lg">
+      <Sheet
+        open={selected !== null}
+        onClose={() => {
+          setSelectedId(null);
+          setJustCreatedId(null);
+        }}
+        title={t.detailTitle}
+        width="lg"
+      >
         {selected && (
           <ItemDetail
             item={selected}
+            justCreated={justCreatedId === selected.id}
             // Karyawan biasa mungkin tidak boleh membaca baris karyawan lain (RLS):
             // tampilkan "—", bukan "Belum ditentukan" yang keliru.
             employeeName={selected.assignedTo ? (empName.get(selected.assignedTo) ?? "—") : undefined}

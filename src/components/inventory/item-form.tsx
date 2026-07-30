@@ -5,6 +5,7 @@ import { ImagePlus, Loader2, Trash2 } from "lucide-react";
 import type { InventoryItem } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
+import { rupiah } from "@/lib/utils";
 import { prepareFileForBucket } from "@/lib/upload";
 import {
   CATEGORIES,
@@ -340,7 +341,8 @@ export function ItemForm({
         <Field label={t.purchaseDate}>
           <Input type="date" value={form.purchaseDate} onChange={(e) => set("purchaseDate", e.target.value)} />
         </Field>
-        <Field label={t.price}>
+        {/* Hint rupiah hidup: angka panjang tanpa pemisah ribuan mudah salah ketik. */}
+        <Field label={t.price} hint={Number(form.purchasePrice) > 0 ? rupiah(Number(form.purchasePrice)) : undefined}>
           <Input
             type="number"
             min={0}
