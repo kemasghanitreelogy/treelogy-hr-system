@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Layers,
   Network,
+  Package,
   ShieldCheck,
   Timer,
   Users,
@@ -40,6 +41,7 @@ const ITEMS: Record<string, NavItem> = {
   "/org-structure": { href: "/org-structure", label: "Struktur Organisasi", labelEn: "Org Structure", icon: Network, perm: "dashboard.view" },
   "/shifts": { href: "/shifts", label: "Jadwal", labelEn: "Schedule", icon: Layers, perm: "shifts.view" },
   "/holidays": { href: "/holidays", label: "Hari Libur", labelEn: "Holidays", icon: CalendarOff, perm: "dashboard.view" },
+  "/inventory": { href: "/inventory", label: "Inventaris", labelEn: "Inventory", icon: Package, perm: "inventory.view" },
   "/access": { href: "/access", label: "Peran & Akses", labelEn: "Roles & Access", icon: ShieldCheck, perm: "access.roles" },
   // Super-admin-only menus (gated by the synthetic SUPERADMIN_PERM). Add future
   // special menus here with `perm: SUPERADMIN_PERM`.
@@ -68,8 +70,8 @@ export function audienceFromPermissions(permissions: string[]): Audience {
 // Order by real-world usage frequency for each audience (Hick's Law + Serial Position:
 // most-used first = primacy; rarely-used config last).
 const ORDER: Record<Audience, string[]> = {
-  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/access", "/super-admin"],
-  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/employees", "/org-structure", "/access", "/super-admin"],
+  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/inventory", "/access", "/super-admin"],
+  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/inventory", "/employees", "/org-structure", "/access", "/super-admin"],
 };
 
 // Most-frequent destinations for the mobile thumb-zone bar (4 = sweet spot).

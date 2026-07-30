@@ -5,6 +5,7 @@ import type {
   Employee,
   EmployeeContract,
   Holiday,
+  InventoryItem,
   Kpi,
   LeaveBalance,
   LeaveRequest,
@@ -140,6 +141,81 @@ export const employeeContracts: EmployeeContract[] = [
   { id: "c1", employeeId: "e01", type: "probation", startDate: "2022-03-01", endDate: "2022-06-01", status: "ended", note: "Masa percobaan 3 bulan" },
   { id: "c2", employeeId: "e01", type: "pkwt", startDate: "2022-06-01", endDate: "2024-06-01", status: "ended", note: "Kontrak 2 tahun" },
   { id: "c3", employeeId: "e01", type: "pkwtt", startDate: "2024-06-01", endDate: null, status: "active", note: "Karyawan tetap" },
+];
+
+// Inventaris kantor — dataset demo (mode tanpa Supabase). Kode mengikuti pola
+// yang sama dengan yang dibuat database: INV-0001, INV-0002, …
+export const inventoryItems: InventoryItem[] = [
+  {
+    id: "inv1", code: "INV-0001", name: "Laptop Dell Latitude 5440", category: "elektronik",
+    brand: "Dell", serialNo: "DL5440-2291", quantity: 1, unit: "unit", condition: "baik",
+    status: "dipakai", location: "Ruang Finance", assignedTo: "e09",
+    purchaseDate: "2024-02-12", purchasePrice: 14_500_000, photoPath: null,
+    note: "Garansi sampai Feb 2027", createdAt: "2024-02-12T09:00:00+08:00", updatedAt: "2026-05-02T09:00:00+08:00",
+  },
+  {
+    id: "inv2", code: "INV-0002", name: "Printer Epson L3210", category: "elektronik",
+    brand: "Epson", serialNo: "EPL3210-8814", quantity: 1, unit: "unit", condition: "perlu_servis",
+    status: "perawatan", location: "Ruang Admin", assignedTo: "e11",
+    purchaseDate: "2023-08-05", purchasePrice: 2_750_000, photoPath: null,
+    note: "Head printer perlu dibersihkan", createdAt: "2023-08-05T09:00:00+08:00", updatedAt: "2026-06-01T09:00:00+08:00",
+  },
+  {
+    id: "inv3", code: "INV-0003", name: "Meja Kerja Kayu Jati 120cm", category: "furnitur",
+    brand: null, serialNo: null, quantity: 8, unit: "unit", condition: "baik",
+    status: "dipakai", location: "Ruang Kantor Utama", assignedTo: null,
+    purchaseDate: "2022-11-20", purchasePrice: 1_850_000, photoPath: null,
+    note: null, createdAt: "2022-11-20T09:00:00+08:00", updatedAt: "2022-11-20T09:00:00+08:00",
+  },
+  {
+    id: "inv4", code: "INV-0004", name: "Kursi Ergonomis Mesh", category: "furnitur",
+    brand: "Ergosit", serialNo: null, quantity: 10, unit: "unit", condition: "baik",
+    status: "dipakai", location: "Ruang Kantor Utama", assignedTo: null,
+    purchaseDate: "2022-11-20", purchasePrice: 1_200_000, photoPath: null,
+    note: null, createdAt: "2022-11-20T09:00:00+08:00", updatedAt: "2022-11-20T09:00:00+08:00",
+  },
+  {
+    id: "inv5", code: "INV-0005", name: "Motor Operasional Honda Vario", category: "kendaraan",
+    brand: "Honda", serialNo: "DK-4471-AB", quantity: 1, unit: "unit", condition: "baik",
+    status: "dipakai", location: "Parkir Kantor", assignedTo: "e07",
+    purchaseDate: "2023-04-18", purchasePrice: 22_300_000, photoPath: null,
+    note: "Pajak jatuh tempo April tiap tahun", createdAt: "2023-04-18T09:00:00+08:00", updatedAt: "2026-04-19T09:00:00+08:00",
+  },
+  {
+    id: "inv6", code: "INV-0006", name: "Proyektor Epson EB-X06", category: "elektronik",
+    brand: "Epson", serialNo: "EBX06-3320", quantity: 1, unit: "unit", condition: "baik",
+    status: "tersedia", location: "Gudang Kantor", assignedTo: null,
+    purchaseDate: "2023-01-10", purchasePrice: 6_400_000, photoPath: null,
+    note: null, createdAt: "2023-01-10T09:00:00+08:00", updatedAt: "2023-01-10T09:00:00+08:00",
+  },
+  {
+    id: "inv7", code: "INV-0007", name: "Kertas A4 80gsm", category: "atk",
+    brand: "Sinar Dunia", serialNo: null, quantity: 24, unit: "rim", condition: "baik",
+    status: "tersedia", location: "Gudang ATK", assignedTo: null,
+    purchaseDate: "2026-05-04", purchasePrice: 58_000, photoPath: null,
+    note: "Stok bulanan", createdAt: "2026-05-04T09:00:00+08:00", updatedAt: "2026-05-04T09:00:00+08:00",
+  },
+  {
+    id: "inv8", code: "INV-0008", name: "Dispenser Galon Bawah", category: "perlengkapan",
+    brand: "Sharp", serialNo: null, quantity: 2, unit: "unit", condition: "baik",
+    status: "dipakai", location: "Pantry", assignedTo: null,
+    purchaseDate: "2024-07-01", purchasePrice: 1_650_000, photoPath: null,
+    note: null, createdAt: "2024-07-01T09:00:00+08:00", updatedAt: "2024-07-01T09:00:00+08:00",
+  },
+  {
+    id: "inv9", code: "INV-0009", name: "Genset Honda EP2500", category: "mesin",
+    brand: "Honda", serialNo: "EP2500-1180", quantity: 1, unit: "unit", condition: "baik",
+    status: "tersedia", location: "Belakang Kantor", assignedTo: null,
+    purchaseDate: "2021-09-14", purchasePrice: 8_900_000, photoPath: null,
+    note: "Servis rutin tiap 6 bulan", createdAt: "2021-09-14T09:00:00+08:00", updatedAt: "2026-03-14T09:00:00+08:00",
+  },
+  {
+    id: "inv10", code: "INV-0010", name: "Handphone Kantor Samsung A15", category: "elektronik",
+    brand: "Samsung", serialNo: "SMA15-7742", quantity: 1, unit: "unit", condition: "hilang",
+    status: "pensiun", location: "—", assignedTo: null,
+    purchaseDate: "2024-10-02", purchasePrice: 2_400_000, photoPath: null,
+    note: "Hilang saat kunjungan lapangan, sudah dilaporkan", createdAt: "2024-10-02T09:00:00+08:00", updatedAt: "2026-02-20T09:00:00+08:00",
+  },
 ];
 
 // Contoh template jadwal.

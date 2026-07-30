@@ -57,6 +57,14 @@ const MESSAGES: Record<string, Msg> = {
   already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
   reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
+  // --- inventaris ---
+  invalid_category: { id: "Kategori barang tidak valid.", en: "The item category is invalid." },
+  invalid_condition: { id: "Kondisi barang tidak valid.", en: "The item condition is invalid." },
+  invalid_quantity: { id: "Jumlah harus 0 atau lebih.", en: "Quantity must be 0 or more." },
+  invalid_price: { id: "Harga beli tidak valid.", en: "The purchase price is invalid." },
+  unknown_employee: { id: "Penanggung jawab tidak ditemukan.", en: "The assigned employee was not found." },
+  code_conflict: { id: "Kode barang bentrok. Coba simpan sekali lagi.", en: "Item code collided. Try saving once more." },
+
   // --- tabungan ---
   insufficient_balance: { id: "Saldo tabungan tidak mencukupi.", en: "Insufficient savings balance." },
 

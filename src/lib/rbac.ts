@@ -65,6 +65,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "inventory",
+    label: "Inventaris",
+    permissions: [
+      { id: "inventory.view", label: "Lihat inventaris" },
+      { id: "inventory.manage", label: "Kelola inventaris (tambah/edit/hapus)" },
+    ],
+  },
+  {
     module: "kpi",
     label: "KPI & Kinerja",
     permissions: [
@@ -111,13 +119,14 @@ const MANAGER_PERMS = [
   "leave.view",
   "leave.approve",
   "employees.view",
+  "inventory.view",
   "kpi.view",
 ];
 
 // payroll.view di sini = karyawan boleh melihat SLIP GAJINYA SENDIRI;
 // halaman payroll menampilkan mode operasional hanya untuk payroll.process.
 // shifts.view = lihat halaman Jadwal (jadwal sendiri + tabungan libur).
-const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view"];
+const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view"];
 
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");

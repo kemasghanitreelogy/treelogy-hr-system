@@ -7,6 +7,7 @@ import {
   employeeContracts as seedContracts,
   holidays as seedHolidays,
   employees as seedEmployees,
+  inventoryItems as seedInventory,
   kpis as seedKpis,
   leaveBalances as seedBalances,
   leaveRequests as seedLeave,
@@ -31,6 +32,7 @@ import type {
   EmployeeContract,
   Holiday,
   Employee,
+  InventoryItem,
   Kpi,
   AppNotification,
   LeaveBalance,
@@ -143,6 +145,27 @@ export const mapHoliday = (r: Row): Holiday => ({
   name: String(r.name),
   type: r.type as Holiday["type"],
   religion: (r.religion as Holiday["religion"]) ?? null,
+});
+
+export const mapInventoryItem = (r: Row): InventoryItem => ({
+  id: String(r.id),
+  code: String(r.code),
+  name: String(r.name),
+  category: r.category as InventoryItem["category"],
+  brand: (r.brand as string) ?? null,
+  serialNo: (r.serial_no as string) ?? null,
+  quantity: n(r.quantity),
+  unit: String(r.unit ?? "unit"),
+  condition: r.condition as InventoryItem["condition"],
+  status: r.status as InventoryItem["status"],
+  location: (r.location as string) ?? null,
+  assignedTo: (r.assigned_to as string) ?? null,
+  purchaseDate: (r.purchase_date as string) ?? null,
+  purchasePrice: n(r.purchase_price),
+  photoPath: (r.photo_path as string) ?? null,
+  note: (r.note as string) ?? null,
+  createdAt: String(r.created_at ?? ""),
+  updatedAt: String(r.updated_at ?? ""),
 });
 
 export const mapContract = (r: Row): EmployeeContract => ({
@@ -345,6 +368,12 @@ export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmplo
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
 export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
 export const getScheduleTemplates = () => fetchTable("schedule_templates", mapScheduleTemplate, seedScheduleTemplates);
+
+/** Inventaris kantor, barang terbaru dulu (kode menurun = urutan pendaftaran). */
+export async function getInventoryItems(): Promise<InventoryItem[]> {
+  const rows = await fetchTable("inventory_items", mapInventoryItem, seedInventory);
+  return rows.slice().sort((a, b) => b.code.localeCompare(a.code));
+}
 
 export async function getHolidays(): Promise<Holiday[]> {
   const rows = await fetchTable("holidays", mapHoliday, seedHolidays);

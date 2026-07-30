@@ -318,6 +318,49 @@ export interface AttendanceSettings {
   geofences: Record<Team, TeamGeofence>;
 }
 
+/* ============================================================
+   Inventaris kantor
+   ============================================================ */
+
+export type InventoryCategory =
+  | "elektronik"
+  | "furnitur"
+  | "atk"
+  | "kendaraan"
+  | "mesin"
+  | "perlengkapan"
+  | "lainnya";
+
+/** Kondisi fisik barang. */
+export type InventoryCondition = "baik" | "perlu_servis" | "rusak" | "hilang";
+
+/** Status pemakaian barang. */
+export type InventoryStatus = "tersedia" | "dipakai" | "perawatan" | "pensiun";
+
+export interface InventoryItem {
+  id: string;
+  /** Kode aset unik yang dibuat database (INV-0001). Inilah isi QR-nya. */
+  code: string;
+  name: string;
+  category: InventoryCategory;
+  brand?: string | null;
+  serialNo?: string | null;
+  quantity: number;
+  unit: string; // unit, pcs, box, set, rim…
+  condition: InventoryCondition;
+  status: InventoryStatus;
+  location?: string | null;
+  /** Penanggung jawab barang (employee id); null = belum dipegang siapa pun. */
+  assignedTo?: string | null;
+  purchaseDate?: string | null; // YYYY-MM-DD
+  purchasePrice: number;
+  /** Foto barang di bucket privat `inventory-photos`. */
+  photoPath?: string | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Kpi {
   id: string;
   employeeId: string;
