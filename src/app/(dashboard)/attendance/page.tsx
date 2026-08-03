@@ -10,7 +10,6 @@ import {
   getEmployees,
   getHolidays,
   getHolidayToday,
-  getOvertimeRequests,
   todayPendingClock,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
@@ -19,13 +18,12 @@ import { audienceFromPermissions } from "@/components/layout/nav-items";
 export const metadata = { title: "Absensi — Treelogy HR" };
 
 export default async function AttendancePage() {
-  const [all, employeesAll, settings, user, approvalsAll, overtimeAll, holidaysAll] = await Promise.all([
+  const [all, employeesAll, settings, user, approvalsAll, holidaysAll] = await Promise.all([
     getAttendance(),
     getEmployees(),
     getAttendanceSettings(),
     getSessionUser(),
     getClockApprovals(),
-    getOvertimeRequests(),
     getHolidays(),
   ]);
   const pendingApprovals = approvalsAll.filter((a) => a.status === "pending");
@@ -33,12 +31,6 @@ export default async function AttendancePage() {
   // Periode/hari "berjalan": tanggal WITA nyata saat live, konstanta demo saat seed.
   const period = livePeriod();
   const today = liveToday();
-  // Lembur disetujui pada periode berjalan → bagian "Daftar Lembur" pada ekspor XLSX (HR saja).
-  const overtime = canManage
-    ? overtimeAll
-        .filter((o) => o.status === "approved" && o.date.startsWith(period))
-        .map((o) => ({ employeeId: o.employeeId, date: o.date, hours: o.hours }))
-    : [];
   // Hari libur nasional (publik) → grid edit-massal tidak menganggapnya sel kosong.
   const holidayDates = canManage
     ? holidaysAll.filter((h) => h.type === "public").map((h) => h.date)
@@ -84,7 +76,6 @@ export default async function AttendancePage() {
       defaultDate={dates.includes(today) ? today : dates[dates.length - 1] ?? today}
       canReviewAll={canManage}
       approvals={canManage ? pendingApprovals : []}
-      overtime={overtime}
       holidays={holidayDates}
       currentUserName={user?.name ?? "HR"}
       currentEmployeeId={user?.employeeId ?? null}

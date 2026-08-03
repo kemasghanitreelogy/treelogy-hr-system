@@ -434,6 +434,54 @@ export async function getAttendanceSince(fromDate: string): Promise<AttendanceRe
   }
 }
 
+/**
+ * Absensi pada rentang tanggal (inklusif) — dipakai Ekspor Rekap Absensi supaya
+ * bulan-bulan lampau bisa diekspor tanpa memuat seluruh riwayat ke halaman.
+ * RLS yang menentukan cakupannya: HR melihat semua, karyawan hanya dirinya.
+ */
+export async function getAttendanceBetween(from: string, to: string): Promise<AttendanceRecord[]> {
+  if (!isSupabaseConfigured) {
+    return seedAttendance.filter((a) => a.date >= from && a.date <= to);
+  }
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("attendance")
+      .select("*")
+      .gte("date", from)
+      .lte("date", to);
+    if (error || !data) return [];
+    return (data as Row[]).map(mapAttendance);
+  } catch {
+    return [];
+  }
+}
+
+/** Lembur DISETUJUI pada rentang tanggal — bagian "Daftar Lembur" pada ekspor. */
+export async function getApprovedOvertimeBetween(
+  from: string,
+  to: string,
+): Promise<OvertimeRequest[]> {
+  if (!isSupabaseConfigured) {
+    return seedOvertime.filter((o) => o.status === "approved" && o.date >= from && o.date <= to);
+  }
+  try {
+    const supabase = await createClient();
+    if (!supabase) return [];
+    const { data, error } = await supabase
+      .from("overtime_requests")
+      .select("*")
+      .eq("status", "approved")
+      .gte("date", from)
+      .lte("date", to);
+    if (error || !data) return [];
+    return (data as Row[]).map(mapOvertime);
+  } catch {
+    return [];
+  }
+}
+
 /** Absensi SATU karyawan pada SATU periode (YYYY-MM) — untuk halaman detail slip. */
 export async function getAttendanceForEmployee(
   employeeId: string,

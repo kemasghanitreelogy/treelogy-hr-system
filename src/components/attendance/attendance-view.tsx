@@ -7,7 +7,7 @@ import type { AttendanceRecord, ClockApprovalRequest, Employee, RequestStatus, T
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { exportAttendanceXlsx } from "@/lib/attendance-xlsx";
 import { BulkEditAttendance } from "./bulk-edit";
-import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
+import { cn, formatDate, formatTime, minutesToHM, witaToday } from "@/lib/utils";
 import { formatDistance } from "@/lib/geo";
 import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge, Badge } from "@/components/ui/badge";
@@ -201,7 +201,6 @@ export function AttendanceView({
   defaultDate,
   canReviewAll = true,
   approvals = [],
-  overtime = [],
   holidays = [],
   currentUserName = "HR",
   currentEmployeeId = null,
@@ -214,8 +213,6 @@ export function AttendanceView({
   canReviewAll?: boolean;
   /** Pengajuan clock di luar area (pending) — panel konfirmasi HR. */
   approvals?: ClockApprovalRequest[];
-  /** Lembur disetujui (untuk bagian "Daftar Lembur" pada ekspor XLSX). */
-  overtime?: { employeeId: string; date: string; hours: number }[];
   /** Tanggal libur nasional (publik) — dipakai grid edit-massal. */
   holidays?: string[];
   currentUserName?: string;
@@ -274,12 +271,28 @@ export function AttendanceView({
   const [exporting, setExporting] = useState(false);
   async function exportXlsx() {
     if (exporting) return;
+    if (exportFrom > exportTo) {
+      toast.error(apiErrorMessage("end_before_start", locale));
+      return;
+    }
     setExporting(true);
     try {
+      // Halaman hanya memuat bulan berjalan. Ambil rentang yang diminta dari
+      // server supaya ekspor bulan lampau berisi data, bukan file kosong.
+      // Cakupannya ditentukan RLS: HR semua karyawan, karyawan hanya dirinya.
+      const res = await fetch(
+        `/api/attendance/export?from=${encodeURIComponent(exportFrom)}&to=${encodeURIComponent(exportTo)}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
+        return;
+      }
+
       const count = await exportAttendanceXlsx({
-        records,
+        records: data.records as AttendanceRecord[],
         employees,
-        overtime,
+        overtime: data.overtime as { employeeId: string; date: string; hours: number }[],
         from: exportFrom,
         to: exportTo,
         team,
@@ -521,12 +534,15 @@ export function AttendanceView({
       <Sheet open={exportOpen} onClose={() => setExportOpen(false)} title={t.exportTitle} description={t.exportDesc}>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
+            {/* TANPA `min`: rekap bulan-bulan lampau harus bisa dipilih. Data
+                rentangnya diambil dari server saat ekspor, bukan dari yang
+                kebetulan sedang dimuat di halaman. `max` = hari ini karena
+                absensi masa depan belum ada. */}
             <Field label={t.exportFrom}>
               <Input
                 type="date"
                 value={exportFrom}
-                min={dates[0]}
-                max={dates[dates.length - 1]}
+                max={witaToday()}
                 onChange={(e) => setExportFrom(e.target.value)}
               />
             </Field>
@@ -534,8 +550,8 @@ export function AttendanceView({
               <Input
                 type="date"
                 value={exportTo}
-                min={dates[0]}
-                max={dates[dates.length - 1]}
+                min={exportFrom || undefined}
+                max={witaToday()}
                 onChange={(e) => setExportTo(e.target.value)}
               />
             </Field>
