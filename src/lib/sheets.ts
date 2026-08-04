@@ -111,10 +111,22 @@ export async function appendSheetRow(
 
   try {
     if (mode === "webhook") {
+      // Sengaja mengirim `values` (posisi) SAJA, bukan `record` (nama kolom).
+      //
+      // Pemetaan-nama tadinya dipilih supaya tahan kalau Finance menggeser kolom.
+      // Kenyataannya yang berubah justru TEKS HEADER-nya: sel A1 sempat berisi
+      // "Timestamp" lalu menjadi "Column 1", sehingga tidak ada kolom yang cocok
+      // dan stempel waktu diam-diam dilewati. Baris header ternyata lebih rapuh
+      // daripada urutan kolom — urutan A–K sudah stabil sepanjang 140 baris.
+      //
+      // `record` tetap dikirim sebagai cadangan HANYA bila skrip lama masih
+      // terpasang; skrip terbaru mengutamakan `record` bila ada, jadi di sini
+      // ia sengaja tidak disertakan.
+      void record;
       const res = await fetch(WEBHOOK_URL!, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: WEBHOOK_SECRET, values, record }),
+        body: JSON.stringify({ secret: WEBHOOK_SECRET, values }),
       });
       if (!res.ok) return { ok: false, reason: `webhook_${res.status}` };
       const text = (await res.text()).slice(0, 200);
