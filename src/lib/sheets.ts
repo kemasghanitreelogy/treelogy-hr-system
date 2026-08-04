@@ -97,7 +97,15 @@ async function accessToken(): Promise<string | null> {
  * dan urutannya harus sama persis dengan urutan kolom di sheet.
  * Best-effort: tidak pernah melempar — pemanggil menyimpan hasilnya.
  */
-export async function appendSheetRow(values: (string | number)[]): Promise<SheetResult> {
+export async function appendSheetRow(
+  values: (string | number)[],
+  /**
+   * Pemetaan {penggalan-nama-kolom: nilai}. Kalau diisi, Apps Script menaruh
+   * setiap nilai ke kolom yang namanya cocok — urutan kolom di sheet tidak lagi
+   * berpengaruh. `values` tetap dikirim sebagai cadangan untuk jalur lama.
+   */
+  record?: Record<string, string | number>,
+): Promise<SheetResult> {
   const mode = sheetsMode();
   if (mode === "none") return { ok: false, reason: "not_configured" };
 
@@ -106,7 +114,7 @@ export async function appendSheetRow(values: (string | number)[]): Promise<Sheet
       const res = await fetch(WEBHOOK_URL!, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: WEBHOOK_SECRET, values }),
+        body: JSON.stringify({ secret: WEBHOOK_SECRET, values, record }),
       });
       if (!res.ok) return { ok: false, reason: `webhook_${res.status}` };
       const text = (await res.text()).slice(0, 200);

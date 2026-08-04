@@ -28,25 +28,14 @@ interface Payload {
 }
 
 /**
- * URUTAN KOLOM GOOGLE SHEET — harus sama persis dengan sheet keuangan:
+ * Nilai untuk satu baris sheet.
  *
- *   A Timestamp
- *   B Department
- *   C Name
- *   D Email address
- *   E Type of Reimbursement
- *   F Invoice date - Description - Vendor Name
- *   G Total Amount (numbers only)
- *   H Attach your invoice here
- *   I Due date
- *   J More details (if any)
- *   K Attach proof of approval from your Dept. Head
- *
- * Kolom A–G terbaca langsung dari sheet; H–K mengikuti urutan pertanyaan pada
- * Google Form (Sheets menaruh kolom sesuai urutan pertanyaan). Verifikasi sekali
- * pada baris pertama yang masuk — kalau meleset, cukup ubah urutan di sini.
+ * Dikirim sebagai PEMETAAN nama-kolom → nilai, bukan urutan posisi. Apps Script
+ * membaca baris header lalu menaruh tiap nilai pada kolom yang cocok, sehingga
+ * salah-kolom tidak mungkin terjadi dan Finance tetap bebas menggeser kolom.
+ * Array `values` hanya cadangan bila skrip di sheet masih versi lama.
  */
-function sheetRow(req: PaymentRequest, origin: string): (string | number)[] {
+function sheetValues(req: PaymentRequest, origin: string) {
   const fileUrl = (path: string) =>
     `${origin}/api/payment-requests/file?path=${encodeURIComponent(path)}`;
   const stamp = new Date(req.submittedAt).toLocaleString("id-ID", {
@@ -54,19 +43,22 @@ function sheetRow(req: PaymentRequest, origin: string): (string | number)[] {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
-  return [
-    stamp,
-    SHEET_DEPT[req.department],
-    req.requesterName,
-    req.email,
-    sheetKindText(req),
-    req.description,
-    req.totalAmount,                       // angka polos, seperti diminta form
-    req.invoicePaths.map(fileUrl).join(", "),
-    req.dueDate ?? "",
-    req.moreDetails ?? "",
-    fileUrl(req.approvalPath),
-  ];
+  // Kunci = penggalan nama kolom di sheet; Apps Script yang mencocokkannya.
+  // Urutan array hanya dipakai sebagai cadangan bila skrip masih versi lama.
+  const record: Record<string, string | number> = {
+    "timestamp": stamp,
+    "department": SHEET_DEPT[req.department],
+    "name": req.requesterName,
+    "email address": req.email,
+    "type of reimbursement": sheetKindText(req),
+    "invoice date": req.description,
+    "total amount": req.totalAmount,        // angka polos, seperti diminta form
+    "attach your invoice": req.invoicePaths.map(fileUrl).join(", "),
+    "due date": req.dueDate ?? "",
+    "more details": req.moreDetails ?? "",
+    "attach proof": fileUrl(req.approvalPath),
+  };
+  return { values: Object.values(record), record };
 }
 
 export async function POST(request: Request) {
@@ -148,7 +140,8 @@ export async function POST(request: Request) {
   // Salin ke Google Sheet. Kegagalan di sini TIDAK membatalkan pengajuan —
   // barisnya sudah aman di database dan bisa dikirim ulang.
   const origin = new URL(request.url).origin;
-  const result = await appendSheetRow(sheetRow(saved, origin));
+  const { values, record } = sheetValues(saved, origin);
+  const result = await appendSheetRow(values, record);
   await supabase
     .from("payment_requests")
     .update(
@@ -181,7 +174,8 @@ export async function PATCH(request: Request) {
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const saved = mapPaymentRequest(row);
-  const result = await appendSheetRow(sheetRow(saved, new URL(request.url).origin));
+  const { values, record } = sheetValues(saved, new URL(request.url).origin);
+  const result = await appendSheetRow(values, record);
 
   const { data, error } = await supabase
     .from("payment_requests")
