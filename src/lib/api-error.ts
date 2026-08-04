@@ -58,6 +58,7 @@ const MESSAGES: Record<string, Msg> = {
   reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
   // --- pengajuan pembayaran ---
+  already_synced: { id: "Pengajuan ini sudah masuk Google Sheet — tidak dikirim ulang agar tidak dobel.", en: "Already written to the Google Sheet — not resent, to avoid a duplicate row." },
   department_required: { id: "Departemen wajib dipilih.", en: "Department is required." },
   description_required: { id: "Isi tanggal invoice - deskripsi - nama vendor.", en: "Fill in invoice date - description - vendor name." },
   amount_required: { id: "Total nominal wajib diisi dan lebih dari 0.", en: "Total amount is required and must be above 0." },

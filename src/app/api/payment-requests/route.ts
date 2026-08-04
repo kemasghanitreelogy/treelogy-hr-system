@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { mapPaymentRequest } from "@/lib/data";
-import { getSessionUser } from "@/lib/auth";
+import { can, getSessionUser } from "@/lib/auth";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { appendSheetRow, sheetsMode } from "@/lib/sheets";
 import {
@@ -59,6 +60,32 @@ function sheetValues(req: PaymentRequest, origin: string) {
     "attach proof": fileUrl(req.approvalPath),
   };
   return { values: Object.values(record), record };
+}
+
+
+/**
+ * Tulis hasil penyalinan ke sheet memakai service role, BUKAN sesi pengguna.
+ *
+ * sheet_status adalah kolom milik sistem: pengaju (Karyawan biasa) tidak punya
+ * hak UPDATE pada tabel ini, jadi menulisnya lewat sesi pengguna akan ditolak
+ * RLS. Sebelumnya kegagalan itu tidak diperiksa, sehingga setiap pengajuan
+ * karyawan tampak "gagal masuk sheet" padahal berhasil — dan Finance akan
+ * mengirim ulang, menghasilkan BARIS GANDA di sheet keuangan.
+ */
+async function catatStatusSheet(
+  id: string,
+  result: { ok: true } | { ok: false; reason: string },
+): Promise<{ tercatat: boolean; alasan?: string }> {
+  const patch = result.ok
+    ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
+    : { sheet_status: "failed", sheet_error: result.reason };
+
+  const admin = createAdminClient();
+  if (!admin) return { tercatat: false, alasan: "admin_client_unavailable" };
+
+  const { error } = await admin.from("payment_requests").update(patch).eq("id", id);
+  if (error) return { tercatat: false, alasan: error.message };
+  return { tercatat: true };
 }
 
 export async function POST(request: Request) {
@@ -142,19 +169,19 @@ export async function POST(request: Request) {
   const origin = new URL(request.url).origin;
   const { values, record } = sheetValues(saved, origin);
   const result = await appendSheetRow(values, record);
-  await supabase
-    .from("payment_requests")
-    .update(
-      result.ok
-        ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
-        : { sheet_status: "failed", sheet_error: result.reason },
-    )
-    .eq("id", saved.id);
+  const catat = await catatStatusSheet(saved.id, result);
 
   return NextResponse.json({
     ok: true,
-    request: { ...saved, sheetStatus: result.ok ? "synced" : "failed", sheetError: result.ok ? null : result.reason },
-    sheet: result.ok ? { ok: true } : { ok: false, reason: result.reason, mode: sheetsMode() },
+    request: {
+      ...saved,
+      sheetStatus: result.ok ? "synced" : "failed",
+      sheetError: result.ok ? null : result.reason,
+      sheetSyncedAt: result.ok ? new Date().toISOString() : null,
+    },
+    sheet: result.ok
+      ? { ok: true, statusTersimpan: catat.tercatat }
+      : { ok: false, reason: result.reason, mode: sheetsMode() },
   });
 }
 
@@ -170,24 +197,36 @@ export async function PATCH(request: Request) {
 
   const supabase = await createClient();
   if (!supabase) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  // Wajib diperiksa di sini: sejak status ditulis memakai service role, RLS
+  // tidak lagi menjaga endpoint ini. Tanpa pemeriksaan, karyawan mana pun bisa
+  // memicu penambahan baris ke sheet keuangan.
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!can(user, "payment.manage") && !can(user, "employees.manage")) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+
   const { data: row } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // Penjaga anti-duplikat: baris yang sudah masuk sheet tidak boleh dikirim lagi.
+  // Kirim ulang hanya untuk yang benar-benar gagal.
+  if (row.sheet_status === "synced") {
+    return NextResponse.json({ error: "already_synced" }, { status: 400 });
+  }
 
   const saved = mapPaymentRequest(row);
   const { values, record } = sheetValues(saved, new URL(request.url).origin);
   const result = await appendSheetRow(values, record);
 
-  const { data, error } = await supabase
-    .from("payment_requests")
-    .update(
-      result.ok
-        ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
-        : { sheet_status: "failed", sheet_error: result.reason },
-    )
-    .eq("id", body.id)
-    .select("*")
-    .maybeSingle();
-  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  await catatStatusSheet(body.id, result);
+  const { data } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
+  if (!data) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  return NextResponse.json({ ok: result.ok, request: mapPaymentRequest(data), reason: result.ok ? null : result.reason });
+  return NextResponse.json({
+    ok: result.ok,
+    request: mapPaymentRequest(data),
+    reason: result.ok ? null : result.reason,
+  });
 }
