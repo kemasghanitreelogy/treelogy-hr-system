@@ -74,6 +74,27 @@ export function sheetKindText(req: Pick<PaymentRequest, "kind" | "kindOther">): 
   return SHEET_KIND[req.kind];
 }
 
+/**
+ * Gabungkan tiga bagian menjadi satu baris seperti kolom di Google Sheet:
+ *   "28/05/2024 - INVOICE PEMBELIAN PAKAN TERNAK - CV PAKAN BALI"
+ *
+ * Dipakai form (pratinjau langsung) DAN server (nilai yang benar-benar ditulis),
+ * sehingga yang dilihat pengaju persis sama dengan yang masuk ke sheet.
+ * Bagian kosong dilewati agar tidak meninggalkan " - " menggantung.
+ */
+export function composeInvoiceLine(parts: {
+  invoiceDate?: string | null;
+  description?: string | null;
+  vendorName?: string | null;
+}): string {
+  const tanggal = parts.invoiceDate
+    ? parts.invoiceDate.split("-").reverse().join("/") // YYYY-MM-DD → DD/MM/YYYY
+    : "";
+  return [tanggal, parts.description?.trim(), parts.vendorName?.trim()]
+    .filter((bagian) => !!bagian)
+    .join(" - ");
+}
+
 /** Batas berkas, mengikuti Google Form aslinya. */
 export const MAX_INVOICE_FILES = 10;
 export const MAX_FILE_MB = 10;

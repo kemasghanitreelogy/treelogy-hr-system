@@ -342,8 +342,12 @@ export interface PaymentRequest {
   kind: PaymentKind;
   /** Diisi hanya saat kind = 'other'. */
   kindOther?: string | null;
-  /** "Invoice date - Description - Vendor Name" pada form asli. */
+  /** Tanggal invoice (YYYY-MM-DD). Default hari ini saat form dibuka. */
+  invoiceDate: string;
+  /** Deskripsi saja — bukan lagi gabungan tiga bagian. */
   description: string;
+  /** Nama vendor / penerima pembayaran. */
+  vendorName?: string | null;
   totalAmount: number;
   /** Path faktur di bucket privat `payment-files` (maks 10). */
   invoicePaths: string[];

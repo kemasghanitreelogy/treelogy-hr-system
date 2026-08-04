@@ -5,10 +5,11 @@ import { FileText, Loader2, Paperclip, Send, X } from "lucide-react";
 import type { PaymentDept, PaymentKind, PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
-import { rupiah } from "@/lib/utils";
+import { rupiah, witaToday } from "@/lib/utils";
 import { prepareFileForBucket } from "@/lib/upload";
 import {
   DEPARTMENTS, DEPT_LABEL, KINDS, KIND_LABEL, MAX_FILE_MB, MAX_INVOICE_FILES,
+  composeInvoiceLine,
 } from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
 import { Button } from "@/components/ui/button";
@@ -22,10 +23,15 @@ const STR: Record<Locale, Record<string, string>> = {
     dept: "Departemen", deptPick: "— Pilih —",
     name: "Nama", email: "Email", auto: "Terisi otomatis dari akun Anda.",
     kind: "Jenis reimbursement", kindOther: "Sebutkan jenisnya", kindOtherPh: "cth. Biaya pelatihan",
-    desc: "Tanggal invoice - Deskripsi - Nama vendor",
-    descHint: "Contoh: 28/05/2024 - INVOICE PEMBELIAN PAKAN TERNAK - CV PAKAN BALI",
+    descGroup: "Tanggal invoice · Deskripsi · Nama vendor",
+    invoiceDate: "Tanggal invoice",
+    desc: "Deskripsi",
+    descPh: "cth. INVOICE PEMBELIAN PAKAN TERNAK",
+    vendor: "Nama vendor",
+    vendorPh: "cth. CV PAKAN BALI",
+    preview: "Yang tercatat di Google Sheet:",
     amount: "Total nominal", amountHint: "Angka saja. Contoh: 100.000 → tulis 100000",
-    invoice: "Lampirkan faktur", invoiceHint: `Maksimal ${MAX_INVOICE_FILES} berkas, masing-masing ${MAX_FILE_MB} MB.`,
+    invoice: "Lampirkan faktur", invoiceHint: `Maksimal ${MAX_INVOICE_FILES} berkas, masing-masing ${MAX_FILE_MB} MB. Foto otomatis dikompres ke WebP mendekati lossless — tetap tajam, ukuran jauh lebih kecil.`,
     approval: "Bukti persetujuan atasan",
     approvalHint: "Contoh: tangkapan layar persetujuan dari atasan (WA atau lainnya). Satu berkas.",
     due: "Jatuh tempo", optional: "opsional",
@@ -41,10 +47,15 @@ const STR: Record<Locale, Record<string, string>> = {
     dept: "Department", deptPick: "— Choose —",
     name: "Name", email: "Email address", auto: "Filled automatically from your account.",
     kind: "Type of reimbursement", kindOther: "Specify the type", kindOtherPh: "e.g. Training fee",
-    desc: "Invoice date - Description - Vendor Name",
-    descHint: "Example: 28/05/2024 - INVOICE PEMBELIAN PAKAN TERNAK - CV PAKAN BALI",
+    descGroup: "Invoice date · Description · Vendor name",
+    invoiceDate: "Invoice date",
+    desc: "Description",
+    descPh: "e.g. INVOICE PEMBELIAN PAKAN TERNAK",
+    vendor: "Vendor name",
+    vendorPh: "e.g. CV PAKAN BALI",
+    preview: "What lands in the Google Sheet:",
     amount: "Total amount", amountHint: "Numbers only. Example: 100,000 → write 100000",
-    invoice: "Attach your invoice", invoiceHint: `Up to ${MAX_INVOICE_FILES} files, ${MAX_FILE_MB} MB each.`,
+    invoice: "Attach your invoice", invoiceHint: `Up to ${MAX_INVOICE_FILES} files, ${MAX_FILE_MB} MB each. Photos are compressed to near-lossless WebP automatically — still sharp, far smaller.`,
     approval: "Proof of approval from your dept. head",
     approvalHint: "e.g. a screenshot of the written approval (WA or else). One file.",
     due: "Due date", optional: "optional",
@@ -78,7 +89,10 @@ export function PaymentForm({
   const [dept, setDept] = useState<PaymentDept | "">("");
   const [kind, setKind] = useState<PaymentKind>("petty_cash");
   const [kindOther, setKindOther] = useState("");
+  // Tanggal invoice default HARI INI — kasus paling umum, jadi biasanya tak perlu diubah.
+  const [invoiceDate, setInvoiceDate] = useState(() => witaToday());
   const [desc, setDesc] = useState("");
+  const [vendor, setVendor] = useState("");
   const [amount, setAmount] = useState("");
   const [invoices, setInvoices] = useState<{ path: string; label: string }[]>([]);
   const [approval, setApproval] = useState<{ path: string; label: string } | null>(null);
@@ -120,7 +134,8 @@ export function PaymentForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           department: dept, kind, kindOther,
-          description: desc, totalAmount: Number(amount) || 0,
+          invoiceDate, description: desc, vendorName: vendor,
+          totalAmount: Number(amount) || 0,
           invoicePaths: invoices.map((i) => i.path),
           approvalPath: approval?.path,
           dueDate: due || null, moreDetails: more,
@@ -179,9 +194,30 @@ export function PaymentForm({
         </Field>
       )}
 
-      <Field label={t.desc} hint={t.descHint}>
-        <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} required />
-      </Field>
+      {/* Satu kelompok, tiga isian. Di sheet ketiganya disatukan kembali menjadi
+          satu kolom — pratinjau di bawah memperlihatkan hasil persisnya. */}
+      <fieldset className="space-y-3 rounded-2xl border border-line bg-cream/40 p-3">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-faint">
+          {t.descGroup}
+        </legend>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t.invoiceDate}>
+            <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
+          </Field>
+          <Field label={t.vendor}>
+            <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder={t.vendorPh} required />
+          </Field>
+        </div>
+        <Field label={t.desc}>
+          <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} placeholder={t.descPh} required />
+        </Field>
+        <div className="rounded-xl bg-panel px-3 py-2">
+          <p className="text-[11px] font-medium text-faint">{t.preview}</p>
+          <p className="mt-0.5 break-words text-xs text-ink">
+            {composeInvoiceLine({ invoiceDate, description: desc, vendorName: vendor }) || "—"}
+          </p>
+        </div>
+      </fieldset>
 
       <Field label={t.amount} hint={nominal > 0 ? rupiah(nominal) : t.amountHint}>
         <Input
@@ -258,7 +294,7 @@ export function PaymentForm({
         </Button>
         <Button
           type="submit" className="flex-1"
-          disabled={saving || busyUpload || !dept || invoices.length === 0 || !approval}
+          disabled={saving || busyUpload || !dept || !vendor.trim() || invoices.length === 0 || !approval}
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           {saving ? t.submitting : t.submit}

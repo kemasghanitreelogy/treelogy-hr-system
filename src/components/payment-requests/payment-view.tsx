@@ -7,7 +7,7 @@ import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
-import { DEPT_LABEL, KIND_LABEL } from "@/lib/payment-request";
+import { DEPT_LABEL, KIND_LABEL, composeInvoiceLine } from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,7 +98,7 @@ export function PaymentView({
     return list.filter((r) => {
       if (dept !== "all" && r.department !== dept) return false;
       if (!q) return true;
-      return [r.description, r.requesterName, r.email].some((f) => f.toLowerCase().includes(q));
+      return [r.description, r.vendorName ?? "", r.requesterName, r.email].some((f) => f.toLowerCase().includes(q));
     });
   }, [list, query, dept]);
 
@@ -198,7 +198,7 @@ export function PaymentView({
                 className={cn("stagger-item grid items-center gap-3 px-3 py-2.5", COLS)}
               >
                 <span className="block min-w-0">
-                  <span className="block truncate text-sm font-medium text-ink">{r.description}</span>
+                  <span className="block truncate text-sm font-medium text-ink">{composeInvoiceLine(r)}</span>
                   <span className="mt-0.5 block truncate text-xs text-faint">
                     {r.requesterName} · {KIND_LABEL[locale][r.kind]}
                     {r.kind === "other" && r.kindOther ? `: ${r.kindOther}` : ""} ·{" "}

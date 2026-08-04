@@ -6,7 +6,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { appendSheetRow, sheetsMode } from "@/lib/sheets";
 import {
-  DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, sheetKindText,
+  DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, composeInvoiceLine, sheetKindText,
 } from "@/lib/payment-request";
 import type { PaymentDept, PaymentKind, PaymentRequest } from "@/lib/types";
 
@@ -20,7 +20,9 @@ interface Payload {
   department?: PaymentDept;
   kind?: PaymentKind;
   kindOther?: string;
+  invoiceDate?: string;
   description?: string;
+  vendorName?: string;
   totalAmount?: number;
   invoicePaths?: string[];
   approvalPath?: string;
@@ -52,7 +54,8 @@ function sheetValues(req: PaymentRequest, origin: string) {
     "name": req.requesterName,
     "email address": req.email,
     "type of reimbursement": sheetKindText(req),
-    "invoice date": req.description,
+    // Tiga bagian disatukan HANYA di sini, supaya kolom sheet tetap seperti biasa.
+    "invoice date": composeInvoiceLine(req),
     "total amount": req.totalAmount,        // angka polos, seperti diminta form
     "attach your invoice": req.invoicePaths.map(fileUrl).join(", "),
     "due date": req.dueDate ?? "",
@@ -108,6 +111,12 @@ export async function POST(request: Request) {
   if (!body.description?.trim()) {
     return NextResponse.json({ error: "description_required" }, { status: 400 });
   }
+  if (!body.invoiceDate || !ISO_DATE.test(body.invoiceDate)) {
+    return NextResponse.json({ error: "invoice_date_required" }, { status: 400 });
+  }
+  if (!body.vendorName?.trim()) {
+    return NextResponse.json({ error: "vendor_required" }, { status: 400 });
+  }
   const amount = Number(body.totalAmount);
   if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_RUPIAH) {
     return NextResponse.json({ error: "amount_required" }, { status: 400 });
@@ -150,7 +159,9 @@ export async function POST(request: Request) {
       email: user.email,
       kind: body.kind,
       kind_other: body.kind === "other" ? body.kindOther!.trim() : null,
+      invoice_date: body.invoiceDate,
       description: body.description.trim(),
+      vendor_name: body.vendorName.trim(),
       total_amount: Math.round(amount),
       invoice_paths: invoicePaths,
       approval_path: body.approvalPath,
