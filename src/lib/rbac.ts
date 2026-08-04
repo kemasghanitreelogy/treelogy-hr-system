@@ -131,7 +131,6 @@ const MANAGER_PERMS = [
   "inventory.view",
   "travel.view",
   "travel.request",
-  "travel.approve",
   "kpi.view",
 ];
 
@@ -183,6 +182,15 @@ export const roles: Role[] = [
     // Peran terpisah, bukan menambah inventory.manage ke Karyawan — kalau tidak,
     // SEMUA karyawan ikut bisa menghapus aset.
     permissionIds: [...EMPLOYEE_PERMS, "inventory.manage"],
+  },
+  {
+    id: "role-ops",
+    name: "Admin Operasional",
+    description: "Hak karyawan, kelola inventaris kantor, dan penyetuju perjalanan dinas.",
+    color: "#6b7548",
+    // Terpisah dari "Pengelola Inventaris" supaya pemegang peran itu TIDAK ikut
+    // mendapat hak menyetujui perjalanan dinas.
+    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve"],
   },
   {
     id: "role-payroll",

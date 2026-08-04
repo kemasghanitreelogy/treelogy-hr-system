@@ -58,6 +58,10 @@ const STR: Record<
     approvedOk: string;
     rejectedOk: string;
     resetOk: string;
+    returnedOk: string;
+    returnTitle: (dest: string) => string;
+    returnDesc: string;
+    fixTitle: string;
     connection: string;
     rejectTitle: (dest: string) => string;
     days: (n: number) => string;
@@ -95,6 +99,10 @@ const STR: Record<
     approvedOk: "Pengajuan disetujui ✓",
     rejectedOk: "Pengajuan ditolak ✓",
     resetOk: "Dikembalikan ke menunggu ✓",
+    returnedOk: "Dikembalikan untuk revisi ✓",
+    returnTitle: (dest) => `Kembalikan pengajuan ke ${dest}?`,
+    returnDesc: "Tulis apa yang perlu diperbaiki. Pengaju bisa memperbaiki datanya lalu mengirim ulang.",
+    fixTitle: "Perbaiki Pengajuan",
     connection: "Koneksi bermasalah. Coba lagi.",
     rejectTitle: (dest) => `Tolak perjalanan ke ${dest}?`,
     days: (n) => `${n} hari`,
@@ -131,6 +139,10 @@ const STR: Record<
     approvedOk: "Request approved ✓",
     rejectedOk: "Request rejected ✓",
     resetOk: "Reset to pending ✓",
+    returnedOk: "Returned for revision ✓",
+    returnTitle: (dest) => `Return the request to ${dest}?`,
+    returnDesc: "Describe what needs fixing. The requester can correct the data and resubmit.",
+    fixTitle: "Fix Request",
     connection: "Connection problem. Try again.",
     rejectTitle: (dest) => `Reject the trip to ${dest}?`,
     days: (n) => `${n} day${n === 1 ? "" : "s"}`,
@@ -171,6 +183,8 @@ export function TravelView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [rejecting, setRejecting] = useState<TravelRequest | null>(null);
+  const [returning, setReturning] = useState<TravelRequest | null>(null);
+  const [fixing, setFixing] = useState<TravelRequest | null>(null);
   const [busy, setBusy] = useState(false);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
@@ -220,15 +234,16 @@ export function TravelView({
   const selected = list.find((r) => r.id === selectedId) ?? null;
   const isFiltered = query.trim() !== "" || status !== "all";
 
-  /** Boleh memutuskan: HR untuk siapa pun, atau atasan langsung pengaju. */
+  /** Boleh memutuskan: HANYA pemegang travel.approve, apa pun hierarkinya. */
   function canDecide(r: TravelRequest): boolean {
-    if (r.status !== "pending") return false;
-    if (canApproveAll) return true;
-    const emp = empMap.get(r.employeeId);
-    return emp?.managerId != null && emp.managerId === currentEmployeeId;
+    return r.status === "pending" && canApproveAll;
   }
 
-  async function decide(r: TravelRequest, action: "approve" | "reject" | "reset", reason?: string) {
+  async function decide(
+    r: TravelRequest,
+    action: "approve" | "reject" | "reset" | "revise",
+    reason?: string,
+  ) {
     setBusy(true);
     try {
       const res = await fetch("/api/travel", {
@@ -244,7 +259,13 @@ export function TravelView({
       const saved = data.request as TravelRequest;
       setList((cur) => cur.map((x) => (x.id === saved.id ? saved : x)));
       toast.success(
-        action === "approve" ? t.approvedOk : action === "reject" ? t.rejectedOk : t.resetOk,
+        action === "approve"
+          ? t.approvedOk
+          : action === "reject"
+            ? t.rejectedOk
+            : action === "revise"
+              ? t.returnedOk
+              : t.resetOk,
       );
       router.refresh();
     } catch {
@@ -252,6 +273,7 @@ export function TravelView({
     } finally {
       setBusy(false);
       setRejecting(null);
+      setReturning(null);
     }
   }
 
@@ -423,10 +445,16 @@ export function TravelView({
             employeeName={empMap.get(selected.employeeId)?.name ?? "—"}
             canDecide={canDecide(selected)}
             canReset={canApproveAll && selected.status !== "pending"}
+            canRevise={selected.employeeId === currentEmployeeId && selected.status === "pending"}
             busy={busy}
             onApprove={() => decide(selected, "approve")}
             onReject={() => setRejecting(selected)}
             onReset={() => decide(selected, "reset")}
+            onReturnForRevision={() => setReturning(selected)}
+            onFix={() => {
+              setFixing(selected);
+              setSelectedId(null);
+            }}
           />
         )}
       </Sheet>
@@ -449,6 +477,36 @@ export function TravelView({
           />
         )}
       </Sheet>
+
+      {/* Perbaikan oleh pengaju — form yang sama, terisi data lamanya */}
+      <Sheet open={fixing !== null} onClose={() => setFixing(null)} title={t.fixTitle} width="lg">
+        {fixing && (
+          <TravelForm
+            item={fixing}
+            employees={employees}
+            defaultEmployeeId={fixing.employeeId}
+            canPickEmployee={false}
+            onSaved={(saved) => {
+              setFixing(null);
+              setList((cur) => cur.map((x) => (x.id === saved.id ? saved : x)));
+              setSelectedId(saved.id);
+              toast.success(t.created);
+              router.refresh();
+            }}
+            onCancel={() => setFixing(null)}
+          />
+        )}
+      </Sheet>
+
+      {/* Kembalikan untuk revisi — memakai dialog beralasan yang sama dengan tolak */}
+      <RejectDialog
+        open={returning !== null}
+        title={returning ? t.returnTitle(returning.destination) : undefined}
+        description={t.returnDesc}
+        busy={busy}
+        onConfirm={(reason) => returning && decide(returning, "revise", reason)}
+        onCancel={() => setReturning(null)}
+      />
 
       <RejectDialog
         open={rejecting !== null}

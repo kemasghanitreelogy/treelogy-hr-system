@@ -192,6 +192,7 @@ export const mapTravelRequest = (r: Row): TravelRequest => ({
   advanceAmount: n(r.advance_amount),
   remarks: (r.remarks as string) ?? null,
   confirmed: Boolean(r.confirmed),
+  revisionNote: (r.revision_note as string) ?? null,
   status: r.status as TravelRequest["status"],
   approver: (r.approver as string) ?? null,
   rejectionReason: (r.rejection_reason as string) ?? null,

@@ -30,8 +30,10 @@ export default async function TravelPage() {
   if (!can(user, "travel.view")) redirect("/dashboard");
 
   const t = STR[locale];
-  // HR/admin memutuskan semua; atasan memutuskan bawahannya (dicek ulang di API + RLS).
-  const canApproveAll = can(user, "employees.manage") || can(user, "travel.approve");
+  // Penyetuju TUNGGAL: pemegang travel.approve. Bukan atasan, bukan otomatis HR —
+  // siapa orangnya diatur lewat peran di halaman Peran & Akses (dicek ulang di
+  // API + RLS, jadi ini murni untuk menampilkan tombolnya).
+  const canApproveAll = can(user, "travel.approve");
   const canRequestForOthers = can(user, "employees.manage");
 
   const employees = employeesAll

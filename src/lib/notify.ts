@@ -90,6 +90,44 @@ export async function notifyHr(
   }
 }
 
+/**
+ * Notify every account whose ROLE grants `perm` — dipakai modul yang penyetujunya
+ * ditentukan oleh permission, bukan oleh hierarki atasan (mis. perjalanan dinas).
+ *
+ * Karena bersandar pada peran, mengganti siapa penyetujunya cukup lewat halaman
+ * Peran & Akses — tidak ada nama orang yang tertanam di kode.
+ */
+export async function notifyPermissionHolders(
+  perm: string,
+  content: { type: string; title: string; body?: string; href?: string },
+  opts: { excludeEmployeeId?: string | null } = {},
+): Promise<void> {
+  const admin = createAdminClient();
+  if (!admin) return;
+  try {
+    const { data: roleRows } = await admin.from("roles").select("id").contains("permissions", [perm]);
+    const roleIds = (roleRows ?? []).map((r: { id: string }) => r.id);
+    if (roleIds.length === 0) return;
+
+    const { data: profiles } = await admin
+      .from("profiles")
+      .select("employee_id")
+      .in("role_id", roleIds)
+      .not("employee_id", "is", null);
+
+    const ids = [
+      ...new Set(
+        (profiles ?? [])
+          .map((p: { employee_id: string | null }) => p.employee_id)
+          .filter((id): id is string => !!id && id !== opts.excludeEmployeeId),
+      ),
+    ];
+    await pushNotifications(ids.map((id) => ({ employeeId: id, tone: "pending" as const, ...content })));
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Notify the people who can act on a request: HR/admin + the requester's direct atasan. */
 export async function notifyApprovers(
   requesterEmployeeId: string,

@@ -355,6 +355,9 @@ export interface TravelRequest {
   remarks?: string | null;
   /** Pernyataan karyawan — wajib dicentang sebelum bisa dikirim. */
   confirmed: boolean;
+  /** Catatan penyetuju saat pengajuan DIKEMBALIKAN untuk diperbaiki. Kosong
+   *  begitu pengaju mengirim ulang. Berbeda dari rejectionReason (final). */
+  revisionNote?: string | null;
 
   status: RequestStatus;
   approver?: string | null;

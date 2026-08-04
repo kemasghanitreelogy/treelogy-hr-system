@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapTravelRequest } from "@/lib/data";
-import { notifyApprovers, pushNotifications } from "@/lib/notify";
+import { notifyPermissionHolders, pushNotifications } from "@/lib/notify";
 import { formatDate } from "@/lib/utils";
 import { applyApproval, type ApprovalAction } from "@/lib/approval";
 import { TRANSPORTS, travelDuration, travelTotal } from "@/lib/travel";
@@ -35,9 +35,12 @@ interface CreatePayload {
   confirmed?: boolean;
 }
 
+type TravelAction = ApprovalAction | "revise";
+
 interface UpdatePayload {
   id?: string;
-  action?: ApprovalAction;
+  action?: TravelAction;
+  /** Wajib untuk "reject" (alasan) dan "revise" (apa yang harus diperbaiki). */
   reason?: string;
 }
 
@@ -59,6 +62,72 @@ function money(value: unknown): number | null {
   return Math.round(n);
 }
 
+/**
+ * Validasi + hitung ulang nilai turunan. Dipakai POST (pengajuan baru) DAN PUT
+ * (revisi oleh pengaju) supaya aturannya tidak pernah bercabang.
+ * Mengembalikan kode error, atau kolom siap simpan (tanpa employee_id/job_title).
+ */
+function buildTravelRow(body: CreatePayload): { error: string } | { row: Record<string, unknown> } {
+  if (!body.purpose?.trim()) return { error: "purpose_required" };
+  if (!body.destination?.trim()) return { error: "destination_required" };
+  if (!body.departureDate || !ISO_DATE.test(body.departureDate) || !body.returnDate || !ISO_DATE.test(body.returnDate)) {
+    return { error: "invalid_dates" };
+  }
+  if (body.returnDate < body.departureDate) return { error: "end_before_start" };
+
+  const transport: TravelTransport = body.transport ?? "company_vehicle";
+  if (!TRANSPORTS.includes(transport)) return { error: "invalid_transport" };
+
+  // Pernyataan karyawan pada form asli — diperiksa di server juga supaya tidak
+  // bisa dilewati dengan memanggil API langsung.
+  if (body.confirmed !== true) return { error: "confirmation_required" };
+
+  const durationDays = travelDuration(body.departureDate, body.returnDate);
+  if (durationDays < 1 || durationDays > MAX_DURATION_DAYS) return { error: "out_of_range" };
+
+  const costs = {
+    costTransport: money(body.costTransport),
+    costAccommodation: money(body.costAccommodation),
+    costPerDiem: money(body.costPerDiem),
+    costOther: money(body.costOther),
+  };
+  if (Object.values(costs).some((v) => v === null)) return { error: "invalid_amount" };
+  const parts = costs as { [K in keyof typeof costs]: number };
+  const costTotal = travelTotal(parts);
+
+  const advanceRequired = body.advanceRequired === true;
+  const advanceRaw = money(body.advanceAmount);
+  if (advanceRaw === null) return { error: "invalid_amount" };
+  // Tidak minta uang muka → nominalnya dipaksa 0, apa pun isi form.
+  const advanceAmount = advanceRequired ? advanceRaw : 0;
+  if (advanceRequired && advanceAmount <= 0) return { error: "advance_amount_required" };
+  if (advanceAmount > costTotal) return { error: "advance_exceeds_total" };
+
+  return {
+    row: {
+      purpose: body.purpose.trim(),
+      destination: body.destination.trim(),
+      departure_date: body.departureDate,
+      return_date: body.returnDate,
+      duration_days: durationDays,
+      transport,
+      transport_other: transport === "other" ? body.transportOther?.trim() || null : null,
+      accommodation_required: body.accommodationRequired === true,
+      accommodation_details:
+        body.accommodationRequired === true ? body.accommodationDetails?.trim() || null : null,
+      cost_transport: parts.costTransport,
+      cost_accommodation: parts.costAccommodation,
+      cost_per_diem: parts.costPerDiem,
+      cost_other: parts.costOther,
+      cost_total: costTotal,
+      advance_required: advanceRequired,
+      advance_amount: advanceAmount,
+      remarks: body.remarks?.trim() || null,
+      confirmed: true,
+    },
+  };
+}
+
 // ---- Ajukan perjalanan dinas ----
 export async function POST(req: Request) {
   let body: CreatePayload;
@@ -69,52 +138,8 @@ export async function POST(req: Request) {
   }
 
   if (!body.employeeId) return NextResponse.json({ error: "employee_required" }, { status: 400 });
-  if (!body.purpose?.trim()) return NextResponse.json({ error: "purpose_required" }, { status: 400 });
-  if (!body.destination?.trim()) return NextResponse.json({ error: "destination_required" }, { status: 400 });
-  if (!body.departureDate || !ISO_DATE.test(body.departureDate) || !body.returnDate || !ISO_DATE.test(body.returnDate)) {
-    return NextResponse.json({ error: "invalid_dates" }, { status: 400 });
-  }
-  if (body.returnDate < body.departureDate) {
-    return NextResponse.json({ error: "end_before_start" }, { status: 400 });
-  }
-  const transport: TravelTransport = body.transport ?? "company_vehicle";
-  if (!TRANSPORTS.includes(transport)) {
-    return NextResponse.json({ error: "invalid_transport" }, { status: 400 });
-  }
-  // Pernyataan karyawan pada form asli — wajib, dan diperiksa di server juga
-  // supaya tidak bisa dilewati dengan memanggil API langsung.
-  if (body.confirmed !== true) {
-    return NextResponse.json({ error: "confirmation_required" }, { status: 400 });
-  }
-
-  const durationDays = travelDuration(body.departureDate, body.returnDate);
-  if (durationDays < 1 || durationDays > MAX_DURATION_DAYS) {
-    return NextResponse.json({ error: "out_of_range" }, { status: 400 });
-  }
-
-  const costs = {
-    costTransport: money(body.costTransport),
-    costAccommodation: money(body.costAccommodation),
-    costPerDiem: money(body.costPerDiem),
-    costOther: money(body.costOther),
-  };
-  if (Object.values(costs).some((v) => v === null)) {
-    return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
-  }
-  const parts = costs as { [K in keyof typeof costs]: number };
-  const costTotal = travelTotal(parts);
-
-  const advanceRequired = body.advanceRequired === true;
-  const advanceRaw = money(body.advanceAmount);
-  if (advanceRaw === null) return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
-  // Tidak minta uang muka → nominalnya dipaksa 0, apa pun isi form.
-  const advanceAmount = advanceRequired ? advanceRaw : 0;
-  if (advanceRequired && advanceAmount <= 0) {
-    return NextResponse.json({ error: "advance_amount_required" }, { status: 400 });
-  }
-  if (advanceAmount > costTotal) {
-    return NextResponse.json({ error: "advance_exceeds_total" }, { status: 400 });
-  }
+  const built = buildTravelRow(body);
+  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
@@ -128,45 +153,32 @@ export async function POST(req: Request) {
     .maybeSingle();
   if (!emp) return NextResponse.json({ error: "unknown_employee" }, { status: 400 });
 
-  const row = {
+  const row: Record<string, unknown> = {
+    ...built.row,
     employee_id: body.employeeId,
     job_title: (emp.position as string)?.trim() || "—",
-    purpose: body.purpose.trim(),
-    destination: body.destination.trim(),
-    departure_date: body.departureDate,
-    return_date: body.returnDate,
-    duration_days: durationDays,
-    transport,
-    transport_other: transport === "other" ? body.transportOther?.trim() || null : null,
-    accommodation_required: body.accommodationRequired === true,
-    accommodation_details:
-      body.accommodationRequired === true ? body.accommodationDetails?.trim() || null : null,
-    cost_transport: parts.costTransport,
-    cost_accommodation: parts.costAccommodation,
-    cost_per_diem: parts.costPerDiem,
-    cost_other: parts.costOther,
-    cost_total: costTotal,
-    advance_required: advanceRequired,
-    advance_amount: advanceAmount,
-    remarks: body.remarks?.trim() || null,
-    confirmed: true,
     status: "pending",
   };
 
   const { data, error } = await supabase!.from("travel_requests").insert(row).select("*").single();
   if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
 
-  await notifyApprovers(body.employeeId, {
-    type: "travel",
-    title: `${emp.name ?? "Karyawan"} mengajukan perjalanan dinas`,
-    body: `${row.destination} · ${formatDate(row.departure_date)} · ${durationDays} hari · perlu persetujuan Anda`,
-    href: "/travel",
-  });
+  // Penyetuju ditentukan permission, bukan hierarki atasan.
+  await notifyPermissionHolders(
+    "travel.approve",
+    {
+      type: "travel",
+      title: `${emp.name ?? "Karyawan"} mengajukan perjalanan dinas`,
+      body: `${String(row.destination)} · ${formatDate(String(row.departure_date))} · ${String(row.duration_days)} hari · perlu persetujuan Anda`,
+      href: "/travel",
+    },
+    { excludeEmployeeId: body.employeeId },
+  );
 
   return NextResponse.json({ ok: true, request: mapTravelRequest(data) });
 }
 
-// ---- Persetujuan ganda: atasan dulu, lalu HR. RLS menentukan siapa boleh menulis. ----
+// ---- Keputusan penyetuju tunggal (pemegang travel.approve). RLS ikut menjaga. ----
 export async function PATCH(req: Request) {
   let body: UpdatePayload;
   try {
@@ -175,10 +187,12 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
-  if (!body.action || !["approve", "reject", "reset"].includes(body.action)) {
+  if (!body.action || !["approve", "reject", "reset", "revise"].includes(body.action)) {
     return NextResponse.json({ error: "invalid_input" }, { status: 400 });
   }
-  if (body.action === "reject" && !body.reason?.trim()) {
+  // Menolak DAN mengembalikan sama-sama wajib beralasan — pengaju harus tahu
+  // apa yang salah, bukan sekadar melihat statusnya berubah.
+  if ((body.action === "reject" || body.action === "revise") && !body.reason?.trim()) {
     return NextResponse.json({ error: "reason_required" }, { status: 400 });
   }
 
@@ -194,28 +208,50 @@ export async function PATCH(req: Request) {
     .maybeSingle();
   if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  const isHR = can(user, "employees.manage");
-  let isManager = false;
-  if (!isHR) {
-    const { data: mgr } = await supabase!.rpc("is_manager_of", { target_employee: prev.employee_id });
-    isManager = mgr === true;
-  }
-  if (body.action === "reset" && !isHR) {
-    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
-  }
-  if (body.action !== "reset" && !isHR && !isManager) {
+  // SATU penyetuju: pemegang travel.approve. Tidak ada langkah atasan.
+  if (!can(user, "travel.approve")) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
 
-  // Langkah atasan hanya wajib bila pengaju punya atasan langsung.
-  const { data: needMgr } = await supabase!.rpc("employee_requires_manager", { emp: prev.employee_id });
-  const managerRequired = needMgr === true;
+  // Kembalikan untuk revisi: status tetap/kembali 'pending', tanda tangan yang
+  // sudah ada dihapus, dan catatan revisi disimpan agar pengaju tahu perbaikannya.
+  if (body.action === "revise") {
+    const { data: back, error: backErr } = await supabase!
+      .from("travel_requests")
+      .update({
+        status: "pending",
+        approver: null,
+        rejection_reason: null,
+        manager_approver: null,
+        manager_approved_at: null,
+        hr_approver: null,
+        hr_approved_at: null,
+        revision_note: body.reason!.trim(),
+      })
+      .eq("id", body.id)
+      .select("*")
+      .maybeSingle();
+    if (backErr || !back) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+    await pushNotifications([
+      {
+        employeeId: String(back.employee_id),
+        type: "travel",
+        tone: "pending",
+        title: "Perjalanan dinas perlu revisi",
+        body: `${back.destination} · ${user.name}: "${body.reason!.trim()}"`,
+        href: "/travel",
+      },
+    ]);
+    return NextResponse.json({ ok: true, request: mapTravelRequest(back) });
+  }
 
   const result = applyApproval({
     action: body.action,
-    role: isHR ? "hr" : "manager",
+    role: "hr",
     actorName: user.name,
-    managerRequired,
+    // Tidak ada tahap atasan pada modul ini — penyetuju tunggal langsung final.
+    managerRequired: false,
     current: {
       status: prev.status as RequestStatus,
       managerApprover: (prev.manager_approver as string) ?? null,
@@ -230,7 +266,8 @@ export async function PATCH(req: Request) {
 
   const { data, error } = await supabase!
     .from("travel_requests")
-    .update(result.update)
+    // Keputusan final menghapus catatan revisi yang mungkin masih menempel.
+    .update({ ...result.update, revision_note: null })
     .eq("id", body.id)
     .select("*")
     .maybeSingle();
@@ -252,6 +289,64 @@ export async function PATCH(req: Request) {
       },
     ]);
   }
+
+  return NextResponse.json({ ok: true, request: mapTravelRequest(data) });
+}
+
+// ---- Revisi oleh PENGAJU: perbaiki datanya lalu kirim ulang ----
+//
+// Hanya pengajuan miliknya sendiri dan hanya selama masih 'pending' (RLS
+// menegakkan hal yang sama, jadi pemeriksaan di sini bukan satu-satunya pagar).
+// Nilai turunan dihitung ulang dengan fungsi yang sama seperti saat mengajukan,
+// catatan revisi dibersihkan, lalu penyetuju diberi tahu ada kiriman ulang.
+export async function PUT(req: Request) {
+  let body: CreatePayload & { id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+
+  const built = buildTravelRow(body);
+  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+
+  const { supabase, error: authErr } = await auth();
+  if (authErr) return authErr;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { data: prev } = await supabase!
+    .from("travel_requests")
+    .select("employee_id, status")
+    .eq("id", body.id)
+    .maybeSingle();
+  if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (prev.employee_id !== user.employeeId) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+  if (prev.status !== "pending") {
+    return NextResponse.json({ error: "already_decided" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase!
+    .from("travel_requests")
+    .update({ ...built.row, revision_note: null })
+    .eq("id", body.id)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+  await notifyPermissionHolders(
+    "travel.approve",
+    {
+      type: "travel",
+      title: `${user.name} memperbaiki pengajuan perjalanan dinas`,
+      body: `${String(data.destination)} · ${formatDate(String(data.departure_date))} · perlu ditinjau ulang`,
+      href: "/travel",
+    },
+    { excludeEmployeeId: user.employeeId },
+  );
 
   return NextResponse.json({ ok: true, request: mapTravelRequest(data) });
 }

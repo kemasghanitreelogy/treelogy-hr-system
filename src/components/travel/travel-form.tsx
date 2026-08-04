@@ -61,6 +61,7 @@ const STR: Record<
     confirmText: string;
     cancel: string;
     submit: string;
+    resubmit: string;
     submitting: string;
     connection: string;
   }
@@ -107,6 +108,7 @@ const STR: Record<
       "Saya menyatakan informasi di atas benar dan memahami bahwa pengajuan ini tunduk pada persetujuan manajemen.",
     cancel: "Batal",
     submit: "Kirim pengajuan",
+    resubmit: "Kirim ulang perbaikan",
     submitting: "Mengirim…",
     connection: "Koneksi bermasalah. Coba lagi.",
   },
@@ -152,6 +154,7 @@ const STR: Record<
       "I confirm that the information provided is accurate and understand that this request is subject to management approval.",
     cancel: "Cancel",
     submit: "Submit request",
+    resubmit: "Resubmit correction",
     submitting: "Submitting…",
     connection: "Connection problem. Try again.",
   },
@@ -228,12 +231,15 @@ type FormState = {
  * dijamin sama dengan yang masuk database.
  */
 export function TravelForm({
+  item,
   employees,
   defaultEmployeeId,
   canPickEmployee,
   onSaved,
   onCancel,
 }: {
+  /** Diisi saat MEMPERBAIKI pengajuan yang dikembalikan penyetuju. */
+  item?: TravelRequest;
   employees: TravelEmployeeOption[];
   defaultEmployeeId: string;
   /** HR boleh mengajukan atas nama karyawan lain; karyawan hanya dirinya. */
@@ -245,23 +251,25 @@ export function TravelForm({
   const t = STR[locale];
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  const money = (n: number) => (n > 0 ? String(n) : "");
   const [form, setForm] = useState<FormState>({
-    employeeId: defaultEmployeeId,
-    purpose: "",
-    destination: "",
-    departureDate: "",
-    returnDate: "",
-    transport: "company_vehicle",
-    transportOther: "",
-    accommodationRequired: false,
-    accommodationDetails: "",
-    costTransport: "",
-    costAccommodation: "",
-    costPerDiem: "",
-    costOther: "",
-    advanceRequired: false,
-    advanceAmount: "",
-    remarks: "",
+    employeeId: item?.employeeId ?? defaultEmployeeId,
+    purpose: item?.purpose ?? "",
+    destination: item?.destination ?? "",
+    departureDate: item?.departureDate ?? "",
+    returnDate: item?.returnDate ?? "",
+    transport: item?.transport ?? "company_vehicle",
+    transportOther: item?.transportOther ?? "",
+    accommodationRequired: item?.accommodationRequired ?? false,
+    accommodationDetails: item?.accommodationDetails ?? "",
+    costTransport: money(item?.costTransport ?? 0),
+    costAccommodation: money(item?.costAccommodation ?? 0),
+    costPerDiem: money(item?.costPerDiem ?? 0),
+    costOther: money(item?.costOther ?? 0),
+    advanceRequired: item?.advanceRequired ?? false,
+    advanceAmount: money(item?.advanceAmount ?? 0),
+    remarks: item?.remarks ?? "",
+    // Wajib dicentang lagi setiap kali dikirim — pernyataan harus disadari ulang.
     confirmed: false,
   });
 
@@ -292,9 +300,10 @@ export function TravelForm({
     setSaving(true);
     try {
       const res = await fetch("/api/travel", {
-        method: "POST",
+        method: item ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(item ? { id: item.id } : {}),
           employeeId: form.employeeId,
           purpose: form.purpose,
           destination: form.destination,
@@ -541,7 +550,7 @@ export function TravelForm({
         </Button>
         <Button type="submit" className="flex-1" disabled={saving || !form.confirmed}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-          {saving ? t.submitting : t.submit}
+          {saving ? t.submitting : item ? t.resubmit : t.submit}
         </Button>
       </div>
     </form>

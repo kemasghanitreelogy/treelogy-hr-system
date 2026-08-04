@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, RotateCcw, X } from "lucide-react";
+import { Check, Loader2, Pencil, RotateCcw, Undo2, X } from "lucide-react";
 import type { TravelRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { formatDate, rupiah } from "@/lib/utils";
@@ -36,6 +36,9 @@ const STR: Record<
     approve: string;
     reject: string;
     reset: string;
+    revise: string;
+    reviseBanner: string;
+    fixNow: string;
     working: string;
   }
 > = {
@@ -63,6 +66,9 @@ const STR: Record<
     approve: "Setujui",
     reject: "Tolak",
     reset: "Kembalikan ke menunggu",
+    revise: "Kembalikan untuk revisi",
+    reviseBanner: "Perlu revisi",
+    fixNow: "Perbaiki & kirim ulang",
     working: "Memproses…",
   },
   en: {
@@ -89,6 +95,9 @@ const STR: Record<
     approve: "Approve",
     reject: "Reject",
     reset: "Reset to pending",
+    revise: "Return for revision",
+    reviseBanner: "Needs revision",
+    fixNow: "Fix & resubmit",
     working: "Processing…",
   },
 };
@@ -124,21 +133,28 @@ export function TravelDetail({
   employeeName,
   canDecide,
   canReset,
+  canRevise,
   busy,
   onApprove,
   onReject,
   onReset,
+  onReturnForRevision,
+  onFix,
 }: {
   request: TravelRequest;
   employeeName: string;
   /** Boleh menyetujui/menolak (atasan atau HR) dan pengajuan masih menunggu. */
   canDecide: boolean;
-  /** HR saja — mengembalikan keputusan ke status menunggu. */
+  /** Penyetuju — mengembalikan keputusan yang sudah final ke status menunggu. */
   canReset: boolean;
+  /** Pengaju sendiri, saat pengajuannya dikembalikan untuk diperbaiki. */
+  canRevise: boolean;
   busy: boolean;
   onApprove: () => void;
   onReject: () => void;
   onReset: () => void;
+  onReturnForRevision: () => void;
+  onFix: () => void;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -158,6 +174,24 @@ export function TravelDetail({
 
       {r.status === "rejected" && r.rejectionReason && (
         <RejectionNote reason={r.rejectionReason} by={r.approver} />
+      )}
+
+      {/* Dikembalikan untuk diperbaiki — beda dari penolakan: masih bisa dilanjutkan. */}
+      {r.revisionNote && (
+        <div className="rounded-2xl border border-gold/40 bg-gold-soft/60 p-4">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold/20 text-[#8a6512]">
+              <Undo2 className="h-4 w-4" />
+            </span>
+            <p className="text-sm font-semibold text-[#8a6512]">{t.reviseBanner}</p>
+          </div>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink">{r.revisionNote}</p>
+          {canRevise && (
+            <Button size="sm" className="mt-3" onClick={onFix}>
+              <Pencil className="h-4 w-4" /> {t.fixNow}
+            </Button>
+          )}
+        </div>
       )}
 
       <div className="overflow-hidden rounded-2xl border border-line bg-panel divide-y divide-line">
@@ -208,7 +242,13 @@ export function TravelDetail({
       </div>
 
       {(canDecide || canReset) && (
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          {canDecide && (
+            <Button variant="outline" className="w-full" onClick={onReturnForRevision} disabled={busy}>
+              <Undo2 className="h-4 w-4" /> {t.revise}
+            </Button>
+          )}
+          <div className="flex gap-2">
           {canDecide && (
             <>
               <Button variant="outline" className="flex-1" onClick={onReject} disabled={busy}>
@@ -225,6 +265,7 @@ export function TravelDetail({
               <RotateCcw className="h-4 w-4" /> {t.reset}
             </Button>
           )}
+          </div>
         </div>
       )}
     </div>
