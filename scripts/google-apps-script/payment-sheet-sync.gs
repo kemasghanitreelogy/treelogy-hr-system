@@ -43,6 +43,18 @@ function susunBaris(sheet, record) {
   var baris = new Array(header.length).fill('');
   var terpakai = {};
 
+  // Kolom waktu diisi SKRIP dengan objek Date sungguhan, bukan teks dari aplikasi.
+  // Sheet ini adalah "Form responses" dan kolom Timestamp-nya berformat tanggal-waktu;
+  // Google Form pun menulisnya sebagai Date. Mengirim teks membuat selnya berakhir
+  // kosong. Dengan cara ini kolom waktu TIDAK PERNAH kosong, apa pun yang dikirim.
+  for (var w = 0; w < header.length; w++) {
+    if (normalisasi(header[w]).indexOf('timestamp') !== -1) {
+      baris[w] = new Date();
+      terpakai[w] = true;
+      break;
+    }
+  }
+
   Object.keys(record).forEach(function (kunci) {
     var k = normalisasi(kunci);
     for (var i = 0; i < header.length; i++) {
