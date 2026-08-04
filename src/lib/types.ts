@@ -319,6 +319,54 @@ export interface AttendanceSettings {
 }
 
 /* ============================================================
+   Perjalanan Dinas (Business Travel Request)
+   ============================================================ */
+
+export type TravelTransport = "company_vehicle" | "flight" | "train" | "other";
+
+export interface TravelRequest {
+  id: string;
+  employeeId: string;
+  /** Jabatan saat pengajuan (snapshot) — riwayat tetap benar setelah promosi. */
+  jobTitle: string;
+
+  purpose: string;
+  destination: string;
+  departureDate: string; // YYYY-MM-DD
+  returnDate: string; // YYYY-MM-DD
+  /** Dihitung server dari kedua tanggal (inklusif) — bukan diketik pengaju. */
+  durationDays: number;
+  transport: TravelTransport;
+  /** Diisi hanya saat transport = 'other'. */
+  transportOther?: string | null;
+  accommodationRequired: boolean;
+  accommodationDetails?: string | null;
+
+  costTransport: number;
+  costAccommodation: number;
+  costPerDiem: number;
+  costOther: number;
+  /** Dihitung server = jumlah keempat komponen di atas. */
+  costTotal: number;
+
+  advanceRequired: boolean;
+  advanceAmount: number;
+
+  remarks?: string | null;
+  /** Pernyataan karyawan — wajib dicentang sebelum bisa dikirim. */
+  confirmed: boolean;
+
+  status: RequestStatus;
+  approver?: string | null;
+  rejectionReason?: string | null;
+  managerApprover?: string | null;
+  managerApprovedAt?: string | null;
+  hrApprover?: string | null;
+  hrApprovedAt?: string | null;
+  requestedAt: string;
+}
+
+/* ============================================================
    Inventaris kantor
    ============================================================ */
 

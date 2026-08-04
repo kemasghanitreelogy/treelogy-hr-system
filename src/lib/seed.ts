@@ -15,6 +15,7 @@ import type {
   Shift,
   ShiftAssignment,
   TabunganEntry,
+  TravelRequest,
 } from "./types";
 
 /** Reference "today" for the demo dataset. */
@@ -141,6 +142,72 @@ export const employeeContracts: EmployeeContract[] = [
   { id: "c1", employeeId: "e01", type: "probation", startDate: "2022-03-01", endDate: "2022-06-01", status: "ended", note: "Masa percobaan 3 bulan" },
   { id: "c2", employeeId: "e01", type: "pkwt", startDate: "2022-06-01", endDate: "2024-06-01", status: "ended", note: "Kontrak 2 tahun" },
   { id: "c3", employeeId: "e01", type: "pkwtt", startDate: "2024-06-01", endDate: null, status: "active", note: "Karyawan tetap" },
+];
+
+// Perjalanan dinas — dataset demo (mode tanpa Supabase).
+export const travelRequests: TravelRequest[] = [
+  {
+    id: "trv0", employeeId: "e08", jobTitle: "HR Officer",
+    purpose: "Pelatihan sertifikasi HR & kunjungan Disnaker",
+    destination: "Jakarta Selatan, DKI Jakarta",
+    departureDate: "2026-08-18", returnDate: "2026-08-20", durationDays: 3,
+    transport: "flight", transportOther: null,
+    accommodationRequired: true, accommodationDetails: "Hotel dekat lokasi pelatihan, 2 malam",
+    costTransport: 2_800_000, costAccommodation: 1_800_000, costPerDiem: 750_000, costOther: 1_500_000,
+    costTotal: 6_850_000,
+    advanceRequired: true, advanceAmount: 4_000_000,
+    remarks: "Biaya lain-lain = tiket pelatihan", confirmed: true,
+    status: "pending", approver: null, rejectionReason: null,
+    managerApprover: null, managerApprovedAt: null, hrApprover: null, hrApprovedAt: null,
+    requestedAt: "2026-08-04T08:20:00+08:00",
+  },
+  {
+    id: "trv1", employeeId: "e07", jobTitle: "Sales Lead",
+    purpose: "Kunjungan klien & negosiasi kontrak distribusi",
+    destination: "Surabaya, Jawa Timur",
+    departureDate: "2026-08-10", returnDate: "2026-08-12", durationDays: 3,
+    transport: "flight", transportOther: null,
+    accommodationRequired: true, accommodationDetails: "Hotel dekat kantor klien, 2 malam",
+    costTransport: 2_400_000, costAccommodation: 1_600_000, costPerDiem: 900_000, costOther: 250_000,
+    costTotal: 5_150_000,
+    advanceRequired: true, advanceAmount: 3_000_000,
+    remarks: "Bawa sampel produk baru", confirmed: true,
+    status: "pending", approver: null, rejectionReason: null,
+    managerApprover: null, managerApprovedAt: null, hrApprover: null, hrApprovedAt: null,
+    requestedAt: "2026-08-03T09:15:00+08:00",
+  },
+  {
+    id: "trv2", employeeId: "e06", jobTitle: "Sales Executive",
+    purpose: "Pameran produk organik tingkat provinsi",
+    destination: "Denpasar, Bali",
+    departureDate: "2026-07-21", returnDate: "2026-07-22", durationDays: 2,
+    transport: "company_vehicle", transportOther: null,
+    accommodationRequired: false, accommodationDetails: null,
+    costTransport: 350_000, costAccommodation: 0, costPerDiem: 300_000, costOther: 150_000,
+    costTotal: 800_000,
+    advanceRequired: false, advanceAmount: 0,
+    remarks: null, confirmed: true,
+    status: "approved", approver: "Dewi Lestari", rejectionReason: null,
+    managerApprover: "I Gede Bagus", managerApprovedAt: "2026-07-15T10:00:00+08:00",
+    hrApprover: "Dewi Lestari", hrApprovedAt: "2026-07-15T14:20:00+08:00",
+    requestedAt: "2026-07-14T16:40:00+08:00",
+  },
+  {
+    id: "trv3", employeeId: "e05", jobTitle: "Field Lead",
+    purpose: "Survei pemasok bibit",
+    destination: "Malang, Jawa Timur",
+    departureDate: "2026-07-02", returnDate: "2026-07-04", durationDays: 3,
+    transport: "train", transportOther: null,
+    accommodationRequired: true, accommodationDetails: "Penginapan sederhana 2 malam",
+    costTransport: 900_000, costAccommodation: 700_000, costPerDiem: 600_000, costOther: 0,
+    costTotal: 2_200_000,
+    advanceRequired: true, advanceAmount: 2_200_000,
+    remarks: null, confirmed: true,
+    status: "rejected", approver: "Dewi Lestari",
+    rejectionReason: "Jadwal bentrok dengan panen; ajukan ulang setelah 20 Juli.",
+    managerApprover: null, managerApprovedAt: null, hrApprover: null, hrApprovedAt: null,
+    requestedAt: "2026-06-25T08:05:00+08:00",
+  },
 ];
 
 // Inventaris kantor — dataset demo (mode tanpa Supabase). Kode mengikuti pola

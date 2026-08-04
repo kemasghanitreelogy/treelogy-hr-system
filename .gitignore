@@ -9,3 +9,7 @@
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# Rekaman layar / video kerja — jangan ikut ke repo
+*.mov
+*.mp4

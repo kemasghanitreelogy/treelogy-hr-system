@@ -65,6 +65,15 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "travel",
+    label: "Perjalanan Dinas",
+    permissions: [
+      { id: "travel.view", label: "Lihat perjalanan dinas" },
+      { id: "travel.request", label: "Ajukan perjalanan dinas" },
+      { id: "travel.approve", label: "Setujui / tolak perjalanan dinas" },
+    ],
+  },
+  {
     module: "inventory",
     label: "Inventaris",
     permissions: [
@@ -120,13 +129,16 @@ const MANAGER_PERMS = [
   "leave.approve",
   "employees.view",
   "inventory.view",
+  "travel.view",
+  "travel.request",
+  "travel.approve",
   "kpi.view",
 ];
 
 // payroll.view di sini = karyawan boleh melihat SLIP GAJINYA SENDIRI;
 // halaman payroll menampilkan mode operasional hanya untuk payroll.process.
 // shifts.view = lihat halaman Jadwal (jadwal sendiri + tabungan libur).
-const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view"];
+const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view", "travel.view", "travel.request"];
 
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");

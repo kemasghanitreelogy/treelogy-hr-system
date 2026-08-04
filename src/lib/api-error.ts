@@ -57,6 +57,15 @@ const MESSAGES: Record<string, Msg> = {
   already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
   reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
+  // --- perjalanan dinas ---
+  purpose_required: { id: "Tujuan/keperluan perjalanan wajib diisi.", en: "The purpose of travel is required." },
+  destination_required: { id: "Kota/lokasi tujuan wajib diisi.", en: "The destination is required." },
+  invalid_transport: { id: "Moda transportasi tidak valid.", en: "The mode of transportation is invalid." },
+  confirmation_required: { id: "Centang pernyataan konfirmasi sebelum mengirim.", en: "Tick the confirmation statement before submitting." },
+  invalid_amount: { id: "Nominal biaya tidak valid.", en: "The cost amount is invalid." },
+  advance_amount_required: { id: "Isi nominal uang muka yang diminta.", en: "Enter the requested advance amount." },
+  advance_exceeds_total: { id: "Uang muka tidak boleh melebihi total estimasi biaya.", en: "The advance cannot exceed the total estimated cost." },
+
   // --- inventaris ---
   invalid_category: { id: "Kategori barang tidak valid.", en: "The item category is invalid." },
   invalid_condition: { id: "Kondisi barang tidak valid.", en: "The item condition is invalid." },

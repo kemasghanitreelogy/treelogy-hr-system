@@ -17,6 +17,7 @@ import {
   shiftAssignments as seedAssignments,
   shifts as seedShifts,
   tabunganEntries as seedTabungan,
+  travelRequests as seedTravel,
 } from "./seed";
 import { roles, systemUsers, type UserStatus } from "./rbac";
 import { addDaysStr, witaToday } from "./utils";
@@ -45,6 +46,7 @@ import type {
   ShiftAssignment,
   TabunganEntry,
   Team,
+  TravelRequest,
   TeamGeofence,
 } from "./types";
 
@@ -166,6 +168,38 @@ export const mapInventoryItem = (r: Row): InventoryItem => ({
   note: (r.note as string) ?? null,
   createdAt: String(r.created_at ?? ""),
   updatedAt: String(r.updated_at ?? ""),
+});
+
+export const mapTravelRequest = (r: Row): TravelRequest => ({
+  id: String(r.id),
+  employeeId: String(r.employee_id),
+  jobTitle: String(r.job_title ?? ""),
+  purpose: String(r.purpose ?? ""),
+  destination: String(r.destination ?? ""),
+  departureDate: String(r.departure_date),
+  returnDate: String(r.return_date),
+  durationDays: n(r.duration_days),
+  transport: (r.transport as TravelRequest["transport"]) ?? "company_vehicle",
+  transportOther: (r.transport_other as string) ?? null,
+  accommodationRequired: Boolean(r.accommodation_required),
+  accommodationDetails: (r.accommodation_details as string) ?? null,
+  costTransport: n(r.cost_transport),
+  costAccommodation: n(r.cost_accommodation),
+  costPerDiem: n(r.cost_per_diem),
+  costOther: n(r.cost_other),
+  costTotal: n(r.cost_total),
+  advanceRequired: Boolean(r.advance_required),
+  advanceAmount: n(r.advance_amount),
+  remarks: (r.remarks as string) ?? null,
+  confirmed: Boolean(r.confirmed),
+  status: r.status as TravelRequest["status"],
+  approver: (r.approver as string) ?? null,
+  rejectionReason: (r.rejection_reason as string) ?? null,
+  managerApprover: (r.manager_approver as string) ?? null,
+  managerApprovedAt: (r.manager_approved_at as string) ?? null,
+  hrApprover: (r.hr_approver as string) ?? null,
+  hrApprovedAt: (r.hr_approved_at as string) ?? null,
+  requestedAt: String(r.requested_at ?? ""),
 });
 
 export const mapContract = (r: Row): EmployeeContract => ({
@@ -368,6 +402,12 @@ export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmplo
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
 export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
 export const getScheduleTemplates = () => fetchTable("schedule_templates", mapScheduleTemplate, seedScheduleTemplates);
+
+/** Pengajuan perjalanan dinas, terbaru dulu. Cakupan ditentukan RLS. */
+export async function getTravelRequests(): Promise<TravelRequest[]> {
+  const rows = await fetchTable("travel_requests", mapTravelRequest, seedTravel);
+  return rows.slice().sort((a, b) => b.departureDate.localeCompare(a.departureDate));
+}
 
 /** Inventaris kantor, barang terbaru dulu (kode menurun = urutan pendaftaran). */
 export async function getInventoryItems(): Promise<InventoryItem[]> {
