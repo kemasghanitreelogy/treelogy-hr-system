@@ -31,7 +31,7 @@ const STR: Record<Locale, Record<string, string>> = {
     vendorPh: "cth. CV PAKAN BALI",
     preview: "Yang tercatat di Google Sheet:",
     amount: "Total nominal", amountHint: "Angka saja. Contoh: 100.000 → tulis 100000",
-    invoice: "Lampirkan faktur", invoiceHint: `Maksimal ${MAX_INVOICE_FILES} berkas, masing-masing ${MAX_FILE_MB} MB. Foto otomatis dikompres ke WebP mendekati lossless — tetap tajam, ukuran jauh lebih kecil.`,
+    invoice: "Lampirkan faktur", invoiceHint: `Maksimal ${MAX_INVOICE_FILES} berkas, masing-masing ${MAX_FILE_MB} MB.`,
     approval: "Bukti persetujuan atasan",
     approvalHint: "Contoh: tangkapan layar persetujuan dari atasan (WA atau lainnya). Satu berkas.",
     due: "Jatuh tempo", optional: "opsional",
@@ -40,6 +40,12 @@ const STR: Record<Locale, Record<string, string>> = {
     submit: "Kirim pengajuan", submitting: "Mengirim…", cancel: "Batal",
     connection: "Koneksi bermasalah. Coba lagi.",
     tooMany: `Maksimal ${MAX_INVOICE_FILES} faktur.`,
+    requiredNote: "* wajib diisi",
+    missing: "Belum lengkap:",
+    mInvoice: "lampiran faktur",
+    mApproval: "bukti persetujuan atasan",
+    mDept: "departemen",
+    mVendor: "nama vendor",
   },
   en: {
     intro:
@@ -55,7 +61,7 @@ const STR: Record<Locale, Record<string, string>> = {
     vendorPh: "e.g. CV PAKAN BALI",
     preview: "What lands in the Google Sheet:",
     amount: "Total amount", amountHint: "Numbers only. Example: 100,000 → write 100000",
-    invoice: "Attach your invoice", invoiceHint: `Up to ${MAX_INVOICE_FILES} files, ${MAX_FILE_MB} MB each. Photos are compressed to near-lossless WebP automatically — still sharp, far smaller.`,
+    invoice: "Attach your invoice", invoiceHint: `Up to ${MAX_INVOICE_FILES} files, ${MAX_FILE_MB} MB each.`,
     approval: "Proof of approval from your dept. head",
     approvalHint: "e.g. a screenshot of the written approval (WA or else). One file.",
     due: "Due date", optional: "optional",
@@ -64,6 +70,12 @@ const STR: Record<Locale, Record<string, string>> = {
     submit: "Submit request", submitting: "Submitting…", cancel: "Cancel",
     connection: "Connection problem. Try again.",
     tooMany: `At most ${MAX_INVOICE_FILES} invoices.`,
+    requiredNote: "* required",
+    missing: "Still missing:",
+    mInvoice: "invoice attachment",
+    mApproval: "dept. head approval",
+    mDept: "department",
+    mVendor: "vendor name",
   },
 };
 
@@ -155,6 +167,12 @@ export function PaymentForm({
   }
 
   const nominal = Number(amount) || 0;
+  const kurang = [
+    !dept && t.mDept,
+    !vendor.trim() && t.mVendor,
+    invoices.length === 0 && t.mInvoice,
+    !approval && t.mApproval,
+  ].filter((x): x is string => typeof x === "string");
 
   return (
     <form onSubmit={submit} className="space-y-4">
@@ -162,7 +180,7 @@ export function PaymentForm({
         {t.intro}
       </p>
 
-      <Field label={t.dept}>
+      <Field label={t.dept} required>
         <Select value={dept} onChange={(e) => setDept(e.target.value as PaymentDept)} required>
           <option value="">{t.deptPick}</option>
           {DEPARTMENTS.map((d) => (
@@ -181,7 +199,7 @@ export function PaymentForm({
         </Field>
       </div>
 
-      <Field label={t.kind}>
+      <Field label={t.kind} required>
         <Select value={kind} onChange={(e) => setKind(e.target.value as PaymentKind)}>
           {KINDS.map((k) => (
             <option key={k} value={k}>{KIND_LABEL[locale][k]}</option>
@@ -201,14 +219,14 @@ export function PaymentForm({
           {t.descGroup}
         </legend>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t.invoiceDate}>
+          <Field label={t.invoiceDate} required>
             <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} required />
           </Field>
-          <Field label={t.vendor}>
+          <Field label={t.vendor} required>
             <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder={t.vendorPh} required />
           </Field>
         </div>
-        <Field label={t.desc}>
+        <Field label={t.desc} required>
           <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} placeholder={t.descPh} required />
         </Field>
         <div className="rounded-xl bg-panel px-3 py-2">
@@ -219,7 +237,7 @@ export function PaymentForm({
         </div>
       </fieldset>
 
-      <Field label={t.amount} hint={nominal > 0 ? rupiah(nominal) : t.amountHint}>
+      <Field label={t.amount} required hint={nominal > 0 ? rupiah(nominal) : t.amountHint}>
         <Input
           type="number" min={1} inputMode="numeric" placeholder="0"
           value={amount} onChange={(e) => setAmount(e.target.value)} required
@@ -227,7 +245,7 @@ export function PaymentForm({
       </Field>
 
       {/* Lampiran faktur */}
-      <Field label={t.invoice} hint={t.invoiceHint}>
+      <Field label={t.invoice} required hint={t.invoiceHint}>
         <div className="space-y-2">
           <input ref={invoiceRef} type="file" multiple accept="image/*,application/pdf" className="hidden" onChange={(e) => pick(e, "invoice")} />
           <Button
@@ -265,7 +283,7 @@ export function PaymentForm({
       </div>
 
       {/* Bukti persetujuan atasan */}
-      <Field label={t.approval} hint={t.approvalHint}>
+      <Field label={t.approval} required hint={t.approvalHint}>
         <div className="space-y-2">
           <input ref={approvalRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => pick(e, "approval")} />
           <Button type="button" variant="outline" size="sm" onClick={() => approvalRef.current?.click()} disabled={busyUpload}>
@@ -287,6 +305,15 @@ export function PaymentForm({
           )}
         </div>
       </Field>
+
+      {/* Tombol kirim yang mati tanpa penjelasan membuat orang menebak-nebak.
+          Sebutkan persis apa yang belum lengkap. */}
+      {kurang.length > 0 && (
+        <p className="rounded-xl border border-gold/40 bg-gold-soft/50 px-3 py-2 text-xs text-[#8a6512]">
+          <span className="font-semibold">{t.missing}</span> {kurang.join(" · ")}
+        </p>
+      )}
+      <p className="text-[11px] text-faint">{t.requiredNote}</p>
 
       <div className="flex gap-2 pt-1">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>

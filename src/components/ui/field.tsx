@@ -9,17 +9,26 @@ export function Field({
   hint,
   children,
   className,
+  required,
 }: {
   label: string;
   htmlFor?: string;
   hint?: string;
   children: React.ReactNode;
   className?: string;
+  /** Tampilkan penanda wajib. Untuk isian yang bukan <input> (mis. pemilih
+   *  berkas), ini satu-satunya cara pengguna tahu isian itu harus diisi. */
+  required?: boolean;
 }) {
   return (
     <div className={cn("space-y-1.5", className)}>
       <label htmlFor={htmlFor} className="block text-sm font-medium text-ink">
         {label}
+        {required && (
+          <span className="ml-0.5 text-clay" aria-hidden>
+            *
+          </span>
+        )}
       </label>
       {children}
       {hint && <p className="text-xs text-faint">{hint}</p>}
