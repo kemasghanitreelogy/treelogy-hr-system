@@ -10,11 +10,11 @@ export const metadata = { title: "Perjalanan Dinas — Treelogy HR" };
 const STR: Record<Locale, { intro: string }> = {
   id: {
     intro:
-      "Pengajuan perjalanan dinas beserta estimasi biaya dan uang muka. Disetujui atasan lebih dulu, lalu difinalisasi HR.",
+      "Pengajuan perjalanan dinas beserta estimasi biaya dan uang muka. Semua karyawan boleh mengajukan; keputusan ada pada penyetuju yang ditunjuk.",
   },
   en: {
     intro:
-      "Business travel requests with cost estimates and advances. The manager approves first, then HR finalises.",
+      "Business travel requests with cost estimates and advances. Anyone may submit; the designated approver decides.",
   },
 };
 

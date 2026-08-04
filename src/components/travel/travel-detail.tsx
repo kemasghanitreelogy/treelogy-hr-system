@@ -143,7 +143,7 @@ export function TravelDetail({
 }: {
   request: TravelRequest;
   employeeName: string;
-  /** Boleh menyetujui/menolak (atasan atau HR) dan pengajuan masih menunggu. */
+  /** Pemegang travel.approve, dan pengajuan masih menunggu. */
   canDecide: boolean;
   /** Penyetuju — mengembalikan keputusan yang sudah final ke status menunggu. */
   canReset: boolean;
