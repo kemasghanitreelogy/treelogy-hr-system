@@ -1,0 +1,199 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { mapPaymentRequest } from "@/lib/data";
+import { getSessionUser } from "@/lib/auth";
+import { isValidUploadedPath } from "@/lib/storage-path";
+import { appendSheetRow, sheetsMode } from "@/lib/sheets";
+import {
+  DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, sheetKindText,
+} from "@/lib/payment-request";
+import type { PaymentDept, PaymentKind, PaymentRequest } from "@/lib/types";
+
+export const runtime = "nodejs";
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const FILE_EXTS = ["jpg", "jpeg", "png", "webp", "heic", "pdf"];
+const MAX_RUPIAH = 10_000_000_000;
+
+interface Payload {
+  department?: PaymentDept;
+  kind?: PaymentKind;
+  kindOther?: string;
+  description?: string;
+  totalAmount?: number;
+  invoicePaths?: string[];
+  approvalPath?: string;
+  dueDate?: string | null;
+  moreDetails?: string;
+}
+
+/**
+ * URUTAN KOLOM GOOGLE SHEET — harus sama persis dengan sheet keuangan:
+ *
+ *   A Timestamp
+ *   B Department
+ *   C Name
+ *   D Email address
+ *   E Type of Reimbursement
+ *   F Invoice date - Description - Vendor Name
+ *   G Total Amount (numbers only)
+ *   H Attach your invoice here
+ *   I Due date
+ *   J More details (if any)
+ *   K Attach proof of approval from your Dept. Head
+ *
+ * Kolom A–G terbaca langsung dari sheet; H–K mengikuti urutan pertanyaan pada
+ * Google Form (Sheets menaruh kolom sesuai urutan pertanyaan). Verifikasi sekali
+ * pada baris pertama yang masuk — kalau meleset, cukup ubah urutan di sini.
+ */
+function sheetRow(req: PaymentRequest, origin: string): (string | number)[] {
+  const fileUrl = (path: string) =>
+    `${origin}/api/payment-requests/file?path=${encodeURIComponent(path)}`;
+  const stamp = new Date(req.submittedAt).toLocaleString("id-ID", {
+    timeZone: "Asia/Makassar",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  return [
+    stamp,
+    SHEET_DEPT[req.department],
+    req.requesterName,
+    req.email,
+    sheetKindText(req),
+    req.description,
+    req.totalAmount,                       // angka polos, seperti diminta form
+    req.invoicePaths.map(fileUrl).join(", "),
+    req.dueDate ?? "",
+    req.moreDetails ?? "",
+    fileUrl(req.approvalPath),
+  ];
+}
+
+export async function POST(request: Request) {
+  let body: Payload;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  if (!body.department || !DEPARTMENTS.includes(body.department)) {
+    return NextResponse.json({ error: "department_required" }, { status: 400 });
+  }
+  if (!body.kind || !KINDS.includes(body.kind)) {
+    return NextResponse.json({ error: "invalid_kind" }, { status: 400 });
+  }
+  if (body.kind === "other" && !body.kindOther?.trim()) {
+    return NextResponse.json({ error: "invalid_kind_other" }, { status: 400 });
+  }
+  if (!body.description?.trim()) {
+    return NextResponse.json({ error: "description_required" }, { status: 400 });
+  }
+  const amount = Number(body.totalAmount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_RUPIAH) {
+    return NextResponse.json({ error: "amount_required" }, { status: 400 });
+  }
+  if (body.dueDate && !ISO_DATE.test(body.dueDate)) {
+    return NextResponse.json({ error: "invalid_date" }, { status: 400 });
+  }
+
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!user.employeeId) return NextResponse.json({ error: "no_employee" }, { status: 400 });
+
+  // Berkas diunggah klien langsung ke bucket privat; di sini hanya bentuk
+  // path-nya yang diperiksa (RLS storage sudah menjaga hak tulisnya).
+  const invoicePaths = (body.invoicePaths ?? []).filter(Boolean);
+  if (invoicePaths.length === 0) {
+    return NextResponse.json({ error: "invoice_required" }, { status: 400 });
+  }
+  if (invoicePaths.length > MAX_INVOICE_FILES) {
+    return NextResponse.json({ error: "too_many_files" }, { status: 400 });
+  }
+  if (!body.approvalPath) {
+    return NextResponse.json({ error: "approval_required" }, { status: 400 });
+  }
+  for (const path of [...invoicePaths, body.approvalPath]) {
+    if (!isValidUploadedPath(path, user.employeeId, FILE_EXTS)) {
+      return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+    }
+  }
+
+  const supabase = await createClient();
+  if (!supabase) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  const { data, error } = await supabase
+    .from("payment_requests")
+    .insert({
+      employee_id: user.employeeId,
+      department: body.department,
+      requester_name: user.name,
+      email: user.email,
+      kind: body.kind,
+      kind_other: body.kind === "other" ? body.kindOther!.trim() : null,
+      description: body.description.trim(),
+      total_amount: Math.round(amount),
+      invoice_paths: invoicePaths,
+      approval_path: body.approvalPath,
+      due_date: body.dueDate || null,
+      more_details: body.moreDetails?.trim() || null,
+      sheet_status: "pending",
+    })
+    .select("*")
+    .single();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+  const saved = mapPaymentRequest(data);
+
+  // Salin ke Google Sheet. Kegagalan di sini TIDAK membatalkan pengajuan —
+  // barisnya sudah aman di database dan bisa dikirim ulang.
+  const origin = new URL(request.url).origin;
+  const result = await appendSheetRow(sheetRow(saved, origin));
+  await supabase
+    .from("payment_requests")
+    .update(
+      result.ok
+        ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
+        : { sheet_status: "failed", sheet_error: result.reason },
+    )
+    .eq("id", saved.id);
+
+  return NextResponse.json({
+    ok: true,
+    request: { ...saved, sheetStatus: result.ok ? "synced" : "failed", sheetError: result.ok ? null : result.reason },
+    sheet: result.ok ? { ok: true } : { ok: false, reason: result.reason, mode: sheetsMode() },
+  });
+}
+
+// ---- Kirim ulang baris yang gagal masuk sheet (Finance/HR) ----
+export async function PATCH(request: Request) {
+  let body: { id?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+
+  const supabase = await createClient();
+  if (!supabase) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+  const { data: row } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
+  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  const saved = mapPaymentRequest(row);
+  const result = await appendSheetRow(sheetRow(saved, new URL(request.url).origin));
+
+  const { data, error } = await supabase
+    .from("payment_requests")
+    .update(
+      result.ok
+        ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
+        : { sheet_status: "failed", sheet_error: result.reason },
+    )
+    .eq("id", body.id)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+  return NextResponse.json({ ok: result.ok, request: mapPaymentRequest(data), reason: result.ok ? null : result.reason });
+}

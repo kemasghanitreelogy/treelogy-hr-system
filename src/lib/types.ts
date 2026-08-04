@@ -319,6 +319,45 @@ export interface AttendanceSettings {
 }
 
 /* ============================================================
+   Pengajuan Pembayaran / Reimbursement
+   ============================================================ */
+
+export type PaymentDept =
+  | "finance" | "hr_ga" | "sales" | "farm" | "factory"
+  | "it_creative" | "purchasing" | "ceo" | "marketing";
+
+export type PaymentKind =
+  | "petty_cash" | "office_general" | "production" | "farm_maintenance" | "marketing"
+  | "transportation" | "meals_entertainment" | "popup_market" | "other";
+
+/** Status penyalinan baris ke Google Sheet — bukan status persetujuan. */
+export type SheetSyncStatus = "pending" | "synced" | "failed";
+
+export interface PaymentRequest {
+  id: string;
+  employeeId: string | null;
+  department: PaymentDept;
+  requesterName: string;
+  email: string;
+  kind: PaymentKind;
+  /** Diisi hanya saat kind = 'other'. */
+  kindOther?: string | null;
+  /** "Invoice date - Description - Vendor Name" pada form asli. */
+  description: string;
+  totalAmount: number;
+  /** Path faktur di bucket privat `payment-files` (maks 10). */
+  invoicePaths: string[];
+  /** Bukti persetujuan atasan — wajib, seperti form aslinya. */
+  approvalPath: string;
+  dueDate?: string | null;
+  moreDetails?: string | null;
+  sheetStatus: SheetSyncStatus;
+  sheetError?: string | null;
+  sheetSyncedAt?: string | null;
+  submittedAt: string;
+}
+
+/* ============================================================
    Perjalanan Dinas (Business Travel Request)
    ============================================================ */
 

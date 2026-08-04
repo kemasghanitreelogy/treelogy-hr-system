@@ -45,6 +45,7 @@ import type {
   Shift,
   ShiftAssignment,
   TabunganEntry,
+  PaymentRequest,
   Team,
   TravelRequest,
   TeamGeofence,
@@ -168,6 +169,26 @@ export const mapInventoryItem = (r: Row): InventoryItem => ({
   note: (r.note as string) ?? null,
   createdAt: String(r.created_at ?? ""),
   updatedAt: String(r.updated_at ?? ""),
+});
+
+export const mapPaymentRequest = (r: Row): PaymentRequest => ({
+  id: String(r.id),
+  employeeId: (r.employee_id as string) ?? null,
+  department: r.department as PaymentRequest["department"],
+  requesterName: String(r.requester_name ?? ""),
+  email: String(r.email ?? ""),
+  kind: r.kind as PaymentRequest["kind"],
+  kindOther: (r.kind_other as string) ?? null,
+  description: String(r.description ?? ""),
+  totalAmount: n(r.total_amount),
+  invoicePaths: Array.isArray(r.invoice_paths) ? (r.invoice_paths as string[]) : [],
+  approvalPath: String(r.approval_path ?? ""),
+  dueDate: (r.due_date as string) ?? null,
+  moreDetails: (r.more_details as string) ?? null,
+  sheetStatus: (r.sheet_status as PaymentRequest["sheetStatus"]) ?? "pending",
+  sheetError: (r.sheet_error as string) ?? null,
+  sheetSyncedAt: (r.sheet_synced_at as string) ?? null,
+  submittedAt: String(r.submitted_at ?? ""),
 });
 
 export const mapTravelRequest = (r: Row): TravelRequest => ({
@@ -403,6 +424,12 @@ export const getEmployees = () => fetchTable("employees", mapEmployee, seedEmplo
 export const getShifts = () => fetchTable("shifts", mapShift, seedShifts);
 export const getShiftAssignments = () => fetchTable("shift_assignments", mapAssignment, seedAssignments);
 export const getScheduleTemplates = () => fetchTable("schedule_templates", mapScheduleTemplate, seedScheduleTemplates);
+
+/** Pengajuan pembayaran, terbaru dulu. Cakupan ditentukan RLS. */
+export async function getPaymentRequests(): Promise<PaymentRequest[]> {
+  const rows = await fetchTable("payment_requests", mapPaymentRequest, []);
+  return rows.slice().sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+}
 
 /** Pengajuan perjalanan dinas, terbaru dulu. Cakupan ditentukan RLS. */
 export async function getTravelRequests(): Promise<TravelRequest[]> {

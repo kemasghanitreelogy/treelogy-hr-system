@@ -57,6 +57,15 @@ const MESSAGES: Record<string, Msg> = {
   already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
   reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
+  // --- pengajuan pembayaran ---
+  department_required: { id: "Departemen wajib dipilih.", en: "Department is required." },
+  description_required: { id: "Isi tanggal invoice - deskripsi - nama vendor.", en: "Fill in invoice date - description - vendor name." },
+  amount_required: { id: "Total nominal wajib diisi dan lebih dari 0.", en: "Total amount is required and must be above 0." },
+  invoice_required: { id: "Lampirkan minimal satu faktur.", en: "Attach at least one invoice." },
+  approval_required: { id: "Lampirkan bukti persetujuan atasan.", en: "Attach your dept. head's approval." },
+  too_many_files: { id: "Faktur maksimal 10 berkas.", en: "At most 10 invoice files." },
+  invalid_kind_other: { id: "Sebutkan jenis pengeluarannya.", en: "Specify the expense type." },
+
   // --- perjalanan dinas ---
   purpose_required: { id: "Tujuan/keperluan perjalanan wajib diisi.", en: "The purpose of travel is required." },
   destination_required: { id: "Kota/lokasi tujuan wajib diisi.", en: "The destination is required." },
