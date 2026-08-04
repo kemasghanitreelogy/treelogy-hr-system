@@ -95,6 +95,32 @@ export function composeInvoiceLine(parts: {
     .join(" - ");
 }
 
+/**
+ * Stempel waktu untuk kolom A ("Timestamp") di Google Sheet.
+ *
+ * Dibangun dari bagian-bagian Intl, BUKAN toLocaleString — hasil toLocaleString
+ * bergantung locale runtime dan pada "id-ID" menghasilkan "04/08/2026, 11.41.32"
+ * (koma + titik). Ke-140 baris yang sudah ada di sheet memakai
+ * "03/08/2026 07:17:54" (spasi + titik dua); bentuk yang berbeda membuat Google
+ * Sheets gagal mengenalinya sebagai waktu dan sel berakhir KOSONG.
+ *
+ * Selalu WITA, dan jatuh ke waktu sekarang bila sumbernya tidak terbaca —
+ * kolom waktu tidak boleh kosong hanya karena satu nilai janggal.
+ */
+export function formatSheetTimestamp(input?: string | null): string {
+  let d = input ? new Date(input) : new Date();
+  if (Number.isNaN(d.getTime())) d = new Date();
+  const bagian = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Makassar",
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const p: Record<string, string> = {};
+  for (const b of bagian) p[b.type] = b.value;
+  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}:${p.second}`;
+}
+
 /** Batas berkas, mengikuti Google Form aslinya. */
 export const MAX_INVOICE_FILES = 10;
 export const MAX_FILE_MB = 10;

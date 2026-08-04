@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, MapPin, Plane, Plus, Search } from "lucide-react";
+import { ChevronRight, Download, MapPin, Plane, Plus, Search } from "lucide-react";
 import type { TravelRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -19,6 +19,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 import { TravelDetail } from "./travel-detail";
+import { TravelExport } from "./travel-export";
 import { TravelForm, type TravelEmployeeOption } from "./travel-form";
 
 export interface TravelEmployee extends TravelEmployeeOption {
@@ -62,6 +63,8 @@ const STR: Record<
     returnTitle: (dest: string) => string;
     returnDesc: string;
     fixTitle: string;
+    exportBtn: string;
+    exportTitle: string;
     connection: string;
     rejectTitle: (dest: string) => string;
     days: (n: number) => string;
@@ -103,6 +106,8 @@ const STR: Record<
     returnTitle: (dest) => `Kembalikan pengajuan ke ${dest}?`,
     returnDesc: "Tulis apa yang perlu diperbaiki. Pengaju bisa memperbaiki datanya lalu mengirim ulang.",
     fixTitle: "Perbaiki Pengajuan",
+    exportBtn: "Ekspor",
+    exportTitle: "Ekspor Perjalanan Dinas",
     connection: "Koneksi bermasalah. Coba lagi.",
     rejectTitle: (dest) => `Tolak perjalanan ke ${dest}?`,
     days: (n) => `${n} hari`,
@@ -143,6 +148,8 @@ const STR: Record<
     returnTitle: (dest) => `Return the request to ${dest}?`,
     returnDesc: "Describe what needs fixing. The requester can correct the data and resubmit.",
     fixTitle: "Fix Request",
+    exportBtn: "Export",
+    exportTitle: "Export Business Travel",
     connection: "Connection problem. Try again.",
     rejectTitle: (dest) => `Reject the trip to ${dest}?`,
     days: (n) => `${n} day${n === 1 ? "" : "s"}`,
@@ -185,6 +192,7 @@ export function TravelView({
   const [rejecting, setRejecting] = useState<TravelRequest | null>(null);
   const [returning, setReturning] = useState<TravelRequest | null>(null);
   const [fixing, setFixing] = useState<TravelRequest | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
@@ -304,6 +312,10 @@ export function TravelView({
             <option value="approved">{t.approved}</option>
             <option value="rejected">{t.rejected}</option>
           </Select>
+          <Button variant="outline" onClick={() => setExporting(true)} className="shrink-0">
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">{t.exportBtn}</span>
+          </Button>
           <Button onClick={() => setRequesting(true)} className="shrink-0">
             <Plus className="h-4 w-4" /> {t.request}
           </Button>
@@ -474,6 +486,19 @@ export function TravelView({
               router.refresh();
             }}
             onCancel={() => setRequesting(false)}
+          />
+        )}
+      </Sheet>
+
+      {/* Ekspor — cakupan "semua" memakai data yang tampil menurut scope aktif,
+          sehingga isi berkas selalu cocok dengan yang dilihat pengguna. */}
+      <Sheet open={exporting} onClose={() => setExporting(false)} title={t.exportTitle}>
+        {exporting && (
+          <TravelExport
+            requests={scoped}
+            employees={employees}
+            today={today}
+            onClose={() => setExporting(false)}
           />
         )}
       </Sheet>

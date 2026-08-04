@@ -119,6 +119,12 @@ export async function appendSheetRow(
       if (!res.ok) return { ok: false, reason: `webhook_${res.status}` };
       const text = (await res.text()).slice(0, 200);
       // Apps Script membalas 200 walau gagal di dalam — periksa isinya.
+      //
+      // Sengaja TIDAK mensyaratkan balasan diawali "ok": Google kadang menyajikan
+      // halaman antara (HTML) pada tahap redirect PADAHAL doPost sudah menulis
+      // barisnya. Menganggap itu gagal akan memicu kirim ulang → BARIS GANDA di
+      // sheet keuangan. Baris hilang lebih mudah ditemukan (jumlahnya beda)
+      // daripada baris ganda yang diam-diam menggandakan total.
       if (/error|unauthor/i.test(text)) return { ok: false, reason: `webhook_body:${text}` };
       return { ok: true };
     }

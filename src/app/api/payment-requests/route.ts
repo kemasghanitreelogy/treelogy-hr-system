@@ -6,7 +6,8 @@ import { can, getSessionUser } from "@/lib/auth";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { appendSheetRow, sheetsMode } from "@/lib/sheets";
 import {
-  DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, composeInvoiceLine, sheetKindText,
+  DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, composeInvoiceLine,
+  formatSheetTimestamp, sheetKindText,
 } from "@/lib/payment-request";
 import type { PaymentDept, PaymentKind, PaymentRequest } from "@/lib/types";
 
@@ -41,11 +42,7 @@ interface Payload {
 function sheetValues(req: PaymentRequest, origin: string) {
   const fileUrl = (path: string) =>
     `${origin}/api/payment-requests/file?path=${encodeURIComponent(path)}`;
-  const stamp = new Date(req.submittedAt).toLocaleString("id-ID", {
-    timeZone: "Asia/Makassar",
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+  const stamp = formatSheetTimestamp(req.submittedAt);
   // Kunci = penggalan nama kolom di sheet; Apps Script yang mencocokkannya.
   // Urutan array hanya dipakai sebagai cadangan bila skrip masih versi lama.
   const record: Record<string, string | number> = {
