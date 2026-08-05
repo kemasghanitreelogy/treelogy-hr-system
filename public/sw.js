@@ -2,7 +2,9 @@
    Offline-first PWA: app-shell precache, navigation network-first with
    offline fallback, static assets stale-while-revalidate. */
 
-const VERSION = "treelogy-hr-v2";
+// Dinaikkan saat perilaku SW berubah — tanpa ini perangkat tetap memakai
+// service worker lama dari cache dan perbaikannya tidak pernah terpasang.
+const VERSION = "treelogy-hr-v3";
 const APP_SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
@@ -61,6 +63,13 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return; // don't touch cross-origin
+
+  // Tautan berkas & endpoint API dibiarkan lewat apa adanya.
+  // Membukanya dari Google Sheet adalah navigasi tingkat atas, sehingga tanpa
+  // pengecualian ini service worker memperlakukannya seperti halaman aplikasi:
+  // muncul splash/shell PWA sebelum berkasnya tampil, dan responsnya sempat
+  // di-cache. Padahal yang diinginkan hanya membuka berkas.
+  if (url.pathname.startsWith("/api/")) return;
 
   // 1) Page navigations → network-first, fall back to cache, then offline page.
   if (request.mode === "navigate") {
