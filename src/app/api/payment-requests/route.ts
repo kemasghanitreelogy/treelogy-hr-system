@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { mapPaymentRequest } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { isValidUploadedPath } from "@/lib/storage-path";
+import { signedFileUrl } from "@/lib/file-link";
 import { appendSheetRow, sheetsMode } from "@/lib/sheets";
 import {
   DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, composeInvoiceLine,
@@ -40,8 +41,9 @@ interface Payload {
  * Array `values` hanya cadangan bila skrip di sheet masih versi lama.
  */
 function sheetValues(req: PaymentRequest, origin: string) {
-  const fileUrl = (path: string) =>
-    `${origin}/api/payment-requests/file?path=${encodeURIComponent(path)}`;
+  // Bertanda tangan: baris di sheet dibaca orang yang belum tentu punya akun
+  // aplikasi HR, jadi tautannya harus bisa dibuka tanpa login.
+  const fileUrl = (path: string) => signedFileUrl(origin, path);
   const stamp = formatSheetTimestamp(req.submittedAt);
   // Kunci = penggalan nama kolom di sheet; Apps Script yang mencocokkannya.
   // Urutan array hanya dipakai sebagai cadangan bila skrip masih versi lama.
