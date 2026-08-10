@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Plus, ReceiptText, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Plus, ReceiptText, RefreshCw, Search } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
+import { PaymentDetail } from "./payment-detail";
 import { PaymentForm } from "./payment-form";
 
 const STR: Record<Locale, Record<string, string>> = {
@@ -35,6 +36,7 @@ const STR: Record<Locale, Record<string, string>> = {
     retried: "Berhasil masuk Google Sheet ✓",
     connection: "Koneksi bermasalah. Coba lagi.",
     count: "pengajuan",
+    detailTitle: "Detail Pengajuan",
     notConfigured:
       "Google Sheet belum tersambung — pengajuan tetap tersimpan aman dan bisa dikirim ke sheet begitu kredensial diisi.",
   },
@@ -56,6 +58,7 @@ const STR: Record<Locale, Record<string, string>> = {
     retried: "Written to Google Sheet ✓",
     connection: "Connection problem. Try again.",
     count: "requests",
+    detailTitle: "Request Detail",
     notConfigured:
       "Google Sheet isn't connected yet — requests are still stored safely and can be pushed once credentials are set.",
   },
@@ -64,7 +67,7 @@ const STR: Record<Locale, Record<string, string>> = {
 const MAX_STAGGER = 8;
 const COLS =
   "grid-cols-[minmax(0,1fr)_auto] " +
-  "xl:grid-cols-[minmax(0,1fr)_minmax(0,140px)_minmax(0,150px)_minmax(0,140px)]";
+  "xl:grid-cols-[minmax(0,1fr)_minmax(0,140px)_minmax(0,150px)_minmax(0,140px)_16px]";
 
 export function PaymentView({
   requests,
@@ -92,6 +95,7 @@ export function PaymentView({
   const [dept, setDept] = useState("all");
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -103,6 +107,7 @@ export function PaymentView({
   }, [list, query, dept]);
 
   const total = useMemo(() => filtered.reduce((s, r) => s + r.totalAmount, 0), [filtered]);
+  const selected = list.find((x) => x.id === selectedId) ?? null;
   const gagal = useMemo(() => filtered.filter((r) => r.sheetStatus !== "synced").length, [filtered]);
 
   async function retry(r: PaymentRequest) {
@@ -189,13 +194,19 @@ export function PaymentView({
             <span>{t.colDept}</span>
             <span className="text-right">{t.colAmount}</span>
             <span>{t.colSheet}</span>
+            <span />
           </div>
           <div className="divide-y divide-line">
             {filtered.map((r, i) => (
-              <div
+              <button
                 key={r.id}
+                type="button"
+                onClick={() => setSelectedId(r.id)}
                 style={{ ["--i" as string]: Math.min(i, MAX_STAGGER) }}
-                className={cn("stagger-item grid items-center gap-3 px-3 py-2.5", COLS)}
+                className={cn(
+                  "stagger-item grid w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
+                  COLS,
+                )}
               >
                 <span className="block min-w-0">
                   <span className="block truncate text-sm font-medium text-ink">{composeInvoiceLine(r)}</span>
@@ -224,7 +235,10 @@ export function PaymentView({
                       <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
                       {canManage && (
                         <button
-                          onClick={() => retry(r)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            retry(r);
+                          }}
                           disabled={busyId === r.id}
                           title={r.sheetError ?? undefined}
                           aria-label={t.retry}
@@ -236,11 +250,28 @@ export function PaymentView({
                     </>
                   )}
                 </span>
-              </div>
+                <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
+              </button>
             ))}
           </div>
         </div>
       )}
+
+      <Sheet
+        open={selected !== null}
+        onClose={() => setSelectedId(null)}
+        title={t.detailTitle}
+        width="lg"
+      >
+        {selected && (
+          <PaymentDetail
+            request={selected}
+            canManage={canManage}
+            busy={busyId === selected.id}
+            onResend={() => retry(selected)}
+          />
+        )}
+      </Sheet>
 
       <Sheet open={open} onClose={() => setOpen(false)} title={t.formTitle} width="lg">
         {open && employeeId && (
