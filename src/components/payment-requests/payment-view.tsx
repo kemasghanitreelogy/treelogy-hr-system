@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, ChevronRight, Plus, ReceiptText, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Download, Plus, ReceiptText, RefreshCw, Search } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -15,7 +15,11 @@ import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { PaymentDetail } from "./payment-detail";
+import { PaymentExport } from "./payment-export";
 import { PaymentForm } from "./payment-form";
+
+/** Tautan lampiran bertanda tangan, dihitung di server, dikunci per pengajuan. */
+export type PaymentFileLinks = Record<string, { invoices: string[]; approval: string }>;
 
 const STR: Record<Locale, Record<string, string>> = {
   id: {
@@ -37,6 +41,7 @@ const STR: Record<Locale, Record<string, string>> = {
     connection: "Koneksi bermasalah. Coba lagi.",
     count: "pengajuan",
     detailTitle: "Detail Pengajuan",
+    export: "Ekspor", exportTitle: "Ekspor ke Excel",
     notConfigured:
       "Google Sheet belum tersambung — pengajuan tetap tersimpan aman dan bisa dikirim ke sheet begitu kredensial diisi.",
   },
@@ -59,6 +64,7 @@ const STR: Record<Locale, Record<string, string>> = {
     connection: "Connection problem. Try again.",
     count: "requests",
     detailTitle: "Request Detail",
+    export: "Export", exportTitle: "Export to Excel",
     notConfigured:
       "Google Sheet isn't connected yet — requests are still stored safely and can be pushed once credentials are set.",
   },
@@ -71,6 +77,8 @@ const COLS =
 
 export function PaymentView({
   requests,
+  fileLinks,
+  today,
   employeeId,
   name,
   email,
@@ -78,6 +86,8 @@ export function PaymentView({
   sheetsConnected,
 }: {
   requests: PaymentRequest[];
+  fileLinks: PaymentFileLinks;
+  today: string;
   employeeId: string | null;
   name: string;
   email: string;
@@ -94,6 +104,7 @@ export function PaymentView({
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");
   const [open, setOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -148,12 +159,20 @@ export function PaymentView({
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.searchPh} aria-label={t.searchPh} className="pl-9" />
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-          <Select value={dept} onChange={(e) => setDept(e.target.value)} aria-label={t.allDept} className="min-w-0 sm:w-44">
+          <Select value={dept} onChange={(e) => setDept(e.target.value)} aria-label={t.allDept} className="col-span-2 min-w-0 sm:col-span-1 sm:w-44">
             <option value="all">{t.allDept}</option>
             {Object.entries(DEPT_LABEL[locale]).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
             ))}
           </Select>
+          <Button
+            variant="outline"
+            onClick={() => setExportOpen(true)}
+            className="shrink-0"
+            disabled={list.length === 0}
+          >
+            <Download className="h-4 w-4" /> {t.export}
+          </Button>
           <Button onClick={() => setOpen(true)} className="shrink-0" disabled={!employeeId}>
             <Plus className="h-4 w-4" /> {t.submit}
           </Button>
@@ -269,6 +288,17 @@ export function PaymentView({
             canManage={canManage}
             busy={busyId === selected.id}
             onResend={() => retry(selected)}
+          />
+        )}
+      </Sheet>
+
+      <Sheet open={exportOpen} onClose={() => setExportOpen(false)} title={t.exportTitle}>
+        {exportOpen && (
+          <PaymentExport
+            requests={list}
+            fileLinks={fileLinks}
+            today={today}
+            onClose={() => setExportOpen(false)}
           />
         )}
       </Sheet>

@@ -1,9 +1,12 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { PaymentView } from "@/components/payment-requests/payment-view";
+import { PaymentView, type PaymentFileLinks } from "@/components/payment-requests/payment-view";
 import { can, getSessionUser } from "@/lib/auth";
 import { getPaymentRequests } from "@/lib/data";
+import { signedFileUrl } from "@/lib/file-link";
 import { getLocale } from "@/lib/locale-server";
 import { sheetsMode } from "@/lib/sheets";
+import { witaToday } from "@/lib/utils";
 import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Pengajuan Pembayaran — Treelogy HR" };
@@ -20,12 +23,27 @@ const STR: Record<Locale, { intro: string }> = {
 };
 
 export default async function PaymentRequestsPage() {
-  const [requests, user, locale] = await Promise.all([
+  const [requests, user, locale, h] = await Promise.all([
     getPaymentRequests(),
     getSessionUser(),
     getLocale(),
+    headers(),
   ]);
   if (!can(user, "payment.request") && !can(user, "payment.manage")) redirect("/dashboard");
+
+  // Tautan lampiran ditandatangani di server — rahasianya tidak pernah sampai ke
+  // browser, tapi hasilnya bisa dibuka siapa pun yang memegang berkas Excel-nya,
+  // persis seperti tautan yang ditulis ke Google Sheet keuangan.
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("x-forwarded-host") ?? h.get("host") ?? ""}`;
+  const fileLinks: PaymentFileLinks = Object.fromEntries(
+    requests.map((r) => [
+      r.id,
+      {
+        invoices: (r.invoicePaths ?? []).map((p) => signedFileUrl(origin, p)),
+        approval: r.approvalPath ? signedFileUrl(origin, r.approvalPath) : "",
+      },
+    ]),
+  );
 
   const t = STR[locale];
   return (
@@ -33,6 +51,8 @@ export default async function PaymentRequestsPage() {
       <p className="text-sm text-muted">{t.intro}</p>
       <PaymentView
         requests={requests}
+        fileLinks={fileLinks}
+        today={witaToday()}
         employeeId={user?.employeeId ?? null}
         name={user?.name ?? ""}
         email={user?.email ?? ""}
