@@ -1,6 +1,7 @@
 import type {
   AttendanceRecord,
   ClockApprovalRequest,
+  CompanyDocument,
   DayOffInLieu,
   Employee,
   EmployeeContract,
@@ -282,6 +283,41 @@ export const inventoryItems: InventoryItem[] = [
     status: "pensiun", location: "—", assignedTo: null,
     purchaseDate: "2024-10-02", purchasePrice: 2_400_000, photoPath: null,
     note: "Hilang saat kunjungan lapangan, sudah dilaporkan", createdAt: "2024-10-02T09:00:00+08:00", updatedAt: "2026-02-20T09:00:00+08:00",
+  },
+];
+
+// Dokumen perusahaan — dataset demo (mode tanpa Supabase). Kode mengikuti pola
+// yang sama dengan yang dibuat database: DOC-0001, DOC-0002, …
+export const companyDocuments: CompanyDocument[] = [
+  {
+    id: "doc1", code: "DOC-0001", name: "Akta Pendirian Perusahaan", category: "legal",
+    docNumber: "AHU-0031244.AH.01.01", issueDate: "2021-03-15", expiryDate: null,
+    filePath: null, note: "Notaris: Ida Bagus Putra, S.H.",
+    createdAt: "2021-03-15T09:00:00+08:00", updatedAt: "2021-03-15T09:00:00+08:00",
+  },
+  {
+    id: "doc2", code: "DOC-0002", name: "NIB (Nomor Induk Berusaha)", category: "perizinan",
+    docNumber: "1209000431188", issueDate: "2021-04-02", expiryDate: null,
+    filePath: null, note: null,
+    createdAt: "2021-04-02T09:00:00+08:00", updatedAt: "2021-04-02T09:00:00+08:00",
+  },
+  {
+    id: "doc3", code: "DOC-0003", name: "Sertifikat Laik Higiene Sanitasi", category: "sertifikat",
+    docNumber: "SLHS/442/2023", issueDate: "2023-08-10", expiryDate: "2026-08-10",
+    filePath: null, note: "Perpanjangan diurus lewat DPMPTSP",
+    createdAt: "2023-08-10T09:00:00+08:00", updatedAt: "2023-08-10T09:00:00+08:00",
+  },
+  {
+    id: "doc4", code: "DOC-0004", name: "Polis Asuransi Kendaraan Operasional", category: "keuangan",
+    docNumber: "POL-88231-VAR", issueDate: "2025-04-18", expiryDate: "2026-04-18",
+    filePath: null, note: "Honda Vario DK-4471-AB",
+    createdAt: "2025-04-18T09:00:00+08:00", updatedAt: "2025-04-18T09:00:00+08:00",
+  },
+  {
+    id: "doc5", code: "DOC-0005", name: "SOP Keselamatan Kerja Produksi", category: "sop",
+    docNumber: null, issueDate: "2024-01-08", expiryDate: null,
+    filePath: null, note: "Revisi 2 — wajib dibaca karyawan produksi baru",
+    createdAt: "2024-01-08T09:00:00+08:00", updatedAt: "2025-11-20T09:00:00+08:00",
   },
 ];
 

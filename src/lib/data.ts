@@ -3,6 +3,7 @@ import {
   TODAY,
   attendance as seedAttendance,
   clockApprovals as seedClockApprovals,
+  companyDocuments as seedDocuments,
   dayOffInLieu as seedDayOff,
   employeeContracts as seedContracts,
   holidays as seedHolidays,
@@ -29,6 +30,7 @@ import type {
   AttendanceRecord,
   AttendanceSettings,
   ClockApprovalRequest,
+  CompanyDocument,
   DayOffInLieu,
   EmployeeContract,
   Holiday,
@@ -166,6 +168,20 @@ export const mapInventoryItem = (r: Row): InventoryItem => ({
   purchaseDate: (r.purchase_date as string) ?? null,
   purchasePrice: n(r.purchase_price),
   photoPath: (r.photo_path as string) ?? null,
+  note: (r.note as string) ?? null,
+  createdAt: String(r.created_at ?? ""),
+  updatedAt: String(r.updated_at ?? ""),
+});
+
+export const mapCompanyDocument = (r: Row): CompanyDocument => ({
+  id: String(r.id),
+  code: String(r.code),
+  name: String(r.name),
+  category: r.category as CompanyDocument["category"],
+  docNumber: (r.doc_number as string) ?? null,
+  issueDate: (r.issue_date as string) ?? null,
+  expiryDate: (r.expiry_date as string) ?? null,
+  filePath: (r.file_path as string) ?? null,
   note: (r.note as string) ?? null,
   createdAt: String(r.created_at ?? ""),
   updatedAt: String(r.updated_at ?? ""),
@@ -442,6 +458,12 @@ export async function getTravelRequests(): Promise<TravelRequest[]> {
 /** Inventaris kantor, barang terbaru dulu (kode menurun = urutan pendaftaran). */
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   const rows = await fetchTable("inventory_items", mapInventoryItem, seedInventory);
+  return rows.slice().sort((a, b) => b.code.localeCompare(a.code));
+}
+
+/** Dokumen perusahaan, terbaru dulu (kode menurun = urutan pendaftaran). */
+export async function getCompanyDocuments(): Promise<CompanyDocument[]> {
+  const rows = await fetchTable("company_documents", mapCompanyDocument, seedDocuments);
   return rows.slice().sort((a, b) => b.code.localeCompare(a.code));
 }
 
