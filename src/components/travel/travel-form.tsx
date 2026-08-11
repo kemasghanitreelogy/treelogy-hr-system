@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { CalendarRange, Loader2, Wallet } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { CalendarRange, FilePlus2, Loader2, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import type { TravelRequest, TravelTransport } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
+import { prepareFileForBucket } from "@/lib/upload";
 import { rupiah } from "@/lib/utils";
 import { TRANSPORTS, TRANSPORT_LABEL, travelDuration, travelTotal } from "@/lib/travel";
 import { useLocale } from "@/components/layout/locale-context";
@@ -55,6 +56,14 @@ const STR: Record<
     advanceAmount: string;
     advanceHint: (max: string) => string;
     secMore: string;
+    proof: string;
+    proofHint: string;
+    proofAdd: string;
+    proofReplace: string;
+    proofRemove: string;
+    proofUploaded: string;
+    proofRequired: string;
+    uploading: string;
     remarks: string;
     remarksPh: string;
     confirm: string;
@@ -101,6 +110,14 @@ const STR: Record<
     advanceAmount: "Nominal diminta",
     advanceHint: (max) => `Maksimal ${max} (total estimasi).`,
     secMore: "V. Informasi Tambahan",
+    proof: "Bukti persetujuan atasan (wajib)",
+    proofHint: "Contoh: foto/tangkapan layar persetujuan dari atasan (WA atau lainnya). Satu berkas gambar atau PDF.",
+    proofAdd: "Pilih berkas",
+    proofReplace: "Ganti berkas",
+    proofRemove: "Hapus",
+    proofUploaded: "Bukti terunggah",
+    proofRequired: "Bukti persetujuan atasan wajib dilampirkan.",
+    uploading: "Mengunggah…",
     remarks: "Catatan",
     remarksPh: "cth. Bawa sampel produk baru",
     confirm: "Konfirmasi karyawan",
@@ -147,6 +164,14 @@ const STR: Record<
     advanceAmount: "Amount requested",
     advanceHint: (max) => `At most ${max} (the estimated total).`,
     secMore: "V. Additional Information",
+    proof: "Proof of supervisor approval (required)",
+    proofHint: "e.g. a photo/screenshot of the written approval (WA or else). One image or PDF file.",
+    proofAdd: "Choose file",
+    proofReplace: "Replace file",
+    proofRemove: "Remove",
+    proofUploaded: "Proof uploaded",
+    proofRequired: "Proof of supervisor approval is required.",
+    uploading: "Uploading…",
     remarks: "Remarks",
     remarksPh: "e.g. Bring the new product samples",
     confirm: "Employee confirmation",
@@ -251,6 +276,12 @@ export function TravelForm({
   const t = STR[locale];
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  const proofRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  // Saat memperbaiki pengajuan, bukti lama ikut terbawa — tak perlu unggah ulang.
+  const [proof, setProof] = useState<{ path: string; label: string } | null>(() =>
+    item?.approvalPath ? { path: item.approvalPath, label: STR[locale].proofUploaded } : null,
+  );
   const money = (n: number) => (n > 0 ? String(n) : "");
   const [form, setForm] = useState<FormState>({
     employeeId: item?.employeeId ?? defaultEmployeeId,
@@ -295,8 +326,26 @@ export function TravelForm({
 
   const selectedEmp = employees.find((e) => e.id === form.employeeId);
 
+  async function pickProof(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      // Folder = karyawan yang DIAJUKAN (bisa berbeda dari pengunggah saat HR
+      // mengajukan atas nama orang lain) — server memvalidasi bentuk path ini.
+      const prepared = await prepareFileForBucket("travel-files", form.employeeId, file);
+      if (prepared.path) setProof({ path: prepared.path, label: file.name });
+    } catch (err) {
+      toast.error(apiErrorMessage(err instanceof Error ? err.message : null, locale));
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!proof) return toast.error(t.proofRequired);
     setSaving(true);
     try {
       const res = await fetch("/api/travel", {
@@ -320,6 +369,7 @@ export function TravelForm({
           advanceRequired: form.advanceRequired,
           advanceAmount: num(form.advanceAmount),
           remarks: form.remarks,
+          approvalPath: proof?.path,
           confirmed: form.confirmed,
         }),
       });
@@ -343,7 +393,16 @@ export function TravelForm({
         <SectionTitle>{t.secEmployee}</SectionTitle>
         {canPickEmployee ? (
           <Field label={t.employee}>
-            <Select value={form.employeeId} onChange={(e) => set("employeeId", e.target.value)} required>
+            <Select
+              value={form.employeeId}
+              onChange={(e) => {
+                set("employeeId", e.target.value);
+                // Berkas diunggah ke folder karyawan yang dipilih — ganti orang
+                // berarti bukti lama salah folder dan harus diunggah ulang.
+                setProof(null);
+              }}
+              required
+            >
               {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
                   {emp.name}
@@ -521,6 +580,62 @@ export function TravelForm({
       {/* V. Informasi tambahan + pernyataan */}
       <div className="space-y-3">
         <SectionTitle>{t.secMore}</SectionTitle>
+
+        {/* Bukti persetujuan atasan — WAJIB; tanpa ini tombol kirim tertahan. */}
+        <Field label={t.proof} hint={t.proofHint}>
+          <div className="flex items-center gap-3">
+            <input
+              ref={proofRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={pickProof}
+            />
+            {uploading ? (
+              <div className="flex h-9 w-9 shrink-0 animate-pulse items-center justify-center rounded-xl bg-sand">
+                <Loader2 className="h-4 w-4 animate-spin text-muted" />
+              </div>
+            ) : proof ? (
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-forest-50 text-forest-600 ring-1 ring-line">
+                  <ShieldCheck className="h-4 w-4" />
+                </span>
+                <span className="truncate text-xs font-medium text-muted">{proof.label}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => proofRef.current?.click()}
+                aria-label={t.proofAdd}
+                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line bg-cream/50 text-faint transition-colors hover:border-forest-300 hover:text-forest-600"
+              >
+                <FilePlus2 className="h-4 w-4" />
+              </button>
+            )}
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => proofRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus2 className="h-4 w-4" />}
+                {uploading ? t.uploading : proof ? t.proofReplace : t.proofAdd}
+              </Button>
+              {proof && !uploading && (
+                <button
+                  type="button"
+                  onClick={() => setProof(null)}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-clay-soft hover:text-[#8c3c1f]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> {t.proofRemove}
+                </button>
+              )}
+            </div>
+          </div>
+        </Field>
+
         <Field label={t.remarks}>
           <Textarea
             value={form.remarks}
@@ -548,7 +663,7 @@ export function TravelForm({
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>
           {t.cancel}
         </Button>
-        <Button type="submit" className="flex-1" disabled={saving || !form.confirmed}>
+        <Button type="submit" className="flex-1" disabled={saving || uploading || !form.confirmed || !proof}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
           {saving ? t.submitting : item ? t.resubmit : t.submit}
         </Button>

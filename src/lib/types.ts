@@ -410,6 +410,9 @@ export interface TravelRequest {
   advanceAmount: number;
 
   remarks?: string | null;
+  /** Bukti persetujuan atasan di bucket privat `travel-files` — wajib untuk
+   *  pengajuan baru; baris lama (sebelum fitur ini) boleh kosong. */
+  approvalPath?: string | null;
   /** Pernyataan karyawan — wajib dicentang sebelum bisa dikirim. */
   confirmed: boolean;
   /** Catatan penyetuju saat pengajuan DIKEMBALIKAN untuk diperbaiki. Kosong

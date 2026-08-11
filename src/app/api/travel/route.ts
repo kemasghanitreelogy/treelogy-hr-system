@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils";
 import { applyApproval, type ApprovalAction } from "@/lib/approval";
 import { TRANSPORTS, travelDuration, travelTotal } from "@/lib/travel";
 import { can, getSessionUser } from "@/lib/auth";
+import { isValidUploadedPath } from "@/lib/storage-path";
 import type { RequestStatus, TravelTransport } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -14,6 +15,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** Batas kewarasan: satu perjalanan dinas maksimal ~3 bulan. */
 const MAX_DURATION_DAYS = 92;
 const MAX_RUPIAH = 1_000_000_000;
+/** Ekstensi bukti persetujuan atasan — sama dengan lampiran pengajuan pembayaran. */
+const FILE_EXTS = ["jpg", "jpeg", "png", "webp", "heic", "pdf"];
 
 interface CreatePayload {
   employeeId?: string;
@@ -32,7 +35,19 @@ interface CreatePayload {
   advanceRequired?: boolean;
   advanceAmount?: number;
   remarks?: string;
+  approvalPath?: string;
   confirmed?: boolean;
+}
+
+/**
+ * Bukti persetujuan atasan WAJIB untuk pengajuan/revisi baru. Path harus
+ * berbentuk `<employeeId>/<uuid>.<ext>` — folder milik karyawan yang diajukan,
+ * bukan folder orang lain.
+ */
+function validasiBukti(path: string | undefined, employeeId: string): string | null {
+  if (!path) return "approval_required";
+  if (!isValidUploadedPath(path, employeeId, FILE_EXTS)) return "invalid_path";
+  return null;
 }
 
 type TravelAction = ApprovalAction | "revise";
@@ -140,6 +155,8 @@ export async function POST(req: Request) {
   if (!body.employeeId) return NextResponse.json({ error: "employee_required" }, { status: 400 });
   const built = buildTravelRow(body);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  const buktiErr = validasiBukti(body.approvalPath, body.employeeId);
+  if (buktiErr) return NextResponse.json({ error: buktiErr }, { status: 400 });
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
@@ -157,6 +174,7 @@ export async function POST(req: Request) {
     ...built.row,
     employee_id: body.employeeId,
     job_title: (emp.position as string)?.trim() || "—",
+    approval_path: body.approvalPath,
     status: "pending",
   };
 
@@ -328,10 +346,12 @@ export async function PUT(req: Request) {
   if (prev.status !== "pending") {
     return NextResponse.json({ error: "already_decided" }, { status: 400 });
   }
+  const buktiErr = validasiBukti(body.approvalPath, String(prev.employee_id));
+  if (buktiErr) return NextResponse.json({ error: buktiErr }, { status: 400 });
 
   const { data, error } = await supabase!
     .from("travel_requests")
-    .update({ ...built.row, revision_note: null })
+    .update({ ...built.row, approval_path: body.approvalPath, revision_note: null })
     .eq("id", body.id)
     .select("*")
     .maybeSingle();

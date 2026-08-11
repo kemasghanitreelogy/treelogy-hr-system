@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
    PDF tidak bisa dipratinjau begitu saja, jadi tampil sebagai kartu berkas.
    ============================================================ */
 
-const url = (path: string) => `/api/payment-requests/file?path=${encodeURIComponent(path)}`;
+const DEFAULT_API = "/api/payment-requests/file";
 
 function isImage(path: string): boolean {
   return /\.(jpe?g|png|webp|heic|gif)$/i.test(path);
@@ -31,16 +31,19 @@ export function PaymentFile({
   index = 0,
   total = 1,
   className,
+  api = DEFAULT_API,
 }: {
   path: string;
   index?: number;
   total?: number;
   className?: string;
+  /** Route penukar path → signed URL; ganti untuk bucket lain (mis. travel). */
+  api?: string;
 }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   useEffect(() => setState("loading"), [path]);
 
-  const href = url(path);
+  const href = `${api}?path=${encodeURIComponent(path)}`;
 
   if (!isImage(path)) {
     return (

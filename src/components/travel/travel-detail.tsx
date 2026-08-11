@@ -6,6 +6,7 @@ import type { Locale } from "@/lib/i18n";
 import { formatDate, rupiah } from "@/lib/utils";
 import { TRANSPORT_LABEL } from "@/lib/travel";
 import { useLocale } from "@/components/layout/locale-context";
+import { PaymentFile } from "@/components/payment-requests/payment-file";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { Button } from "@/components/ui/button";
 import { RejectionNote } from "@/components/ui/rejection-note";
@@ -32,6 +33,8 @@ const STR: Record<
     advance: string;
     noAdvance: string;
     remarks: string;
+    proof: string;
+    noProof: string;
     requestedAt: string;
     approve: string;
     reject: string;
@@ -62,6 +65,8 @@ const STR: Record<
     advance: "Uang muka diminta",
     noAdvance: "Tidak meminta uang muka",
     remarks: "Catatan",
+    proof: "Bukti persetujuan atasan",
+    noProof: "Tidak ada — pengajuan dibuat sebelum lampiran diwajibkan.",
     requestedAt: "Diajukan",
     approve: "Setujui",
     reject: "Tolak",
@@ -91,6 +96,8 @@ const STR: Record<
     advance: "Advance requested",
     noAdvance: "No advance requested",
     remarks: "Remarks",
+    proof: "Supervisor approval proof",
+    noProof: "None — submitted before the attachment became mandatory.",
     requestedAt: "Submitted",
     approve: "Approve",
     reject: "Reject",
@@ -216,6 +223,16 @@ export function TravelDetail({
         </Row>
         {r.remarks && <Row label={t.remarks}>{r.remarks}</Row>}
         <Row label={t.requestedAt}>{formatDate(r.requestedAt, "long", locale)}</Row>
+      </div>
+
+      {/* Bukti persetujuan atasan — dasar penyetuju menekan "Setujui". */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-faint">{t.proof}</p>
+        {r.approvalPath ? (
+          <PaymentFile path={r.approvalPath} api="/api/travel/file" className="aspect-[4/3] max-w-[12rem]" />
+        ) : (
+          <p className="text-xs text-faint">{t.noProof}</p>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-line bg-panel">
