@@ -13,11 +13,16 @@ import type {
    ============================================================ */
 
 export const CATEGORIES: InventoryCategory[] = [
+  "tanah",
+  "bangunan_permanen",
+  "bangunan_non_permanen",
+  "kendaraan",
+  "aset_biologis",
+  "mesin",
+  "peralatan_kantor",
   "elektronik",
   "furnitur",
   "atk",
-  "kendaraan",
-  "mesin",
   "perlengkapan",
   "lainnya",
 ];
@@ -32,20 +37,30 @@ type Tone = "forest" | "olive" | "matcha" | "gold" | "clay" | "sky" | "neutral";
 
 export const CATEGORY_LABEL: Record<Locale, Record<InventoryCategory, string>> = {
   id: {
+    tanah: "Tanah",
+    bangunan_permanen: "Bangunan Permanen",
+    bangunan_non_permanen: "Bangunan Non-Permanen",
+    kendaraan: "Kendaraan",
+    aset_biologis: "Aset Biologis",
+    mesin: "Mesin & Peralatan",
+    peralatan_kantor: "Peralatan Kantor",
     elektronik: "Elektronik",
     furnitur: "Furnitur",
     atk: "ATK",
-    kendaraan: "Kendaraan",
-    mesin: "Mesin",
     perlengkapan: "Perlengkapan",
     lainnya: "Lainnya",
   },
   en: {
+    tanah: "Land",
+    bangunan_permanen: "Building (Permanent)",
+    bangunan_non_permanen: "Building (Non-Permanent)",
+    kendaraan: "Vehicle",
+    aset_biologis: "Biological Asset",
+    mesin: "Machinery & Equipment",
+    peralatan_kantor: "Office Equipment",
     elektronik: "Electronics",
     furnitur: "Furniture",
     atk: "Stationery",
-    kendaraan: "Vehicle",
-    mesin: "Machinery",
     perlengkapan: "Equipment",
     lainnya: "Other",
   },

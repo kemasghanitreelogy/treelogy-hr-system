@@ -423,6 +423,11 @@ export type InventoryCategory =
   | "kendaraan"
   | "mesin"
   | "perlengkapan"
+  | "tanah"
+  | "bangunan_permanen"
+  | "bangunan_non_permanen"
+  | "aset_biologis"
+  | "peralatan_kantor"
   | "lainnya";
 
 /** Kondisi fisik barang. */
@@ -450,6 +455,39 @@ export interface InventoryItem {
   purchasePrice: number;
   /** Foto barang di bucket privat `inventory-photos`. */
   photoPath?: string | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/* ============================================================
+   Dokumen perusahaan
+   ============================================================ */
+
+export type DocumentCategory =
+  | "legal"
+  | "perizinan"
+  | "kontrak"
+  | "keuangan"
+  | "pajak"
+  | "sdm"
+  | "sop"
+  | "sertifikat"
+  | "lainnya";
+
+export interface CompanyDocument {
+  id: string;
+  /** Kode dokumen unik yang dibuat database (DOC-0001). */
+  code: string;
+  name: string;
+  category: DocumentCategory;
+  /** Nomor resmi dokumen (nomor akta, nomor izin, nomor kontrak…). */
+  docNumber?: string | null;
+  issueDate?: string | null; // YYYY-MM-DD
+  /** Kosong = berlaku selamanya (mis. akta pendirian). */
+  expiryDate?: string | null; // YYYY-MM-DD
+  /** Berkas di bucket privat `company-documents`. */
+  filePath?: string | null;
   note?: string | null;
   createdAt: string;
   updatedAt: string;
