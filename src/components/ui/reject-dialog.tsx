@@ -7,6 +7,7 @@ import { Button } from "./button";
 import { Textarea } from "./field";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 
 const STR: Record<Locale, { title: string; desc: string; label: string; placeholder: string; hint: string; cancel: string; confirm: string }> = {
   id: {
@@ -66,11 +67,10 @@ export function RejectDialog({
       if (e.key === "Escape" && !busy) onCancel();
     };
     window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockBodyScroll();
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
+      unlock();
     };
   }, [open, busy, onCancel]);
 

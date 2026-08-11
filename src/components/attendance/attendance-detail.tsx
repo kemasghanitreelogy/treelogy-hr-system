@@ -6,6 +6,7 @@ import { Camera, Clock3, LogIn, LogOut, MapPin, X } from "lucide-react";
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 import { Avatar } from "@/components/ui/avatar";
 import { AttendanceBadge } from "@/components/ui/badge";
 import { useLocale } from "@/components/layout/locale-context";
@@ -179,11 +180,10 @@ export function AttendanceDetail({
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockBodyScroll();
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
+      unlock();
     };
   }, [open, onClose]);
 

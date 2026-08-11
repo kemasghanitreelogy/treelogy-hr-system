@@ -6,6 +6,7 @@ import { Camera, Check, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 
 const STR: Record<
   Locale,
@@ -102,11 +103,10 @@ export function CameraCapture({
   // so the camera is the only thing on screen.
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockBodyScroll();
     document.body.classList.add("camera-open");
     return () => {
-      document.body.style.overflow = prev;
+      unlock();
       document.body.classList.remove("camera-open");
     };
   }, [open]);

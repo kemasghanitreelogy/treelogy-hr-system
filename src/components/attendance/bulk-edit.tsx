@@ -7,6 +7,7 @@ import { AlertTriangle, Check, PaintBucket, RotateCcw, Undo2, X } from "lucide-r
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { cn, witaToday } from "@/lib/utils";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 import type { Locale } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -307,12 +308,11 @@ export function BulkEditAttendance({
     };
     window.addEventListener("pointerup", up);
     window.addEventListener("keydown", onKey);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockBodyScroll();
     return () => {
       window.removeEventListener("pointerup", up);
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
+      unlock();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, edits.size, confirm, undo]);
