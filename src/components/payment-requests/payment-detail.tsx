@@ -1,13 +1,19 @@
 "use client";
 
-import { CheckCircle2, Loader2, Paperclip, RefreshCw, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import {
+  Check, CheckCircle2, Clock3, Loader2, Paperclip, RefreshCw, ShieldCheck, Send, X,
+} from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { cn, formatDate, rupiah } from "@/lib/utils";
-import { DEPT_LABEL, KIND_LABEL, composeInvoiceLine } from "@/lib/payment-request";
+import {
+  APPROVAL_LABEL, APPROVAL_TONE, DEPT_LABEL, KIND_LABEL, composeInvoiceLine, rejectedAtStage,
+} from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RejectDialog } from "@/components/ui/reject-dialog";
 import { PaymentFile } from "./payment-file";
 
 const STR: Record<Locale, Record<string, string>> = {
@@ -22,6 +28,21 @@ const STR: Record<Locale, Record<string, string>> = {
     synced: "Sudah masuk sheet", failed: "Belum masuk sheet",
     resend: "Kirim ulang ke sheet", resending: "Mengirim…",
     sheetError: "Sebab terakhir",
+    flow: "Alur persetujuan",
+    step1: "Diajukan",
+    step2: "Persetujuan Operasional",
+    step3: "Diproses Finance",
+    waitingOpsHint: "Menunggu persetujuan tahap 1 (Ops).",
+    waitingFinanceHint: "Lolos tahap Ops — menunggu diproses Finance.",
+    afterOpsHint: "Menyusul setelah tahap Ops disetujui.",
+    approvedBy: "Disetujui",
+    rejectedBy: "Ditolak",
+    reason: "Alasan penolakan",
+    approve: "Setujui",
+    reject: "Tolak",
+    deciding: "Menyimpan…",
+    opsActionHint: "Setelah disetujui, pengajuan otomatis diteruskan ke Finance (masuk Google Sheet).",
+    financeActionHint: "Menyetujui berarti pembayaran selesai diproses Finance.",
   },
   en: {
     sheetLine: "Row in the Google Sheet",
@@ -34,8 +55,77 @@ const STR: Record<Locale, Record<string, string>> = {
     synced: "Written to the sheet", failed: "Not in the sheet",
     resend: "Resend to the sheet", resending: "Sending…",
     sheetError: "Last reason",
+    flow: "Approval flow",
+    step1: "Submitted",
+    step2: "Ops Approval",
+    step3: "Finance Processing",
+    waitingOpsHint: "Awaiting step-1 (Ops) approval.",
+    waitingFinanceHint: "Cleared Ops — awaiting Finance processing.",
+    afterOpsHint: "Follows once Ops approves.",
+    approvedBy: "Approved by",
+    rejectedBy: "Rejected by",
+    reason: "Rejection reason",
+    approve: "Approve",
+    reject: "Reject",
+    deciding: "Saving…",
+    opsActionHint: "Once approved, the request is forwarded to Finance (written to the Google Sheet).",
+    financeActionHint: "Approving marks the payment as processed by Finance.",
   },
 };
+
+type StepState = "done" | "current" | "rejected" | "upcoming";
+
+/**
+ * Satu langkah pada garis waktu persetujuan. Garis penghubung digambar per
+ * langkah (di bawah ikonnya) supaya warnanya mengikuti sejauh mana alur sudah
+ * berjalan — hijau untuk yang terlewati, abu untuk yang belum.
+ */
+function Step({
+  state,
+  title,
+  detail,
+  last = false,
+}: {
+  state: StepState;
+  title: string;
+  detail: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <span
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-1",
+            state === "done" && "bg-forest-600 text-cream ring-forest-600",
+            state === "current" && "bg-gold-soft text-[#8a6512] ring-gold",
+            state === "rejected" && "bg-clay text-cream ring-clay",
+            state === "upcoming" && "bg-cream text-faint ring-line",
+          )}
+        >
+          {state === "done" && <Check className="h-4 w-4" />}
+          {state === "current" && <Clock3 className="h-4 w-4" />}
+          {state === "rejected" && <X className="h-4 w-4" />}
+          {state === "upcoming" && <span className="h-1.5 w-1.5 rounded-full bg-line" />}
+        </span>
+        {!last && (
+          <span className={cn("w-px flex-1 min-h-4", state === "done" ? "bg-forest-300" : "bg-line")} />
+        )}
+      </div>
+      <div className={cn("min-w-0 pb-4", last && "pb-0")}>
+        <p
+          className={cn(
+            "text-sm font-semibold leading-7",
+            state === "upcoming" ? "text-faint" : state === "rejected" ? "text-clay" : "text-ink",
+          )}
+        >
+          {title}
+        </p>
+        <div className="text-xs text-muted">{detail}</div>
+      </div>
+    </div>
+  );
+}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -49,17 +139,46 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 export function PaymentDetail({
   request: r,
   canManage,
+  canApproveOps,
   busy,
+  decideBusy,
   onResend,
+  onDecide,
 }: {
   request: PaymentRequest;
   canManage: boolean;
+  /** Boleh memutus tahap 1 (Admin Operasional; Finance/HR sebagai cadangan). */
+  canApproveOps: boolean;
   busy: boolean;
+  decideBusy: boolean;
   onResend: () => void;
+  onDecide: (action: "approve" | "reject", reason?: string) => void;
 }) {
   const locale = useLocale();
   const t = STR[locale];
   const invoices = r.invoicePaths ?? [];
+  const [rejecting, setRejecting] = useState(false);
+
+  const rejectedStage = rejectedAtStage(r);
+  const opsState: StepState =
+    rejectedStage === "ops" ? "rejected" : r.opsApprovedAt ? "done" : r.approvalStatus === "waiting_ops" ? "current" : "upcoming";
+  const financeState: StepState =
+    rejectedStage === "finance" ? "rejected"
+      : r.approvalStatus === "approved" ? "done"
+      : r.approvalStatus === "waiting_finance" ? "current"
+      : "upcoming";
+
+  // Giliran siapa sekarang → tombol keputusan hanya untuk yang berhak di tahap itu.
+  const myTurn =
+    (r.approvalStatus === "waiting_ops" && canApproveOps) ||
+    (r.approvalStatus === "waiting_finance" && canManage);
+
+  const who = (name?: string | null, at?: string | null, prefix?: string) => (
+    <>
+      {prefix} <span className="font-medium text-ink">{name || t.none}</span>
+      {at && <> · {formatDate(at, "long", locale)}</>}
+    </>
+  );
 
   return (
     <div className="animate-flip-in space-y-4">
@@ -69,9 +188,64 @@ export function PaymentDetail({
         <h3 className="mt-0.5 font-display text-lg font-semibold leading-tight text-ink">
           {composeInvoiceLine(r)}
         </h3>
-        <p className="mt-1.5 font-display text-2xl font-bold text-forest-700 tabular-nums">
-          {rupiah(r.totalAmount)}
-        </p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <p className="font-display text-2xl font-bold text-forest-700 tabular-nums">
+            {rupiah(r.totalAmount)}
+          </p>
+          <Badge tone={APPROVAL_TONE[r.approvalStatus]} dot>
+            {APPROVAL_LABEL[locale][r.approvalStatus]}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Garis waktu dua tahap — siapa pun yang membuka langsung tahu pengajuan
+          ini sedang di meja siapa, sudah lewat mana, dan kenapa bila ditolak. */}
+      <div className="rounded-2xl border border-line bg-panel p-3.5">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-faint">{t.flow}</p>
+        <Step state="done" title={t.step1} detail={who(r.requesterName, r.submittedAt)} />
+        <Step
+          state={opsState}
+          title={t.step2}
+          detail={
+            opsState === "done" ? who(r.opsApprover, r.opsApprovedAt, t.approvedBy)
+              : opsState === "rejected" ? who(r.rejectedBy, r.rejectedAt, t.rejectedBy)
+              : t.waitingOpsHint
+          }
+        />
+        <Step
+          state={financeState}
+          title={t.step3}
+          last
+          detail={
+            financeState === "done" ? who(r.financeApprover, r.financeApprovedAt, t.approvedBy)
+              : financeState === "rejected" ? who(r.rejectedBy, r.rejectedAt, t.rejectedBy)
+              : financeState === "current" ? t.waitingFinanceHint
+              : t.afterOpsHint
+          }
+        />
+
+        {r.approvalStatus === "rejected" && r.rejectionReason && (
+          <p className="mt-3 rounded-xl border border-clay/30 bg-clay-soft/50 px-3 py-2 text-xs text-[#8c3c1f]">
+            <span className="font-semibold">{t.reason}:</span> {r.rejectionReason}
+          </p>
+        )}
+
+        {myTurn && (
+          <div className="mt-3 border-t border-line pt-3">
+            <p className="mb-2 text-[11px] text-faint">
+              {r.approvalStatus === "waiting_ops" ? t.opsActionHint : t.financeActionHint}
+            </p>
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={() => onDecide("approve")} disabled={decideBusy}>
+                {decideBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : r.approvalStatus === "waiting_ops" ? <Send className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                {decideBusy ? t.deciding : t.approve}
+              </Button>
+              <Button variant="danger" className="flex-1" onClick={() => setRejecting(true)} disabled={decideBusy}>
+                <X className="h-4 w-4" /> {t.reject}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lampiran didahulukan — inilah yang dicari orang saat membuka detail */}
@@ -123,30 +297,43 @@ export function PaymentDetail({
         <Row label={t.submitted}>{formatDate(r.submittedAt, "long", locale)}</Row>
       </div>
 
-      {/* Status salinan ke sheet — beserta sebabnya bila gagal, bukan sekadar "gagal" */}
-      <div className="rounded-2xl border border-line bg-panel p-3.5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-medium text-faint">{t.sheetStatus}</span>
-          {r.sheetStatus === "synced" ? (
-            <Badge tone="matcha" className="!px-2 !py-0.5 !text-[10px]">
-              <CheckCircle2 className="h-3 w-3" /> {t.synced}
-            </Badge>
-          ) : (
-            <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
+      {/* Status salinan ke sheet — relevan hanya setelah lolos tahap Ops.
+          Sebelum itu "belum masuk sheet" memang kondisi normalnya. */}
+      {(r.approvalStatus === "waiting_finance" || r.approvalStatus === "approved") && (
+        <div className="rounded-2xl border border-line bg-panel p-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-faint">{t.sheetStatus}</span>
+            {r.sheetStatus === "synced" ? (
+              <Badge tone="matcha" className="!px-2 !py-0.5 !text-[10px]">
+                <CheckCircle2 className="h-3 w-3" /> {t.synced}
+              </Badge>
+            ) : (
+              <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
+            )}
+          </div>
+          {r.sheetStatus !== "synced" && r.sheetError && (
+            <p className="mt-2 break-words border-t border-line pt-2 text-[11px] text-muted">
+              <span className="font-medium">{t.sheetError}:</span> {r.sheetError}
+            </p>
+          )}
+          {r.sheetStatus !== "synced" && canManage && (
+            <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onResend} disabled={busy}>
+              <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
+              {busy ? t.resending : t.resend}
+            </Button>
           )}
         </div>
-        {r.sheetStatus !== "synced" && r.sheetError && (
-          <p className="mt-2 break-words border-t border-line pt-2 text-[11px] text-muted">
-            <span className="font-medium">{t.sheetError}:</span> {r.sheetError}
-          </p>
-        )}
-        {r.sheetStatus !== "synced" && canManage && (
-          <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onResend} disabled={busy}>
-            <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
-            {busy ? t.resending : t.resend}
-          </Button>
-        )}
-      </div>
+      )}
+
+      <RejectDialog
+        open={rejecting}
+        busy={decideBusy}
+        onCancel={() => setRejecting(false)}
+        onConfirm={(reason) => {
+          setRejecting(false);
+          onDecide("reject", reason);
+        }}
+      />
     </div>
   );
 }

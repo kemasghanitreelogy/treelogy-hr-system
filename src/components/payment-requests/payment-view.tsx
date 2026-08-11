@@ -7,7 +7,9 @@ import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
-import { DEPT_LABEL, KIND_LABEL, composeInvoiceLine } from "@/lib/payment-request";
+import {
+  APPROVAL_LABEL, APPROVAL_STATUSES, APPROVAL_TONE, DEPT_LABEL, KIND_LABEL, composeInvoiceLine,
+} from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,13 +33,19 @@ const STR: Record<Locale, Record<string, string>> = {
     emptyHint: "Nama & email terisi otomatis. Anda cukup melengkapi rincian dan melampirkan faktur.",
     emptyCta: "Buat pengajuan pertama",
     emptyFiltered: "Tidak ada pengajuan yang cocok.",
-    colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal", colSheet: "Google Sheet",
+    colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal", colStatus: "Status",
     synced: "Masuk sheet", pendingSync: "Menunggu", failed: "Gagal masuk sheet",
     retry: "Kirim ulang ke sheet",
-    created: "Pengajuan terkirim ✓",
-    createdSheetOk: "Pengajuan terkirim & masuk Google Sheet ✓",
+    allStatus: "Semua status",
+    created: "Pengajuan terkirim — menunggu persetujuan Ops ✓",
     createdSheetFail: "Pengajuan tersimpan, tapi belum masuk Google Sheet.",
     retried: "Berhasil masuk Google Sheet ✓",
+    opsApproved: "Disetujui — diteruskan ke Finance ✓",
+    opsApprovedSheetFail: "Disetujui, tapi belum masuk Google Sheet — kirim ulang dari detail.",
+    financeApproved: "Pembayaran selesai diproses ✓",
+    rejected: "Pengajuan ditolak.",
+    waitingOpsShort: "menunggu ops",
+    waitingFinanceShort: "menunggu finance",
     connection: "Koneksi bermasalah. Coba lagi.",
     count: "pengajuan",
     detailTitle: "Detail Pengajuan",
@@ -54,13 +62,19 @@ const STR: Record<Locale, Record<string, string>> = {
     emptyHint: "Name & email fill themselves in. You only add the details and attach the invoice.",
     emptyCta: "Create the first request",
     emptyFiltered: "No matching requests.",
-    colRequest: "Request", colDept: "Department", colAmount: "Amount", colSheet: "Google Sheet",
+    colRequest: "Request", colDept: "Department", colAmount: "Amount", colStatus: "Status",
     synced: "In sheet", pendingSync: "Pending", failed: "Not in sheet",
     retry: "Resend to sheet",
-    created: "Request submitted ✓",
-    createdSheetOk: "Submitted & written to Google Sheet ✓",
+    allStatus: "All statuses",
+    created: "Submitted — awaiting Ops approval ✓",
     createdSheetFail: "Saved, but not yet written to the Google Sheet.",
     retried: "Written to Google Sheet ✓",
+    opsApproved: "Approved — forwarded to Finance ✓",
+    opsApprovedSheetFail: "Approved, but not yet in the Google Sheet — resend from the detail.",
+    financeApproved: "Payment processed ✓",
+    rejected: "Request rejected.",
+    waitingOpsShort: "awaiting ops",
+    waitingFinanceShort: "awaiting finance",
     connection: "Connection problem. Try again.",
     count: "requests",
     detailTitle: "Request Detail",
@@ -83,6 +97,7 @@ export function PaymentView({
   name,
   email,
   canManage,
+  canApproveOps,
   sheetsConnected,
 }: {
   requests: PaymentRequest[];
@@ -91,8 +106,10 @@ export function PaymentView({
   employeeId: string | null;
   name: string;
   email: string;
-  /** Finance/HR — melihat semua & bisa mengirim ulang ke sheet. */
+  /** Finance/HR — melihat semua, memutus tahap 2, dan bisa mengirim ulang ke sheet. */
   canManage: boolean;
+  /** Approver tahap 1 (Admin Operasional; Finance/HR sebagai cadangan). */
+  canApproveOps: boolean;
   sheetsConnected: boolean;
 }) {
   const locale = useLocale();
@@ -103,23 +120,40 @@ export function PaymentView({
   const [list, setList] = useState(requests);
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");
+  const [status, setStatus] = useState("all");
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [decideBusyId, setDecideBusyId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return list.filter((r) => {
       if (dept !== "all" && r.department !== dept) return false;
+      if (status !== "all" && r.approvalStatus !== status) return false;
       if (!q) return true;
       return [r.description, r.vendorName ?? "", r.requesterName, r.email].some((f) => f.toLowerCase().includes(q));
     });
-  }, [list, query, dept]);
+  }, [list, query, dept, status]);
 
   const total = useMemo(() => filtered.reduce((s, r) => s + r.totalAmount, 0), [filtered]);
   const selected = list.find((x) => x.id === selectedId) ?? null;
-  const gagal = useMemo(() => filtered.filter((r) => r.sheetStatus !== "synced").length, [filtered]);
+  // Gagal masuk sheet hanya relevan untuk baris yang memang sudah waktunya di sheet.
+  const gagal = useMemo(
+    () =>
+      filtered.filter(
+        (r) => (r.approvalStatus === "waiting_finance" || r.approvalStatus === "approved") && r.sheetStatus !== "synced",
+      ).length,
+    [filtered],
+  );
+  const antre = useMemo(
+    () => ({
+      ops: filtered.filter((r) => r.approvalStatus === "waiting_ops").length,
+      finance: filtered.filter((r) => r.approvalStatus === "waiting_finance").length,
+    }),
+    [filtered],
+  );
 
   async function retry(r: PaymentRequest) {
     setBusyId(r.id);
@@ -145,6 +179,34 @@ export function PaymentView({
     }
   }
 
+  async function decide(r: PaymentRequest, action: "approve" | "reject", reason?: string) {
+    setDecideBusyId(r.id);
+    try {
+      const res = await fetch("/api/payment-requests/decide", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.id, action, reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.request) {
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
+        return;
+      }
+      const saved = data.request as PaymentRequest;
+      setList((cur) => cur.map((x) => (x.id === r.id ? saved : x)));
+      if (action === "reject") toast.success(t.rejected);
+      else if (saved.approvalStatus === "waiting_finance") {
+        if (data.sheet?.ok === false) toast.error(t.opsApprovedSheetFail);
+        else toast.success(t.opsApproved);
+      } else toast.success(t.financeApproved);
+      router.refresh();
+    } catch {
+      toast.error(t.connection);
+    } finally {
+      setDecideBusyId(null);
+    }
+  }
+
   return (
     <div className="space-y-3">
       {!sheetsConnected && (
@@ -159,10 +221,16 @@ export function PaymentView({
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.searchPh} aria-label={t.searchPh} className="pl-9" />
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-          <Select value={dept} onChange={(e) => setDept(e.target.value)} aria-label={t.allDept} className="col-span-2 min-w-0 sm:col-span-1 sm:w-44">
+          <Select value={dept} onChange={(e) => setDept(e.target.value)} aria-label={t.allDept} className="min-w-0 sm:w-40">
             <option value="all">{t.allDept}</option>
             {Object.entries(DEPT_LABEL[locale]).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
+            ))}
+          </Select>
+          <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t.allStatus} className="min-w-0 sm:w-44">
+            <option value="all">{t.allStatus}</option>
+            {APPROVAL_STATUSES.map((s) => (
+              <option key={s} value={s}>{APPROVAL_LABEL[locale][s]}</option>
             ))}
           </Select>
           <Button
@@ -185,6 +253,18 @@ export function PaymentView({
         </span>
         <span className="text-line">·</span>
         <span key={total} className="animate-count-up text-muted tabular-nums">{rupiah(total, { compact: true })}</span>
+        {antre.ops > 0 && (
+          <>
+            <span className="text-line">·</span>
+            <span className="font-medium text-[#8a6512] tabular-nums">{antre.ops} {t.waitingOpsShort}</span>
+          </>
+        )}
+        {antre.finance > 0 && (
+          <>
+            <span className="text-line">·</span>
+            <span className="font-medium text-sky tabular-nums">{antre.finance} {t.waitingFinanceShort}</span>
+          </>
+        )}
         {gagal > 0 && (
           <>
             <span className="text-line">·</span>
@@ -212,7 +292,7 @@ export function PaymentView({
             <span>{t.colRequest}</span>
             <span>{t.colDept}</span>
             <span className="text-right">{t.colAmount}</span>
-            <span>{t.colSheet}</span>
+            <span>{t.colStatus}</span>
             <span />
           </div>
           <div className="divide-y divide-line">
@@ -245,29 +325,30 @@ export function PaymentView({
                 </span>
 
                 <span className="flex shrink-0 items-center justify-end gap-1.5 xl:justify-start">
-                  {r.sheetStatus === "synced" ? (
-                    <Badge tone="matcha" className="!px-2 !py-0.5 !text-[10px]">
-                      <CheckCircle2 className="h-3 w-3" /> {t.synced}
-                    </Badge>
-                  ) : (
-                    <>
-                      <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
-                      {canManage && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            retry(r);
-                          }}
-                          disabled={busyId === r.id}
-                          title={r.sheetError ?? undefined}
-                          aria-label={t.retry}
-                          className="cursor-pointer rounded-lg p-1 text-muted transition-colors hover:bg-sand hover:text-ink disabled:opacity-50"
-                        >
-                          <RefreshCw className={cn("h-3.5 w-3.5", busyId === r.id && "animate-spin")} />
-                        </button>
-                      )}
-                    </>
-                  )}
+                  <Badge tone={APPROVAL_TONE[r.approvalStatus]} dot className="!px-2 !py-0.5 !text-[10px]">
+                    {APPROVAL_LABEL[locale][r.approvalStatus]}
+                  </Badge>
+                  {/* Gagal masuk sheet hanya ditandai bila memang sudah waktunya di sheet */}
+                  {(r.approvalStatus === "waiting_finance" || r.approvalStatus === "approved") &&
+                    r.sheetStatus !== "synced" && (
+                      <>
+                        <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
+                        {canManage && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              retry(r);
+                            }}
+                            disabled={busyId === r.id}
+                            title={r.sheetError ?? undefined}
+                            aria-label={t.retry}
+                            className="cursor-pointer rounded-lg p-1 text-muted transition-colors hover:bg-sand hover:text-ink disabled:opacity-50"
+                          >
+                            <RefreshCw className={cn("h-3.5 w-3.5", busyId === r.id && "animate-spin")} />
+                          </button>
+                        )}
+                      </>
+                    )}
                 </span>
                 <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
               </button>
@@ -286,8 +367,11 @@ export function PaymentView({
           <PaymentDetail
             request={selected}
             canManage={canManage}
+            canApproveOps={canApproveOps}
             busy={busyId === selected.id}
+            decideBusy={decideBusyId === selected.id}
             onResend={() => retry(selected)}
+            onDecide={(action, reason) => decide(selected, action, reason)}
           />
         )}
       </Sheet>
@@ -309,11 +393,10 @@ export function PaymentView({
             employeeId={employeeId}
             name={name}
             email={email}
-            onSaved={(saved, sheet) => {
+            onSaved={(saved) => {
               setOpen(false);
               setList((cur) => [saved, ...cur]);
-              if (sheet.ok) toast.success(t.createdSheetOk);
-              else toast.error(`${t.createdSheetFail}`);
+              toast.success(t.created);
               router.refresh();
             }}
             onCancel={() => setOpen(false)}

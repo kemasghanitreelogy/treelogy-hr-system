@@ -333,6 +333,12 @@ export type PaymentKind =
 /** Status penyalinan baris ke Google Sheet — bukan status persetujuan. */
 export type SheetSyncStatus = "pending" | "synced" | "failed";
 
+/**
+ * Status persetujuan dua tahap: operasional (tahap 1) → Finance (tahap 2).
+ * Baris baru masuk Google Sheet setelah tahap 1 disetujui.
+ */
+export type PaymentApprovalStatus = "waiting_ops" | "waiting_finance" | "approved" | "rejected";
+
 export interface PaymentRequest {
   id: string;
   employeeId: string | null;
@@ -359,6 +365,14 @@ export interface PaymentRequest {
   sheetError?: string | null;
   sheetSyncedAt?: string | null;
   submittedAt: string;
+  approvalStatus: PaymentApprovalStatus;
+  opsApprover?: string | null;
+  opsApprovedAt?: string | null;
+  financeApprover?: string | null;
+  financeApprovedAt?: string | null;
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
 }
 
 /* ============================================================

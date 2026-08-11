@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { mapPaymentRequest } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { isValidUploadedPath } from "@/lib/storage-path";
-import { signedFileUrl } from "@/lib/file-link";
-import { appendSheetRow, sheetsMode } from "@/lib/sheets";
-import {
-  DEPARTMENTS, KINDS, MAX_INVOICE_FILES, SHEET_DEPT, composeInvoiceLine,
-  formatSheetTimestamp, sheetKindText,
-} from "@/lib/payment-request";
-import type { PaymentDept, PaymentKind, PaymentRequest } from "@/lib/types";
+import { DEPARTMENTS, KINDS, MAX_INVOICE_FILES } from "@/lib/payment-request";
+import { salinKeSheet } from "./sheet-sync";
+import type { PaymentDept, PaymentKind } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -30,64 +25,6 @@ interface Payload {
   approvalPath?: string;
   dueDate?: string | null;
   moreDetails?: string;
-}
-
-/**
- * Nilai untuk satu baris sheet.
- *
- * Dikirim sebagai PEMETAAN nama-kolom → nilai, bukan urutan posisi. Apps Script
- * membaca baris header lalu menaruh tiap nilai pada kolom yang cocok, sehingga
- * salah-kolom tidak mungkin terjadi dan Finance tetap bebas menggeser kolom.
- * Array `values` hanya cadangan bila skrip di sheet masih versi lama.
- */
-function sheetValues(req: PaymentRequest, origin: string) {
-  // Bertanda tangan: baris di sheet dibaca orang yang belum tentu punya akun
-  // aplikasi HR, jadi tautannya harus bisa dibuka tanpa login.
-  const fileUrl = (path: string) => signedFileUrl(origin, path);
-  const stamp = formatSheetTimestamp(req.submittedAt);
-  // Kunci = penggalan nama kolom di sheet; Apps Script yang mencocokkannya.
-  // Urutan array hanya dipakai sebagai cadangan bila skrip masih versi lama.
-  const record: Record<string, string | number> = {
-    "timestamp": stamp,
-    "department": SHEET_DEPT[req.department],
-    "name": req.requesterName,
-    "email address": req.email,
-    "type of reimbursement": sheetKindText(req),
-    // Tiga bagian disatukan HANYA di sini, supaya kolom sheet tetap seperti biasa.
-    "invoice date": composeInvoiceLine(req),
-    "total amount": req.totalAmount,        // angka polos, seperti diminta form
-    "attach your invoice": req.invoicePaths.map(fileUrl).join(", "),
-    "due date": req.dueDate ?? "",
-    "more details": req.moreDetails ?? "",
-    "attach proof": fileUrl(req.approvalPath),
-  };
-  return { values: Object.values(record), record };
-}
-
-
-/**
- * Tulis hasil penyalinan ke sheet memakai service role, BUKAN sesi pengguna.
- *
- * sheet_status adalah kolom milik sistem: pengaju (Karyawan biasa) tidak punya
- * hak UPDATE pada tabel ini, jadi menulisnya lewat sesi pengguna akan ditolak
- * RLS. Sebelumnya kegagalan itu tidak diperiksa, sehingga setiap pengajuan
- * karyawan tampak "gagal masuk sheet" padahal berhasil — dan Finance akan
- * mengirim ulang, menghasilkan BARIS GANDA di sheet keuangan.
- */
-async function catatStatusSheet(
-  id: string,
-  result: { ok: true } | { ok: false; reason: string },
-): Promise<{ tercatat: boolean; alasan?: string }> {
-  const patch = result.ok
-    ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
-    : { sheet_status: "failed", sheet_error: result.reason };
-
-  const admin = createAdminClient();
-  if (!admin) return { tercatat: false, alasan: "admin_client_unavailable" };
-
-  const { error } = await admin.from("payment_requests").update(patch).eq("id", id);
-  if (error) return { tercatat: false, alasan: error.message };
-  return { tercatat: true };
 }
 
 export async function POST(request: Request) {
@@ -172,27 +109,9 @@ export async function POST(request: Request) {
     .single();
   if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
 
-  const saved = mapPaymentRequest(data);
-
-  // Salin ke Google Sheet. Kegagalan di sini TIDAK membatalkan pengajuan —
-  // barisnya sudah aman di database dan bisa dikirim ulang.
-  const origin = new URL(request.url).origin;
-  const { values, record } = sheetValues(saved, origin);
-  const result = await appendSheetRow(values, record);
-  const catat = await catatStatusSheet(saved.id, result);
-
-  return NextResponse.json({
-    ok: true,
-    request: {
-      ...saved,
-      sheetStatus: result.ok ? "synced" : "failed",
-      sheetError: result.ok ? null : result.reason,
-      sheetSyncedAt: result.ok ? new Date().toISOString() : null,
-    },
-    sheet: result.ok
-      ? { ok: true, statusTersimpan: catat.tercatat }
-      : { ok: false, reason: result.reason, mode: sheetsMode() },
-  });
+  // Alur dua tahap: TIDAK disalin ke Google Sheet di sini. Baris masuk sheet
+  // keuangan setelah tahap 1 (operasional) menyetujui — lihat decide/route.ts.
+  return NextResponse.json({ ok: true, request: mapPaymentRequest(data) });
 }
 
 // ---- Kirim ulang baris yang gagal masuk sheet (Finance/HR) ----
@@ -225,12 +144,13 @@ export async function PATCH(request: Request) {
   if (row.sheet_status === "synced") {
     return NextResponse.json({ error: "already_synced" }, { status: 400 });
   }
-
+  // Belum lolos tahap operasional → memang belum waktunya masuk sheet.
   const saved = mapPaymentRequest(row);
-  const { values, record } = sheetValues(saved, new URL(request.url).origin);
-  const result = await appendSheetRow(values, record);
+  if (saved.approvalStatus === "waiting_ops" || saved.approvalStatus === "rejected") {
+    return NextResponse.json({ error: "not_ops_approved" }, { status: 400 });
+  }
 
-  await catatStatusSheet(body.id, result);
+  const result = await salinKeSheet(saved, new URL(request.url).origin);
   const { data } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
   if (!data) return NextResponse.json({ error: "not_found" }, { status: 404 });
 

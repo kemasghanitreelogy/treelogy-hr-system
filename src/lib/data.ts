@@ -207,6 +207,15 @@ export const mapPaymentRequest = (r: Row): PaymentRequest => ({
   sheetError: (r.sheet_error as string) ?? null,
   sheetSyncedAt: (r.sheet_synced_at as string) ?? null,
   submittedAt: String(r.submitted_at ?? ""),
+  // Baris dari sebelum fitur persetujuan (atau mode demo) dianggap menunggu ops.
+  approvalStatus: (r.approval_status as PaymentRequest["approvalStatus"]) ?? "waiting_ops",
+  opsApprover: (r.ops_approver as string) ?? null,
+  opsApprovedAt: (r.ops_approved_at as string) ?? null,
+  financeApprover: (r.finance_approver as string) ?? null,
+  financeApprovedAt: (r.finance_approved_at as string) ?? null,
+  rejectedBy: (r.rejected_by as string) ?? null,
+  rejectedAt: (r.rejected_at as string) ?? null,
+  rejectionReason: (r.rejection_reason as string) ?? null,
 });
 
 export const mapTravelRequest = (r: Row): TravelRequest => ({
