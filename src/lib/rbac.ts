@@ -212,6 +212,20 @@ export const roles: Role[] = [
     permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve"],
   },
   {
+    id: "role-finance-lead",
+    name: "Finance (Kepala)",
+    description: "Hak Manager + proses pengajuan pembayaran + persetujuan akhir perjalanan dinas.",
+    color: "#8a6512",
+    permissionIds: [...MANAGER_PERMS, "payment.manage", "travel.finalize"],
+  },
+  {
+    id: "role-finance",
+    name: "Finance",
+    description: "Hak Karyawan + proses pengajuan pembayaran + persetujuan akhir perjalanan dinas.",
+    color: "#a8842c",
+    permissionIds: [...EMPLOYEE_PERMS, "payment.manage", "travel.finalize"],
+  },
+  {
     id: "role-payroll",
     name: "Payroll Staff",
     description: "Khusus memproses payroll dan ekspor transfer bank.",

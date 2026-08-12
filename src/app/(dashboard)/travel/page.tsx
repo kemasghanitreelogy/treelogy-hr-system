@@ -31,8 +31,8 @@ export default async function TravelPage() {
 
   const t = STR[locale];
   // Persetujuan DUA TAHAP: tahap 1 pemegang travel.approve (Ops/GA), tahap 2
-  // pemegang travel.finalize (HR/Admin). Siapa orangnya diatur lewat peran di
-  // halaman Peran & Akses (dicek ulang di API + RLS — ini murni untuk tombol).
+  // pemegang travel.finalize (Finance; Admin cadangan). Siapa orangnya diatur
+  // lewat peran di Peran & Akses (dicek ulang di API + RLS — ini murni tombol).
   const canApproveAll = can(user, "travel.approve");
   const canFinalize = can(user, "travel.finalize") || can(user, "employees.manage");
   const canRequestForOthers = can(user, "employees.manage");
