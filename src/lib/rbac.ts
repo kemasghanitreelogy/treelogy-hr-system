@@ -99,6 +99,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "letters",
+    label: "Surat Keluar",
+    permissions: [
+      { id: "letters.view", label: "Lihat agenda surat keluar" },
+      { id: "letters.manage", label: "Kelola surat keluar (catat/edit/hapus)" },
+    ],
+  },
+  {
     module: "kpi",
     label: "KPI & Kinerja",
     permissions: [

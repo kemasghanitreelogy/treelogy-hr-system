@@ -7,11 +7,8 @@ import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
-import {
-  APPROVAL_LABEL, APPROVAL_STATUSES, APPROVAL_TONE, DEPT_LABEL, KIND_LABEL, composeInvoiceLine,
-} from "@/lib/payment-request";
+import { DEPT_LABEL, KIND_LABEL, composeInvoiceLine } from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
@@ -33,14 +30,8 @@ const STR: Record<Locale, Record<string, string>> = {
     emptyHint: "Nama & email terisi otomatis. Anda cukup melengkapi rincian dan melampirkan faktur.",
     emptyCta: "Buat pengajuan pertama",
     emptyFiltered: "Tidak ada pengajuan yang cocok.",
-    colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal", colStatus: "Status",
-    allStatus: "Semua status",
-    created: "Pengajuan terkirim — menunggu persetujuan Ops ✓",
-    opsApproved: "Disetujui — diteruskan ke antrean Finance ✓",
-    financeApproved: "Pembayaran selesai diproses ✓",
-    rejected: "Pengajuan ditolak.",
-    waitingOpsShort: "menunggu ops",
-    waitingFinanceShort: "menunggu finance",
+    colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal",
+    created: "Pengajuan tercatat ✓",
     connection: "Koneksi bermasalah. Coba lagi.",
     count: "pengajuan",
     detailTitle: "Detail Pengajuan",
@@ -55,14 +46,8 @@ const STR: Record<Locale, Record<string, string>> = {
     emptyHint: "Name & email fill themselves in. You only add the details and attach the invoice.",
     emptyCta: "Create the first request",
     emptyFiltered: "No matching requests.",
-    colRequest: "Request", colDept: "Department", colAmount: "Amount", colStatus: "Status",
-    allStatus: "All statuses",
-    created: "Submitted — awaiting Ops approval ✓",
-    opsApproved: "Approved — forwarded to the Finance queue ✓",
-    financeApproved: "Payment processed ✓",
-    rejected: "Request rejected.",
-    waitingOpsShort: "awaiting ops",
-    waitingFinanceShort: "awaiting finance",
+    colRequest: "Request", colDept: "Department", colAmount: "Amount",
+    created: "Request recorded ✓",
     connection: "Connection problem. Try again.",
     count: "requests",
     detailTitle: "Request Detail",
@@ -72,8 +57,8 @@ const STR: Record<Locale, Record<string, string>> = {
 
 const MAX_STAGGER = 8;
 const COLS =
-  "grid-cols-[minmax(0,1fr)_auto] " +
-  "xl:grid-cols-[minmax(0,1fr)_minmax(0,140px)_minmax(0,150px)_minmax(0,140px)_16px]";
+  "grid-cols-[minmax(0,1fr)] " +
+  "xl:grid-cols-[minmax(0,1fr)_minmax(0,150px)_minmax(0,160px)_16px]";
 
 export function PaymentView({
   requests,
@@ -83,7 +68,6 @@ export function PaymentView({
   name,
   email,
   canManage,
-  canApproveOps,
 }: {
   requests: PaymentRequest[];
   fileLinks: PaymentFileLinks;
@@ -91,10 +75,8 @@ export function PaymentView({
   employeeId: string | null;
   name: string;
   email: string;
-  /** Finance/HR — melihat semua dan memutus tahap 2. */
+  /** Finance/HR — melihat semua pengajuan. */
   canManage: boolean;
-  /** Approver tahap 1 (Admin Operasional; Finance/HR sebagai cadangan). */
-  canApproveOps: boolean;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -104,58 +86,21 @@ export function PaymentView({
   const [list, setList] = useState(requests);
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");
-  const [status, setStatus] = useState("all");
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [decideBusyId, setDecideBusyId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return list.filter((r) => {
       if (dept !== "all" && r.department !== dept) return false;
-      if (status !== "all" && r.approvalStatus !== status) return false;
       if (!q) return true;
       return [r.description, r.vendorName ?? "", r.requesterName, r.email].some((f) => f.toLowerCase().includes(q));
     });
-  }, [list, query, dept, status]);
+  }, [list, query, dept]);
 
   const total = useMemo(() => filtered.reduce((s, r) => s + r.totalAmount, 0), [filtered]);
   const selected = list.find((x) => x.id === selectedId) ?? null;
-  const antre = useMemo(
-    () => ({
-      ops: filtered.filter((r) => r.approvalStatus === "waiting_ops").length,
-      finance: filtered.filter((r) => r.approvalStatus === "waiting_finance").length,
-    }),
-    [filtered],
-  );
-
-  async function decide(r: PaymentRequest, action: "approve" | "reject", reason?: string) {
-    setDecideBusyId(r.id);
-    try {
-      const res = await fetch("/api/payment-requests/decide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: r.id, action, reason }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.request) {
-        toast.error(apiErrorMessage(data?.error, locale, res.status));
-        return;
-      }
-      const saved = data.request as PaymentRequest;
-      setList((cur) => cur.map((x) => (x.id === r.id ? saved : x)));
-      if (action === "reject") toast.success(t.rejected);
-      else if (saved.approvalStatus === "waiting_finance") toast.success(t.opsApproved);
-      else toast.success(t.financeApproved);
-      router.refresh();
-    } catch {
-      toast.error(t.connection);
-    } finally {
-      setDecideBusyId(null);
-    }
-  }
-
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -168,12 +113,6 @@ export function PaymentView({
             <option value="all">{t.allDept}</option>
             {Object.entries(DEPT_LABEL[locale]).map(([k, v]) => (
               <option key={k} value={k}>{v}</option>
-            ))}
-          </Select>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t.allStatus} className="min-w-0 sm:w-44">
-            <option value="all">{t.allStatus}</option>
-            {APPROVAL_STATUSES.map((s) => (
-              <option key={s} value={s}>{APPROVAL_LABEL[locale][s]}</option>
             ))}
           </Select>
           <Button
@@ -196,18 +135,6 @@ export function PaymentView({
         </span>
         <span className="text-line">·</span>
         <span key={total} className="animate-count-up text-muted tabular-nums">{rupiah(total, { compact: true })}</span>
-        {antre.ops > 0 && (
-          <>
-            <span className="text-line">·</span>
-            <span className="font-medium text-[#8a6512] tabular-nums">{antre.ops} {t.waitingOpsShort}</span>
-          </>
-        )}
-        {antre.finance > 0 && (
-          <>
-            <span className="text-line">·</span>
-            <span className="font-medium text-sky tabular-nums">{antre.finance} {t.waitingFinanceShort}</span>
-          </>
-        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -229,7 +156,6 @@ export function PaymentView({
             <span>{t.colRequest}</span>
             <span>{t.colDept}</span>
             <span className="text-right">{t.colAmount}</span>
-            <span>{t.colStatus}</span>
             <span />
           </div>
           <div className="divide-y divide-line">
@@ -261,11 +187,6 @@ export function PaymentView({
                   {rupiah(r.totalAmount)}
                 </span>
 
-                <span className="flex shrink-0 items-center justify-end gap-1.5 xl:justify-start">
-                  <Badge tone={APPROVAL_TONE[r.approvalStatus]} dot className="!px-2 !py-0.5 !text-[10px]">
-                    {APPROVAL_LABEL[locale][r.approvalStatus]}
-                  </Badge>
-                </span>
                 <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
               </button>
             ))}
@@ -280,13 +201,7 @@ export function PaymentView({
         width="lg"
       >
         {selected && (
-          <PaymentDetail
-            request={selected}
-            canManage={canManage}
-            canApproveOps={canApproveOps}
-            decideBusy={decideBusyId === selected.id}
-            onDecide={(action, reason) => decide(selected, action, reason)}
-          />
+          <PaymentDetail request={selected} />
         )}
       </Sheet>
 

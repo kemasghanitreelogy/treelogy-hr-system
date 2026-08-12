@@ -104,22 +104,23 @@ export async function POST(request: Request) {
       approval_path: body.approvalPath,
       due_date: body.dueDate || null,
       more_details: body.moreDetails?.trim() || null,
+      // Modul ini TIDAK memakai antrean persetujuan: begitu dikirim, baris
+      // langsung tercatat final. (Persetujuan dua tahap hanya di perjalanan dinas.)
+      approval_status: "approved",
     })
     .select("*")
     .single();
   if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
 
-  // Alur dua tahap sepenuhnya di database: baris menunggu persetujuan Ops,
-  // lalu diproses Finance lewat decide/route.ts. Tidak ada Google Sheet.
   const saved = mapPaymentRequest(data);
 
-  // Yang harus BERAKSI diberi tahu di HP-nya: pemegang tahap 1 (Ops).
+  // Tidak ada antrean persetujuan — Finance cukup DIBERI TAHU ada pengajuan baru.
   await notifyPermissionHolders(
-    "payment.approve_ops",
+    "payment.manage",
     {
       type: "payment",
       title: `${user.name} mengajukan pembayaran`,
-      body: `${composeInvoiceLine(saved)} · ${rupiah(saved.totalAmount)} · perlu persetujuan Ops Anda`,
+      body: `${composeInvoiceLine(saved)} · ${rupiah(saved.totalAmount)}`,
       href: "/payment-requests",
     },
     { excludeEmployeeId: user.employeeId },

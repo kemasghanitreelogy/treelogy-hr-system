@@ -13,11 +13,11 @@ export const metadata = { title: "Pengajuan Pembayaran — Treelogy HR" };
 const STR: Record<Locale, { intro: string }> = {
   id: {
     intro:
-      "Pengajuan pembayaran & reimbursement dengan persetujuan dua tahap di sistem: disaring Admin Operasional dulu, lalu diproses Finance. Semua status dan riwayat tercatat di sini.",
+      "Pengajuan pembayaran & reimbursement. Setiap kiriman langsung tercatat di sistem beserta lampirannya — tidak menunggu persetujuan.",
   },
   en: {
     intro:
-      "Payment & reimbursement requests with two-step in-system approval: screened by Ops first, then processed by Finance. Every status and history lives right here.",
+      "Payment & reimbursement requests. Every submission is recorded immediately with its attachments — no approval queue.",
   },
 };
 
@@ -28,9 +28,7 @@ export default async function PaymentRequestsPage() {
     getLocale(),
     headers(),
   ]);
-  if (!can(user, "payment.request") && !can(user, "payment.manage") && !can(user, "payment.approve_ops")) {
-    redirect("/dashboard");
-  }
+  if (!can(user, "payment.request") && !can(user, "payment.manage")) redirect("/dashboard");
 
   // Tautan lampiran ditandatangani di server — rahasianya tidak pernah sampai ke
   // browser, tapi hasilnya bisa dibuka siapa pun yang memegang berkas Excel
@@ -58,9 +56,6 @@ export default async function PaymentRequestsPage() {
         name={user?.name ?? ""}
         email={user?.email ?? ""}
         canManage={can(user, "payment.manage") || can(user, "employees.manage")}
-        canApproveOps={
-          can(user, "payment.approve_ops") || can(user, "payment.manage") || can(user, "employees.manage")
-        }
       />
     </div>
   );

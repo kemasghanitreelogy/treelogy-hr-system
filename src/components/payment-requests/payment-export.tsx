@@ -43,8 +43,8 @@ const STR: Record<
     preview: "Yang akan diekspor",
     rows: (n) => `${n} pengajuan`,
     noRows: "Tidak ada pengajuan pada rentang ini.",
-    breakdown: (selesai, proses) =>
-      proses > 0 ? `${selesai} disetujui · ${proses} dalam proses` : `${selesai} disetujui`,
+    breakdown: (lengkap, kosong) =>
+      kosong > 0 ? `${lengkap} berlampiran · ${kosong} tanpa lampiran` : `${lengkap} berlampiran`,
     topDept: "Departemen terbesar",
     value: "Total nominal",
     download: "Unduh Excel", working: "Menyiapkan…", cancel: "Batal",
@@ -61,8 +61,8 @@ const STR: Record<
     preview: "What will be exported",
     rows: (n) => `${n} requests`,
     noRows: "No requests in this range.",
-    breakdown: (selesai, proses) =>
-      proses > 0 ? `${selesai} approved · ${proses} in progress` : `${selesai} approved`,
+    breakdown: (lengkap, kosong) =>
+      kosong > 0 ? `${lengkap} with invoice · ${kosong} without` : `${lengkap} with invoice`,
     topDept: "Largest department",
     value: "Total amount",
     download: "Download Excel", working: "Preparing…", cancel: "Cancel",
@@ -121,10 +121,9 @@ export function PaymentExport({
   }, [baris, mode, from, to, rangeInvalid]);
 
   const ringkas = useMemo(() => {
-    const selesai = terpilih.filter((r) => r.approvalStatus === "approved").length;
-    const proses = terpilih.filter(
-      (r) => r.approvalStatus === "waiting_ops" || r.approvalStatus === "waiting_finance",
-    ).length;
+    // Rekap lampiran: baris tanpa faktur adalah yang perlu dilengkapi Finance.
+    const selesai = terpilih.filter((r) => (r.invoicePaths ?? []).length > 0).length;
+    const proses = terpilih.length - selesai;
     const perDept = new Map<string, number>();
     for (const r of terpilih) {
       const k = DEPT_LABEL[locale][r.department];

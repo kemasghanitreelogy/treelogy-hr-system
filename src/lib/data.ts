@@ -12,6 +12,7 @@ import {
   kpis as seedKpis,
   leaveBalances as seedBalances,
   leaveRequests as seedLeave,
+  outgoingLetters as seedLetters,
   overtimeRequests as seedOvertime,
   payrollRuns as seedRuns,
   scheduleTemplates as seedScheduleTemplates,
@@ -37,6 +38,7 @@ import type {
   Employee,
   InventoryItem,
   Kpi,
+  OutgoingLetter,
   AppNotification,
   LeaveBalance,
   LeaveRequest,
@@ -181,6 +183,26 @@ export const mapCompanyDocument = (r: Row): CompanyDocument => ({
   docNumber: (r.doc_number as string) ?? null,
   issueDate: (r.issue_date as string) ?? null,
   expiryDate: (r.expiry_date as string) ?? null,
+  filePath: (r.file_path as string) ?? null,
+  note: (r.note as string) ?? null,
+  createdAt: String(r.created_at ?? ""),
+  updatedAt: String(r.updated_at ?? ""),
+});
+
+export const mapOutgoingLetter = (r: Row): OutgoingLetter => ({
+  id: String(r.id),
+  code: String(r.code),
+  letterNumber: (r.letter_number as string) ?? null,
+  letterDate: String(r.letter_date ?? ""),
+  recipient: String(r.recipient ?? ""),
+  recipientAddress: (r.recipient_address as string) ?? null,
+  subject: String(r.subject ?? ""),
+  category: r.category as OutgoingLetter["category"],
+  urgency: (r.urgency as OutgoingLetter["urgency"]) ?? "biasa",
+  signer: (r.signer as string) ?? null,
+  delivery: (r.delivery as OutgoingLetter["delivery"]) ?? null,
+  status: (r.status as OutgoingLetter["status"]) ?? "draft",
+  sentDate: (r.sent_date as string) ?? null,
   filePath: (r.file_path as string) ?? null,
   note: (r.note as string) ?? null,
   createdAt: String(r.created_at ?? ""),
@@ -466,6 +488,14 @@ export async function getTravelRequests(): Promise<TravelRequest[]> {
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   const rows = await fetchTable("inventory_items", mapInventoryItem, seedInventory);
   return rows.slice().sort((a, b) => b.code.localeCompare(a.code));
+}
+
+/** Agenda surat keluar — surat terbaru dulu (tanggal surat menurun). */
+export async function getOutgoingLetters(): Promise<OutgoingLetter[]> {
+  const rows = await fetchTable("outgoing_letters", mapOutgoingLetter, seedLetters);
+  return rows
+    .slice()
+    .sort((a, b) => b.letterDate.localeCompare(a.letterDate) || b.code.localeCompare(a.code));
 }
 
 /** Dokumen perusahaan, terbaru dulu (kode menurun = urutan pendaftaran). */

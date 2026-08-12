@@ -10,6 +10,7 @@ import type {
   Kpi,
   LeaveBalance,
   LeaveRequest,
+  OutgoingLetter,
   OvertimeRequest,
   PayrollRun,
   ScheduleTemplate,
@@ -318,6 +319,41 @@ export const companyDocuments: CompanyDocument[] = [
     docNumber: null, issueDate: "2024-01-08", expiryDate: null,
     filePath: null, note: "Revisi 2 — wajib dibaca karyawan produksi baru",
     createdAt: "2024-01-08T09:00:00+08:00", updatedAt: "2025-11-20T09:00:00+08:00",
+  },
+];
+
+// Agenda surat keluar — dataset demo (mode tanpa Supabase). Nomor agenda
+// mengikuti pola yang dibuat database: SK-0001, SK-0002, …
+export const outgoingLetters: OutgoingLetter[] = [
+  {
+    id: "sk1", code: "SK-0001", letterNumber: "045/TRL-GA/VIII/2026",
+    letterDate: "2026-08-10", recipient: "PT Sumber Tani Makmur",
+    recipientAddress: "Jl. Raya Denpasar No. 88, Badung, Bali",
+    subject: "Penawaran kerja sama pasokan daun kelor kering", category: "penawaran",
+    urgency: "biasa", signer: "I Gede Dhanajaya Putra — General Manager",
+    delivery: "email", status: "terkirim", sentDate: "2026-08-10",
+    filePath: null, note: null,
+    createdAt: "2026-08-10T09:00:00+08:00", updatedAt: "2026-08-10T09:00:00+08:00",
+  },
+  {
+    id: "sk2", code: "SK-0002", letterNumber: "046/TRL-GA/VIII/2026",
+    letterDate: "2026-08-11", recipient: "Dinas Ketenagakerjaan Kab. Badung",
+    recipientAddress: "Jl. Raya Sempidi, Mengwi, Badung",
+    subject: "Permohonan perpanjangan sertifikat laik higiene sanitasi", category: "permohonan",
+    urgency: "segera", signer: "Tantiyawati — General Affairs & Compliance Officer",
+    delivery: "langsung", status: "terkirim", sentDate: "2026-08-11",
+    filePath: null, note: "Berkas pendukung menyusul lewat email",
+    createdAt: "2026-08-11T09:00:00+08:00", updatedAt: "2026-08-11T09:00:00+08:00",
+  },
+  {
+    id: "sk3", code: "SK-0003", letterNumber: null,
+    letterDate: "2026-08-12", recipient: "CV Bali Organik Sejahtera",
+    recipientAddress: null,
+    subject: "Undangan kunjungan pabrik dan diskusi kemitraan", category: "undangan",
+    urgency: "biasa", signer: null,
+    delivery: null, status: "draft", sentDate: null,
+    filePath: null, note: "Menunggu konfirmasi tanggal dari produksi",
+    createdAt: "2026-08-12T09:00:00+08:00", updatedAt: "2026-08-12T09:00:00+08:00",
   },
 ];
 

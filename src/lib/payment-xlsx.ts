@@ -2,7 +2,7 @@
 // ExcelJS di-import dinamis agar tidak membebani bundle halaman.
 import type { PaymentRequest } from "./types";
 import type { Locale } from "./i18n";
-import { APPROVAL_LABEL, DEPT_LABEL, KIND_LABEL } from "./payment-request";
+import { DEPT_LABEL, KIND_LABEL } from "./payment-request";
 import { witaToday } from "./utils";
 
 /** Baris + tautan berkas yang sudah ditandatangani server (bisa dibuka siapa pun). */
@@ -39,7 +39,6 @@ const STR: Record<Locale, Record<string, string>> = {
     email: "Email", kind: "Jenis", invoiceDate: "Tgl invoice", desc: "Deskripsi",
     vendor: "Vendor", amount: "Nominal", due: "Jatuh tempo", more: "Detail tambahan",
     files: "Jml lampiran", invoiceLink: "Tautan faktur", approvalLink: "Tautan persetujuan",
-    status: "Status persetujuan",
     grandTotal: "TOTAL",
     byDept: "Per departemen", byKind: "Per jenis",
     count: "Jumlah", sum: "Total nominal",
@@ -53,7 +52,6 @@ const STR: Record<Locale, Record<string, string>> = {
     email: "Email", kind: "Type", invoiceDate: "Invoice date", desc: "Description",
     vendor: "Vendor", amount: "Amount", due: "Due date", more: "More details",
     files: "Files", invoiceLink: "Invoice link", approvalLink: "Approval link",
-    status: "Approval status",
     grandTotal: "TOTAL",
     byDept: "By department", byKind: "By type",
     count: "Count", sum: "Total amount",
@@ -106,7 +104,6 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
     { label: t.files, width: 8, num: true },
     { label: t.invoiceLink, width: 40 },
     { label: t.approvalLink, width: 40 },
-    { label: t.status, width: 16 },
   ];
   const lastCol = cols.length;
   cols.forEach((c, i) => (ws.getColumn(i + 1).width = c.width));
@@ -154,7 +151,6 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
       (r.invoicePaths ?? []).length,
       (r.invoiceUrls ?? []).join("\n"),
       r.approvalUrl ?? "",
-      APPROVAL_LABEL[locale][r.approvalStatus],
     ];
     values.forEach((v, ci) => {
       const cell = row.getCell(ci + 1);
@@ -177,14 +173,6 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
         cell.alignment = { horizontal: "center", vertical: "middle" };
       }
     }
-    // Warna status persetujuan: hijau = selesai, merah = ditolak, netral = proses.
-    const st = row.getCell(16);
-    if (r.approvalStatus === "approved" || r.approvalStatus === "rejected") {
-      const good = r.approvalStatus === "approved";
-      st.fill = { type: "pattern", pattern: "solid", fgColor: { argb: good ? C.ok : C.bad } };
-      st.font = { name: "Calibri", bold: true, size: 10, color: { argb: good ? C.okTx : C.badTx } };
-    }
-    st.alignment = { horizontal: "center", vertical: "middle" };
     row.height = 20;
   });
 

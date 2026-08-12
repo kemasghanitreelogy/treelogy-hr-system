@@ -1,5 +1,5 @@
 import type { Locale } from "./i18n";
-import type { PaymentApprovalStatus, PaymentDept, PaymentKind, PaymentRequest } from "./types";
+import type { PaymentDept, PaymentKind, PaymentRequest } from "./types";
 
 /* ============================================================
    Pengajuan pembayaran / reimbursement.
@@ -64,42 +64,6 @@ export const DEPT_LABEL: Record<Locale, Record<PaymentDept, string>> = {
   id: { ...SHEET_DEPT },
   en: { ...SHEET_DEPT },
 };
-
-/* ---- Persetujuan dua tahap: operasional → Finance ---- */
-
-export const APPROVAL_STATUSES: PaymentApprovalStatus[] = [
-  "waiting_ops", "waiting_finance", "approved", "rejected",
-];
-
-export const APPROVAL_LABEL: Record<Locale, Record<PaymentApprovalStatus, string>> = {
-  id: {
-    waiting_ops: "Menunggu Ops",
-    waiting_finance: "Menunggu Finance",
-    approved: "Disetujui",
-    rejected: "Ditolak",
-  },
-  en: {
-    waiting_ops: "Awaiting Ops",
-    waiting_finance: "Awaiting Finance",
-    approved: "Approved",
-    rejected: "Rejected",
-  },
-};
-
-type Tone = "forest" | "olive" | "matcha" | "gold" | "clay" | "sky" | "neutral";
-
-export const APPROVAL_TONE: Record<PaymentApprovalStatus, Tone> = {
-  waiting_ops: "gold",
-  waiting_finance: "sky",
-  approved: "matcha",
-  rejected: "clay",
-};
-
-/** Tahap yang menolak — untuk menaruh tanda ✕ pada langkah yang tepat di stepper. */
-export function rejectedAtStage(r: Pick<PaymentRequest, "approvalStatus" | "opsApprovedAt">): "ops" | "finance" | null {
-  if (r.approvalStatus !== "rejected") return null;
-  return r.opsApprovedAt ? "finance" : "ops";
-}
 
 /** Jenis yang ditulis ke sheet: "Other" ditulis apa adanya beserta keterangannya. */
 export function sheetKindText(req: Pick<PaymentRequest, "kind" | "kindOther">): string {

@@ -28,6 +28,9 @@ const MESSAGES: Record<string, Msg> = {
 
   // --- employee fields ---
   name_required: { id: "Nama wajib diisi.", en: "Name is required." },
+  recipient_required: { id: "Tujuan surat wajib diisi.", en: "The recipient is required." },
+  subject_required: { id: "Perihal wajib diisi.", en: "The subject is required." },
+  sent_date_required: { id: "Tanggal kirim wajib diisi untuk surat terkirim.", en: "A sent date is required for sent letters." },
   name_and_team_required: { id: "Nama dan tim wajib diisi.", en: "Name and team are required." },
   employee_required: { id: "Karyawan wajib dipilih.", en: "An employee must be selected." },
   employee_and_role_required: { id: "Karyawan dan peran wajib dipilih.", en: "Employee and role are required." },

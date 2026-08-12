@@ -504,6 +504,50 @@ export interface CompanyDocument {
   updatedAt: string;
 }
 
+/* ============================================================
+   Surat Keluar (agenda surat keluar)
+   ============================================================ */
+
+export type LetterCategory =
+  | "undangan"
+  | "penawaran"
+  | "permohonan"
+  | "pemberitahuan"
+  | "perjanjian"
+  | "surat_tugas"
+  | "surat_keterangan"
+  | "penagihan"
+  | "lainnya";
+
+export type LetterUrgency = "biasa" | "segera" | "sangat_segera" | "rahasia";
+export type LetterStatus = "draft" | "terkirim" | "dibatalkan";
+export type LetterDelivery = "email" | "kurir" | "pos" | "langsung" | "whatsapp";
+
+export interface OutgoingLetter {
+  id: string;
+  /** Nomor agenda unik yang dibuat database (SK-0001). */
+  code: string;
+  /** Nomor surat resmi sesuai tata naskah — boleh kosong saat masih draft. */
+  letterNumber?: string | null;
+  letterDate: string; // YYYY-MM-DD
+  recipient: string;
+  recipientAddress?: string | null;
+  /** Perihal. */
+  subject: string;
+  category: LetterCategory;
+  urgency: LetterUrgency;
+  /** Penanda tangan (nama + jabatan). */
+  signer?: string | null;
+  delivery?: LetterDelivery | null;
+  status: LetterStatus;
+  sentDate?: string | null; // YYYY-MM-DD
+  /** Berkas surat di bucket privat `letter-files`. */
+  filePath?: string | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Kpi {
   id: string;
   employeeId: string;

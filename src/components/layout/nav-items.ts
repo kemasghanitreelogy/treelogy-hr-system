@@ -6,6 +6,7 @@ import {
   FolderOpen,
   LayoutDashboard,
   Layers,
+  Mails,
   Network,
   Package,
   Plane,
@@ -46,6 +47,7 @@ const ITEMS: Record<string, NavItem> = {
   "/holidays": { href: "/holidays", label: "Hari Libur", labelEn: "Holidays", icon: CalendarOff, perm: "dashboard.view" },
   "/inventory": { href: "/inventory", label: "Inventaris", labelEn: "Inventory", icon: Package, perm: "inventory.view" },
   "/documents": { href: "/documents", label: "Dokumen", labelEn: "Documents", icon: FolderOpen, perm: "documents.view" },
+  "/letters": { href: "/letters", label: "Surat Keluar", labelEn: "Outgoing Letters", icon: Mails, perm: "letters.view" },
   "/payment-requests": { href: "/payment-requests", label: "Pengajuan Pembayaran", labelEn: "Payment Requests", icon: ReceiptText, perm: "payment.request" },
   "/travel": { href: "/travel", label: "Perjalanan Dinas", labelEn: "Business Travel", icon: Plane, perm: "travel.view" },
   "/access": { href: "/access", label: "Peran & Akses", labelEn: "Roles & Access", icon: ShieldCheck, perm: "access.roles" },
@@ -76,8 +78,8 @@ export function audienceFromPermissions(permissions: string[]): Audience {
 // Order by real-world usage frequency for each audience (Hick's Law + Serial Position:
 // most-used first = primacy; rarely-used config last).
 const ORDER: Record<Audience, string[]> = {
-  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/travel", "/payment-requests", "/inventory", "/documents", "/access", "/super-admin"],
-  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/travel", "/payment-requests", "/inventory", "/documents", "/employees", "/org-structure", "/access", "/super-admin"],
+  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/travel", "/payment-requests", "/inventory", "/documents", "/letters", "/access", "/super-admin"],
+  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/travel", "/payment-requests", "/inventory", "/documents", "/letters", "/employees", "/org-structure", "/access", "/super-admin"],
 };
 
 // Most-frequent destinations for the mobile thumb-zone bar (4 = sweet spot).
