@@ -75,6 +75,16 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "reimbursement",
+    label: "Reimbursement Perjalanan",
+    permissions: [
+      { id: "reimbursement.view", label: "Lihat klaim reimbursement" },
+      { id: "reimbursement.request", label: "Ajukan klaim reimbursement" },
+      { id: "reimbursement.approve", label: "Setujui tahap 1 reimbursement (Ops/GA)" },
+      { id: "reimbursement.finalize", label: "Persetujuan akhir reimbursement (Finance)" },
+    ],
+  },
+  {
     module: "payment",
     label: "Pengajuan Pembayaran",
     permissions: [
@@ -158,13 +168,15 @@ const MANAGER_PERMS = [
   "travel.view",
   "travel.request",
   "payment.request",
+  "reimbursement.view",
+  "reimbursement.request",
   "kpi.view",
 ];
 
 // payroll.view di sini = karyawan boleh melihat SLIP GAJINYA SENDIRI;
 // halaman payroll menampilkan mode operasional hanya untuk payroll.process.
 // shifts.view = lihat halaman Jadwal (jadwal sendiri + tabungan libur).
-const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view", "documents.view", "travel.view", "travel.request", "payment.request"];
+const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view", "documents.view", "travel.view", "travel.request", "payment.request", "reimbursement.view", "reimbursement.request"];
 
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");
@@ -217,21 +229,21 @@ export const roles: Role[] = [
     color: "#6b7548",
     // Terpisah dari "Pengelola Inventaris" supaya pemegang peran itu TIDAK ikut
     // mendapat hak menyetujui perjalanan dinas.
-    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve"],
+    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve", "reimbursement.approve"],
   },
   {
     id: "role-finance-lead",
     name: "Finance (Kepala)",
     description: "Hak Manager + proses pengajuan pembayaran + persetujuan akhir perjalanan dinas.",
     color: "#8a6512",
-    permissionIds: [...MANAGER_PERMS, "payment.manage", "travel.finalize"],
+    permissionIds: [...MANAGER_PERMS, "payment.manage", "travel.finalize", "reimbursement.finalize"],
   },
   {
     id: "role-finance",
     name: "Finance",
     description: "Hak Karyawan + proses pengajuan pembayaran + persetujuan akhir perjalanan dinas.",
     color: "#a8842c",
-    permissionIds: [...EMPLOYEE_PERMS, "payment.manage", "travel.finalize"],
+    permissionIds: [...EMPLOYEE_PERMS, "payment.manage", "travel.finalize", "reimbursement.finalize"],
   },
   {
     id: "role-payroll",

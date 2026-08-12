@@ -512,6 +512,53 @@ export interface CompanyDocument {
 }
 
 /* ============================================================
+   Travel Reimbursement (klaim biaya perjalanan dinas)
+   ============================================================ */
+
+export type ReimbursementCategory =
+  | "transportation"
+  | "accommodation"
+  | "meals"
+  | "per_diem"
+  | "fuel"
+  | "parking_toll"
+  | "other";
+
+export interface TravelReimbursement {
+  id: string;
+  /** Nomor klaim unik yang dibuat database (TR-0001). */
+  code: string;
+  employeeId: string;
+  /** Jabatan saat klaim (snapshot) — riwayat tetap benar setelah promosi. */
+  jobTitle: string;
+
+  purpose: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+
+  expenseDate: string; // YYYY-MM-DD
+  category: ReimbursementCategory;
+  description: string;
+  receiptNumber?: string | null;
+  amount: number;
+  /** Bukti/kuitansi di bucket privat `reimbursement-files` (maks 5). */
+  receiptPaths: string[];
+
+  /** Pernyataan karyawan — wajib dicentang sebelum bisa dikirim. */
+  confirmed: boolean;
+
+  /** Persetujuan dua tahap: tahap 1 = manager*, tahap 2 = hr* (nama warisan). */
+  status: RequestStatus;
+  approver?: string | null;
+  rejectionReason?: string | null;
+  managerApprover?: string | null;
+  managerApprovedAt?: string | null;
+  hrApprover?: string | null;
+  hrApprovedAt?: string | null;
+  requestedAt: string;
+}
+
+/* ============================================================
    Surat Keluar (agenda surat keluar)
    ============================================================ */
 

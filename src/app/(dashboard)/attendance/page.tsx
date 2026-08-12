@@ -13,7 +13,6 @@ import {
   todayPendingClock,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
-import { audienceFromPermissions } from "@/components/layout/nav-items";
 
 export const metadata = { title: "Absensi — Treelogy HR" };
 
@@ -58,10 +57,13 @@ export default async function AttendancePage() {
   // Today's holiday that applies to this employee (drives the swap/overtime prompt).
   const holidayToday = await getHolidayToday(me?.religion);
 
-  // Karyawan (audience "self") sudah punya widget clock di Beranda — di sini
-  // cukup riwayat saja, jangan dobel. HR/admin tetap dapat widget di halaman
-  // ini karena Beranda mereka berisi dashboard operasional (tanpa widget).
-  const showClockWidget = audienceFromPermissions(user?.permissions ?? []) === "ops";
+  // Widget clock tampil untuk SIAPA PUN yang punya data karyawan.
+  //
+  // Dulu karyawan biasa sengaja tidak diberi widget di sini (sudah ada di
+  // Beranda), tapi notifikasi pengingat clock-in/out menautkan ke halaman ini —
+  // dan mereka mendarat di halaman tanpa tombolnya, lalu harus mencari sendiri.
+  // Pengingat harus mendarat tepat di tempat aksinya.
+  const showClockWidget = Boolean(user?.employeeId);
   // Today's record so the clock widget reflects clocked-in state on refresh.
   // Include a still-pending (off-day / luar area) clock-in so the button stays
   // "Clock Out" instead of reverting to "Clock In".
