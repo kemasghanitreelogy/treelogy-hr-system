@@ -1,11 +1,13 @@
 "use client";
 
-import { Paperclip, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Paperclip, RefreshCw, ShieldCheck } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
-import { formatDate, rupiah } from "@/lib/utils";
+import { cn, formatDate, rupiah } from "@/lib/utils";
 import { DEPT_LABEL, KIND_LABEL, composeInvoiceLine } from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { PaymentFile } from "./payment-file";
 
 const STR: Record<Locale, Record<string, string>> = {
@@ -16,6 +18,8 @@ const STR: Record<Locale, Record<string, string>> = {
     amount: "Total nominal", due: "Jatuh tempo", more: "Detail tambahan",
     submitted: "Diajukan", none: "—",
     invoices: "Lampiran faktur", approval: "Bukti persetujuan atasan",
+    sheetStatus: "Status Google Sheet", synced: "Sudah masuk sheet", failed: "Belum masuk sheet",
+    resend: "Kirim ulang ke sheet", resending: "Mengirim…", sheetError: "Sebab terakhir",
   },
   en: {
     sheetLine: "Request summary",
@@ -24,6 +28,8 @@ const STR: Record<Locale, Record<string, string>> = {
     amount: "Total amount", due: "Due date", more: "More details",
     submitted: "Submitted", none: "—",
     invoices: "Invoice attachments", approval: "Dept. head approval",
+    sheetStatus: "Google Sheet status", synced: "Written to the sheet", failed: "Not in the sheet",
+    resend: "Resend to the sheet", resending: "Sending…", sheetError: "Last reason",
   },
 };
 
@@ -36,7 +42,17 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export function PaymentDetail({ request: r }: { request: PaymentRequest }) {
+export function PaymentDetail({
+  request: r,
+  canManage,
+  busy,
+  onResend,
+}: {
+  request: PaymentRequest;
+  canManage: boolean;
+  busy: boolean;
+  onResend: () => void;
+}) {
   const locale = useLocale();
   const t = STR[locale];
   const invoices = r.invoicePaths ?? [];
@@ -103,6 +119,30 @@ export function PaymentDetail({ request: r }: { request: PaymentRequest }) {
         <Row label={t.submitted}>{formatDate(r.submittedAt, "long", locale)}</Row>
       </div>
 
+      {/* Status salinan ke sheet — beserta sebabnya bila gagal, bukan sekadar "gagal" */}
+      <div className="rounded-2xl border border-line bg-panel p-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-medium text-faint">{t.sheetStatus}</span>
+          {r.sheetStatus === "synced" ? (
+            <Badge tone="matcha" className="!px-2 !py-0.5 !text-[10px]">
+              <CheckCircle2 className="h-3 w-3" /> {t.synced}
+            </Badge>
+          ) : (
+            <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
+          )}
+        </div>
+        {r.sheetStatus !== "synced" && r.sheetError && (
+          <p className="mt-2 break-words border-t border-line pt-2 text-[11px] text-muted">
+            <span className="font-medium">{t.sheetError}:</span> {r.sheetError}
+          </p>
+        )}
+        {r.sheetStatus !== "synced" && canManage && (
+          <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onResend} disabled={busy}>
+            <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
+            {busy ? t.resending : t.resend}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

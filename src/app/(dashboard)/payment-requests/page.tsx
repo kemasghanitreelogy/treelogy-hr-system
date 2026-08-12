@@ -5,6 +5,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { getPaymentRequests } from "@/lib/data";
 import { signedFileUrl } from "@/lib/file-link";
 import { getLocale } from "@/lib/locale-server";
+import { sheetsMode } from "@/lib/sheets";
 import { witaToday } from "@/lib/utils";
 import type { Locale } from "@/lib/i18n";
 
@@ -13,11 +14,11 @@ export const metadata = { title: "Pengajuan Pembayaran — Treelogy HR" };
 const STR: Record<Locale, { intro: string }> = {
   id: {
     intro:
-      "Pengajuan pembayaran & reimbursement. Setiap kiriman langsung tercatat di sistem beserta lampirannya — tidak menunggu persetujuan.",
+      "Pengajuan pembayaran & reimbursement. Setiap kiriman langsung masuk Google Sheet keuangan — tanpa menunggu persetujuan.",
   },
   en: {
     intro:
-      "Payment & reimbursement requests. Every submission is recorded immediately with its attachments — no approval queue.",
+      "Payment & reimbursement requests. Every submission goes straight into the finance Google Sheet — no approval queue.",
   },
 };
 
@@ -56,6 +57,7 @@ export default async function PaymentRequestsPage() {
         name={user?.name ?? ""}
         email={user?.email ?? ""}
         canManage={can(user, "payment.manage") || can(user, "employees.manage")}
+        sheetsConnected={sheetsMode() !== "none"}
       />
     </div>
   );

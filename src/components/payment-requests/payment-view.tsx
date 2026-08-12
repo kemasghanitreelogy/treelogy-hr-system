@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Download, Plus, ReceiptText, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Download, Plus, ReceiptText, RefreshCw, Search } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
 import { DEPT_LABEL, KIND_LABEL, composeInvoiceLine } from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
@@ -30,7 +31,12 @@ const STR: Record<Locale, Record<string, string>> = {
     emptyHint: "Nama & email terisi otomatis. Anda cukup melengkapi rincian dan melampirkan faktur.",
     emptyCta: "Buat pengajuan pertama",
     emptyFiltered: "Tidak ada pengajuan yang cocok.",
-    colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal",
+    colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal", colSheet: "Google Sheet",
+    synced: "Masuk sheet", failed: "Belum masuk sheet",
+    retry: "Kirim ulang ke sheet", retried: "Berhasil masuk Google Sheet ✓",
+    createdSheetOk: "Pengajuan terkirim & masuk Google Sheet ✓",
+    createdSheetFail: "Pengajuan tersimpan, tapi belum masuk Google Sheet.",
+    notConfigured: "Google Sheet belum tersambung — pengajuan tetap tersimpan dan bisa dikirim ke sheet begitu kredensial diisi.",
     created: "Pengajuan tercatat ✓",
     connection: "Koneksi bermasalah. Coba lagi.",
     count: "pengajuan",
@@ -46,7 +52,12 @@ const STR: Record<Locale, Record<string, string>> = {
     emptyHint: "Name & email fill themselves in. You only add the details and attach the invoice.",
     emptyCta: "Create the first request",
     emptyFiltered: "No matching requests.",
-    colRequest: "Request", colDept: "Department", colAmount: "Amount",
+    colRequest: "Request", colDept: "Department", colAmount: "Amount", colSheet: "Google Sheet",
+    synced: "In sheet", failed: "Not in sheet",
+    retry: "Resend to sheet", retried: "Written to Google Sheet ✓",
+    createdSheetOk: "Submitted & written to Google Sheet ✓",
+    createdSheetFail: "Saved, but not yet written to the Google Sheet.",
+    notConfigured: "Google Sheet isn't connected — requests are still stored and can be pushed once credentials are set.",
     created: "Request recorded ✓",
     connection: "Connection problem. Try again.",
     count: "requests",
@@ -57,8 +68,8 @@ const STR: Record<Locale, Record<string, string>> = {
 
 const MAX_STAGGER = 8;
 const COLS =
-  "grid-cols-[minmax(0,1fr)] " +
-  "xl:grid-cols-[minmax(0,1fr)_minmax(0,150px)_minmax(0,160px)_16px]";
+  "grid-cols-[minmax(0,1fr)_auto] " +
+  "xl:grid-cols-[minmax(0,1fr)_minmax(0,140px)_minmax(0,150px)_minmax(0,140px)_16px]";
 
 export function PaymentView({
   requests,
@@ -68,6 +79,7 @@ export function PaymentView({
   name,
   email,
   canManage,
+  sheetsConnected,
 }: {
   requests: PaymentRequest[];
   fileLinks: PaymentFileLinks;
@@ -75,8 +87,9 @@ export function PaymentView({
   employeeId: string | null;
   name: string;
   email: string;
-  /** Finance/HR — melihat semua pengajuan. */
+  /** Finance/HR — melihat semua pengajuan & bisa mengirim ulang ke sheet. */
   canManage: boolean;
+  sheetsConnected: boolean;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -89,6 +102,7 @@ export function PaymentView({
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -101,8 +115,40 @@ export function PaymentView({
 
   const total = useMemo(() => filtered.reduce((s, r) => s + r.totalAmount, 0), [filtered]);
   const selected = list.find((x) => x.id === selectedId) ?? null;
+  const belum = useMemo(() => filtered.filter((r) => r.sheetStatus !== "synced").length, [filtered]);
+
+  /** Kirim ulang baris yang gagal masuk sheet (anti-duplikat dijaga server). */
+  async function retry(r: PaymentRequest) {
+    setBusyId(r.id);
+    try {
+      const res = await fetch("/api/payment-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.request) {
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
+        return;
+      }
+      setList((cur) => cur.map((x) => (x.id === r.id ? (data.request as PaymentRequest) : x)));
+      if (data.ok) toast.success(t.retried);
+      else toast.error(`${t.createdSheetFail} ${data.reason ?? ""}`.trim());
+      router.refresh();
+    } catch {
+      toast.error(t.connection);
+    } finally {
+      setBusyId(null);
+    }
+  }
   return (
     <div className="space-y-3">
+      {!sheetsConnected && (
+        <p className="flex items-start gap-2 rounded-2xl border border-gold/40 bg-gold-soft/50 px-3.5 py-2.5 text-xs text-[#8a6512]">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {t.notConfigured}
+        </p>
+      )}
+
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
@@ -135,6 +181,12 @@ export function PaymentView({
         </span>
         <span className="text-line">·</span>
         <span key={total} className="animate-count-up text-muted tabular-nums">{rupiah(total, { compact: true })}</span>
+        {belum > 0 && (
+          <>
+            <span className="text-line">·</span>
+            <span className="font-medium text-clay tabular-nums">{belum} {t.failed.toLowerCase()}</span>
+          </>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -156,6 +208,7 @@ export function PaymentView({
             <span>{t.colRequest}</span>
             <span>{t.colDept}</span>
             <span className="text-right">{t.colAmount}</span>
+            <span>{t.colSheet}</span>
             <span />
           </div>
           <div className="divide-y divide-line">
@@ -187,6 +240,32 @@ export function PaymentView({
                   {rupiah(r.totalAmount)}
                 </span>
 
+                {/* Status per baris: sudah masuk sheet keuangan atau belum. */}
+                <span className="flex shrink-0 items-center justify-end gap-1.5 xl:justify-start">
+                  {r.sheetStatus === "synced" ? (
+                    <Badge tone="matcha" className="!px-2 !py-0.5 !text-[10px]">
+                      <CheckCircle2 className="h-3 w-3" /> {t.synced}
+                    </Badge>
+                  ) : (
+                    <>
+                      <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
+                      {canManage && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            retry(r);
+                          }}
+                          disabled={busyId === r.id}
+                          title={r.sheetError ?? undefined}
+                          aria-label={t.retry}
+                          className="cursor-pointer rounded-lg p-1 text-muted transition-colors hover:bg-sand hover:text-ink disabled:opacity-50"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", busyId === r.id && "animate-spin")} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </span>
                 <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
               </button>
             ))}
@@ -201,7 +280,12 @@ export function PaymentView({
         width="lg"
       >
         {selected && (
-          <PaymentDetail request={selected} />
+          <PaymentDetail
+            request={selected}
+            canManage={canManage}
+            busy={busyId === selected.id}
+            onResend={() => retry(selected)}
+          />
         )}
       </Sheet>
 
@@ -222,10 +306,11 @@ export function PaymentView({
             employeeId={employeeId}
             name={name}
             email={email}
-            onSaved={(saved) => {
+            onSaved={(saved, sheet) => {
               setOpen(false);
               setList((cur) => [saved, ...cur]);
-              toast.success(t.created);
+              if (sheet.ok) toast.success(t.createdSheetOk);
+              else toast.error(t.createdSheetFail);
               router.refresh();
             }}
             onCancel={() => setOpen(false)}

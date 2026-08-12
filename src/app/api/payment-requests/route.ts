@@ -5,7 +5,10 @@ import { getSessionUser } from "@/lib/auth";
 import { notifyPermissionHolders } from "@/lib/notify";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { rupiah } from "@/lib/utils";
+import { can } from "@/lib/auth";
+import { sheetsMode } from "@/lib/sheets";
 import { DEPARTMENTS, KINDS, MAX_INVOICE_FILES, composeInvoiceLine } from "@/lib/payment-request";
+import { salinKeSheet } from "./sheet-sync";
 import type { PaymentDept, PaymentKind } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -105,8 +108,9 @@ export async function POST(request: Request) {
       due_date: body.dueDate || null,
       more_details: body.moreDetails?.trim() || null,
       // Modul ini TIDAK memakai antrean persetujuan: begitu dikirim, baris
-      // langsung tercatat final. (Persetujuan dua tahap hanya di perjalanan dinas.)
+      // langsung tercatat DAN disalin ke Google Sheet keuangan.
       approval_status: "approved",
+      sheet_status: "pending",
     })
     .select("*")
     .single();
@@ -114,7 +118,12 @@ export async function POST(request: Request) {
 
   const saved = mapPaymentRequest(data);
 
-  // Tidak ada antrean persetujuan — Finance cukup DIBERI TAHU ada pengajuan baru.
+  // Salin ke Google Sheet keuangan SEKARANG — tidak ada tahap persetujuan yang
+  // menahan. Kegagalan di sini tidak membatalkan pengajuan: barisnya sudah aman
+  // di database dan bisa dikirim ulang dari detail.
+  const result = await salinKeSheet(saved, new URL(request.url).origin);
+
+  // Finance diberi tahu ada pengajuan baru (pemberitahuan, bukan permintaan approval).
   await notifyPermissionHolders(
     "payment.manage",
     {
@@ -126,5 +135,54 @@ export async function POST(request: Request) {
     { excludeEmployeeId: user.employeeId },
   );
 
-  return NextResponse.json({ ok: true, request: saved });
+  return NextResponse.json({
+    ok: true,
+    request: {
+      ...saved,
+      sheetStatus: result.ok ? "synced" : "failed",
+      sheetError: result.ok ? null : result.reason,
+      sheetSyncedAt: result.ok ? new Date().toISOString() : null,
+    },
+    sheet: result.ok ? { ok: true } : { ok: false, reason: result.reason, mode: sheetsMode() },
+  });
+}
+
+// ---- Kirim ulang baris yang gagal masuk sheet (Finance/HR) ----
+export async function PATCH(request: Request) {
+  let body: { id?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+
+  const supabase = await createClient();
+  if (!supabase) return NextResponse.json({ error: "unavailable" }, { status: 503 });
+
+  // Wajib diperiksa di sini: status ditulis memakai service role, jadi RLS tidak
+  // menjaga endpoint ini. Tanpa pemeriksaan, siapa pun bisa menambah baris sheet.
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!can(user, "payment.manage") && !can(user, "employees.manage")) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+
+  const { data: row } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
+  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  // Penjaga anti-duplikat: baris yang sudah masuk sheet tidak dikirim lagi.
+  if (row.sheet_status === "synced") {
+    return NextResponse.json({ error: "already_synced" }, { status: 400 });
+  }
+
+  const result = await salinKeSheet(mapPaymentRequest(row), new URL(request.url).origin);
+  const { data } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
+  if (!data) return NextResponse.json({ error: "not_found" }, { status: 404 });
+
+  return NextResponse.json({
+    ok: result.ok,
+    request: mapPaymentRequest(data),
+    reason: result.ok ? null : result.reason,
+  });
 }

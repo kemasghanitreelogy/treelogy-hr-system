@@ -330,9 +330,12 @@ export type PaymentKind =
   | "petty_cash" | "office_general" | "production" | "farm_maintenance" | "marketing"
   | "transportation" | "meals_entertainment" | "popup_market" | "other";
 
+/** Status penyalinan baris ke Google Sheet keuangan — bukan status persetujuan. */
+export type SheetSyncStatus = "pending" | "synced" | "failed";
+
 /**
- * Status persetujuan dua tahap di sistem: operasional (tahap 1) → Finance
- * (tahap 2). Seluruh status & riwayat hidup di database — tanpa Google Sheet.
+ * Status persetujuan. Pengajuan pembayaran TIDAK memakai antrean persetujuan
+ * (selalu `approved`); kolom ini disimpan untuk arsip riwayat.
  */
 export type PaymentApprovalStatus = "waiting_ops" | "waiting_finance" | "approved" | "rejected";
 
@@ -359,6 +362,10 @@ export interface PaymentRequest {
   dueDate?: string | null;
   moreDetails?: string | null;
   submittedAt: string;
+  /** Sudah tersalin ke Google Sheet keuangan atau belum. */
+  sheetStatus: SheetSyncStatus;
+  sheetError?: string | null;
+  sheetSyncedAt?: string | null;
   approvalStatus: PaymentApprovalStatus;
   opsApprover?: string | null;
   opsApprovedAt?: string | null;

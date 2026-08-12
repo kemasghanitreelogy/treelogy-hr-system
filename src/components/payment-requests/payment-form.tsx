@@ -89,7 +89,7 @@ export function PaymentForm({
   employeeId: string;
   name: string;
   email: string;
-  onSaved: (saved: PaymentRequest) => void;
+  onSaved: (saved: PaymentRequest, sheet: { ok: boolean; reason?: string }) => void;
   onCancel: () => void;
 }) {
   const locale = useLocale();
@@ -158,7 +158,7 @@ export function PaymentForm({
         toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
-      onSaved(data.request as PaymentRequest);
+      onSaved(data.request as PaymentRequest, data.sheet ?? { ok: false });
     } catch {
       toast.error(t.connection);
     } finally {
