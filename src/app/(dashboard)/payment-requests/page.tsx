@@ -14,11 +14,11 @@ export const metadata = { title: "Pengajuan Pembayaran — Treelogy HR" };
 const STR: Record<Locale, { intro: string }> = {
   id: {
     intro:
-      "Pengajuan pembayaran & reimbursement. Setiap kiriman langsung masuk Google Sheet keuangan — tanpa menunggu persetujuan.",
+      "Pengajuan pembayaran & reimbursement. Pilih jalurnya saat mengajukan: reimburse biasa langsung masuk Google Sheet keuangan, sedangkan reimburse dinas disetujui Ops/GA lalu Finance dulu.",
   },
   en: {
     intro:
-      "Payment & reimbursement requests. Every submission goes straight into the finance Google Sheet — no approval queue.",
+      "Payment & reimbursement requests. Pick the path when submitting: regular claims go straight into the finance Google Sheet, business-trip claims pass Ops/GA then Finance first.",
   },
 };
 
@@ -29,7 +29,13 @@ export default async function PaymentRequestsPage() {
     getLocale(),
     headers(),
   ]);
-  if (!can(user, "payment.request") && !can(user, "payment.manage")) redirect("/dashboard");
+  if (
+    !can(user, "payment.request") &&
+    !can(user, "payment.manage") &&
+    !can(user, "payment.approve_ops")
+  ) {
+    redirect("/dashboard");
+  }
 
   // Tautan lampiran ditandatangani di server — rahasianya tidak pernah sampai ke
   // browser, tapi hasilnya bisa dibuka siapa pun yang memegang berkas Excel
@@ -57,6 +63,9 @@ export default async function PaymentRequestsPage() {
         name={user?.name ?? ""}
         email={user?.email ?? ""}
         canManage={can(user, "payment.manage") || can(user, "employees.manage")}
+        canApproveOps={
+          can(user, "payment.approve_ops") || can(user, "payment.manage") || can(user, "employees.manage")
+        }
         sheetsConnected={sheetsMode() !== "none"}
       />
     </div>

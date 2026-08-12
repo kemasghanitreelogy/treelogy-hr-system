@@ -1,5 +1,5 @@
 import type { Locale } from "./i18n";
-import type { PaymentDept, PaymentKind, PaymentRequest } from "./types";
+import type { PaymentApprovalStatus, PaymentDept, PaymentFlow, PaymentKind, PaymentRequest } from "./types";
 
 /* ============================================================
    Pengajuan pembayaran / reimbursement.
@@ -64,6 +64,61 @@ export const DEPT_LABEL: Record<Locale, Record<PaymentDept, string>> = {
   id: { ...SHEET_DEPT },
   en: { ...SHEET_DEPT },
 };
+
+/* ---- Dua jalur pengajuan: biasa vs dinas ---- */
+
+export const PAYMENT_FLOWS: PaymentFlow[] = ["biasa", "dinas"];
+
+export const FLOW_LABEL: Record<Locale, Record<PaymentFlow, string>> = {
+  id: { biasa: "Reimburse Biasa", dinas: "Reimburse Dinas" },
+  en: { biasa: "Regular Reimbursement", dinas: "Business-Trip Reimbursement" },
+};
+
+export const FLOW_HINT: Record<Locale, Record<PaymentFlow, string>> = {
+  id: {
+    biasa: "Langsung tercatat dan masuk Google Sheet keuangan — tanpa menunggu persetujuan.",
+    dinas: "Biaya perjalanan dinas. Disetujui Ops/GA dulu, lalu Finance, baru masuk sheet.",
+  },
+  en: {
+    biasa: "Recorded immediately and written to the finance Google Sheet — no approval queue.",
+    dinas: "Business-trip expenses. Approved by Ops/GA then Finance before reaching the sheet.",
+  },
+};
+
+/* ---- Persetujuan dua tahap (hanya jalur dinas) ---- */
+
+export const APPROVAL_STATUSES: PaymentApprovalStatus[] = [
+  "waiting_ops", "waiting_finance", "approved", "rejected",
+];
+
+export const APPROVAL_LABEL: Record<Locale, Record<PaymentApprovalStatus, string>> = {
+  id: {
+    waiting_ops: "Menunggu Ops",
+    waiting_finance: "Menunggu Finance",
+    approved: "Disetujui",
+    rejected: "Ditolak",
+  },
+  en: {
+    waiting_ops: "Awaiting Ops",
+    waiting_finance: "Awaiting Finance",
+    approved: "Approved",
+    rejected: "Rejected",
+  },
+};
+
+type Tone = "forest" | "olive" | "matcha" | "gold" | "clay" | "sky" | "neutral";
+
+export const APPROVAL_TONE: Record<PaymentApprovalStatus, Tone> = {
+  waiting_ops: "gold",
+  waiting_finance: "sky",
+  approved: "matcha",
+  rejected: "clay",
+};
+
+/** Baris jalur dinas baru boleh masuk sheet setelah persetujuan akhir. */
+export function eligibleForSheet(r: Pick<PaymentRequest, "flow" | "approvalStatus">): boolean {
+  return r.flow === "biasa" || r.approvalStatus === "approved";
+}
 
 /** Jenis yang ditulis ke sheet: "Other" ditulis apa adanya beserta keterangannya. */
 export function sheetKindText(req: Pick<PaymentRequest, "kind" | "kindOther">): string {

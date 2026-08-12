@@ -335,6 +335,14 @@ export type PaymentKind =
   | "petty_cash" | "office_general" | "production" | "farm_maintenance" | "marketing"
   | "transportation" | "meals_entertainment" | "popup_market" | "other";
 
+/**
+ * Jalur pengajuan pembayaran, dipilih SEBELUM mengisi form:
+ *  · biasa — langsung tercatat & masuk Google Sheet keuangan.
+ *  · dinas — persetujuan dua tahap (Ops/GA → Finance) dulu, baru masuk sheet.
+ * Isian formulirnya sama persis untuk keduanya.
+ */
+export type PaymentFlow = "biasa" | "dinas";
+
 /** Status penyalinan baris ke Google Sheet keuangan — bukan status persetujuan. */
 export type SheetSyncStatus = "pending" | "synced" | "failed";
 
@@ -367,6 +375,9 @@ export interface PaymentRequest {
   dueDate?: string | null;
   moreDetails?: string | null;
   submittedAt: string;
+  flow: PaymentFlow;
+  /** Alasan penolakan yang memicu revisi (jalur dinas). */
+  revisionNote?: string | null;
   /** Sudah tersalin ke Google Sheet keuangan atau belum. */
   sheetStatus: SheetSyncStatus;
   sheetError?: string | null;
@@ -514,55 +525,6 @@ export interface CompanyDocument {
   note?: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-/* ============================================================
-   Travel Reimbursement (klaim biaya perjalanan dinas)
-   ============================================================ */
-
-export type ReimbursementCategory =
-  | "transportation"
-  | "accommodation"
-  | "meals"
-  | "per_diem"
-  | "fuel"
-  | "parking_toll"
-  | "other";
-
-export interface TravelReimbursement {
-  id: string;
-  /** Nomor klaim unik yang dibuat database (TR-0001). */
-  code: string;
-  employeeId: string;
-  /** Jabatan saat klaim (snapshot) — riwayat tetap benar setelah promosi. */
-  jobTitle: string;
-
-  purpose: string;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
-
-  expenseDate: string; // YYYY-MM-DD
-  category: ReimbursementCategory;
-  description: string;
-  receiptNumber?: string | null;
-  amount: number;
-  /** Bukti/kuitansi di bucket privat `reimbursement-files` (maks 5). */
-  receiptPaths: string[];
-
-  /** Pernyataan karyawan — wajib dicentang sebelum bisa dikirim. */
-  confirmed: boolean;
-
-  /** Persetujuan dua tahap: tahap 1 = manager*, tahap 2 = hr* (nama warisan). */
-  status: RequestStatus;
-  approver?: string | null;
-  rejectionReason?: string | null;
-  managerApprover?: string | null;
-  managerApprovedAt?: string | null;
-  hrApprover?: string | null;
-  hrApprovedAt?: string | null;
-  requestedAt: string;
-  /** Alasan penolakan yang memicu revisi ini (lihat LeaveRequest). */
-  revisionNote?: string | null;
 }
 
 /* ============================================================

@@ -57,6 +57,7 @@ const MESSAGES: Record<string, Msg> = {
   invalid_kind: { id: "Jenis transaksi tidak valid.", en: "The transaction kind is invalid." },
   invalid_status: { id: "Status tidak valid.", en: "The status is invalid." },
   awaiting_manager: { id: "Menunggu persetujuan atasan dulu sebelum HR.", en: "Waiting for the manager's approval before HR." },
+  not_ops_approved: { id: "Reimburse dinas belum disetujui — belum waktunya masuk sheet.", en: "The business-trip claim is not approved yet — not due in the sheet." },
   already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
   self_approval: { id: "Tidak bisa memutus pengajuan milik sendiri — minta penyetuju lain.", en: "You can't decide your own request — ask another approver." },
   distinct_approver: { id: "Persetujuan akhir harus oleh orang yang berbeda dari tahap 1.", en: "The final approval must come from a different person than step 1." },

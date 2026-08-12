@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { FileText, Loader2, Paperclip, Send, X } from "lucide-react";
-import type { PaymentDept, PaymentKind, PaymentRequest } from "@/lib/types";
+import type { PaymentDept, PaymentFlow, PaymentKind, PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { rupiah, witaToday } from "@/lib/utils";
@@ -80,12 +80,18 @@ const STR: Record<Locale, Record<string, string>> = {
 };
 
 export function PaymentForm({
+  flow,
+  item,
   employeeId,
   name,
   email,
   onSaved,
   onCancel,
 }: {
+  /** Jalur yang dipilih sebelum form dibuka — menentukan alur setelah dikirim. */
+  flow: PaymentFlow;
+  /** Diisi saat pengaju MEMPERBAIKI pengajuan dinas yang ditolak. */
+  item?: PaymentRequest;
   employeeId: string;
   name: string;
   email: string;
@@ -98,18 +104,22 @@ export function PaymentForm({
   const invoiceRef = useRef<HTMLInputElement>(null);
   const approvalRef = useRef<HTMLInputElement>(null);
 
-  const [dept, setDept] = useState<PaymentDept | "">("");
-  const [kind, setKind] = useState<PaymentKind>("petty_cash");
-  const [kindOther, setKindOther] = useState("");
+  const [dept, setDept] = useState<PaymentDept | "">(item?.department ?? "");
+  const [kind, setKind] = useState<PaymentKind>(item?.kind ?? "petty_cash");
+  const [kindOther, setKindOther] = useState(item?.kindOther ?? "");
   // Tanggal invoice default HARI INI — kasus paling umum, jadi biasanya tak perlu diubah.
-  const [invoiceDate, setInvoiceDate] = useState(() => witaToday());
-  const [desc, setDesc] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [amount, setAmount] = useState("");
-  const [invoices, setInvoices] = useState<{ path: string; label: string }[]>([]);
-  const [approval, setApproval] = useState<{ path: string; label: string } | null>(null);
-  const [due, setDue] = useState("");
-  const [more, setMore] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(() => item?.invoiceDate ?? witaToday());
+  const [desc, setDesc] = useState(item?.description ?? "");
+  const [vendor, setVendor] = useState(item?.vendorName ?? "");
+  const [amount, setAmount] = useState(item ? String(item.totalAmount) : "");
+  const [invoices, setInvoices] = useState<{ path: string; label: string }[]>(() =>
+    (item?.invoicePaths ?? []).map((path, i) => ({ path, label: `Faktur ${i + 1}` })),
+  );
+  const [approval, setApproval] = useState<{ path: string; label: string } | null>(() =>
+    item?.approvalPath ? { path: item.approvalPath, label: "Bukti persetujuan" } : null,
+  );
+  const [due, setDue] = useState(item?.dueDate ?? "");
+  const [more, setMore] = useState(item?.moreDetails ?? "");
   const [busyUpload, setBusyUpload] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -142,9 +152,12 @@ export function PaymentForm({
     setSaving(true);
     try {
       const res = await fetch("/api/payment-requests", {
-        method: "POST",
+        // PUT = pengaju memperbaiki pengajuan dinas yang ditolak, lalu kirim ulang.
+        method: item ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(item ? { id: item.id } : {}),
+          flow,
           department: dept, kind, kindOther,
           invoiceDate, description: desc, vendorName: vendor,
           totalAmount: Number(amount) || 0,

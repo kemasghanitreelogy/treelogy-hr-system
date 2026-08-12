@@ -51,7 +51,6 @@ import type {
   TabunganEntry,
   PaymentRequest,
   Team,
-  TravelReimbursement,
   TravelRequest,
   TeamGeofence,
 } from "./types";
@@ -190,32 +189,6 @@ export const mapCompanyDocument = (r: Row): CompanyDocument => ({
   updatedAt: String(r.updated_at ?? ""),
 });
 
-export const mapTravelReimbursement = (r: Row): TravelReimbursement => ({
-  id: String(r.id),
-  code: String(r.code),
-  employeeId: String(r.employee_id),
-  jobTitle: String(r.job_title ?? ""),
-  purpose: String(r.purpose ?? ""),
-  startDate: String(r.start_date ?? ""),
-  endDate: String(r.end_date ?? ""),
-  expenseDate: String(r.expense_date ?? ""),
-  category: r.category as TravelReimbursement["category"],
-  description: String(r.description ?? ""),
-  receiptNumber: (r.receipt_number as string) ?? null,
-  amount: n(r.amount),
-  receiptPaths: Array.isArray(r.receipt_paths) ? (r.receipt_paths as string[]) : [],
-  confirmed: Boolean(r.confirmed),
-  status: r.status as TravelReimbursement["status"],
-  approver: (r.approver as string) ?? null,
-  rejectionReason: (r.rejection_reason as string) ?? null,
-  managerApprover: (r.manager_approver as string) ?? null,
-  managerApprovedAt: (r.manager_approved_at as string) ?? null,
-  hrApprover: (r.hr_approver as string) ?? null,
-  hrApprovedAt: (r.hr_approved_at as string) ?? null,
-  requestedAt: String(r.requested_at ?? ""),
-  revisionNote: (r.revision_note as string) ?? null,
-});
-
 export const mapOutgoingLetter = (r: Row): OutgoingLetter => ({
   id: String(r.id),
   code: String(r.code),
@@ -253,6 +226,8 @@ export const mapPaymentRequest = (r: Row): PaymentRequest => ({
   dueDate: (r.due_date as string) ?? null,
   moreDetails: (r.more_details as string) ?? null,
   submittedAt: String(r.submitted_at ?? ""),
+  flow: (r.flow as PaymentRequest["flow"]) ?? "biasa",
+  revisionNote: (r.revision_note as string) ?? null,
   sheetStatus: (r.sheet_status as PaymentRequest["sheetStatus"]) ?? "pending",
   sheetError: (r.sheet_error as string) ?? null,
   sheetSyncedAt: (r.sheet_synced_at as string) ?? null,
@@ -520,12 +495,6 @@ export async function getTravelRequests(): Promise<TravelRequest[]> {
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   const rows = await fetchTable("inventory_items", mapInventoryItem, seedInventory);
   return rows.slice().sort((a, b) => b.code.localeCompare(a.code));
-}
-
-/** Klaim reimbursement perjalanan, terbaru dulu. Cakupan ditentukan RLS. */
-export async function getTravelReimbursements(): Promise<TravelReimbursement[]> {
-  const rows = await fetchTable("travel_reimbursements", mapTravelReimbursement, []);
-  return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 }
 
 /** Agenda surat keluar — surat terbaru dulu (tanggal surat menurun). */
