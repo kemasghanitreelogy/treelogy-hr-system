@@ -21,7 +21,7 @@ import { PaymentForm } from "./payment-form";
 /** Tautan lampiran bertanda tangan, dihitung di server, dikunci per pengajuan. */
 export type PaymentFileLinks = Record<string, { invoices: string[]; approval: string }>;
 
-const STR: Record<Locale, Record<string, string>> = {
+const STR: Record<Locale, Record<string, any>> = {
   id: {
     searchPh: "Cari deskripsi, vendor, nama…",
     allDept: "Semua departemen",
@@ -34,6 +34,9 @@ const STR: Record<Locale, Record<string, string>> = {
     colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal", colSheet: "Google Sheet",
     synced: "Masuk sheet", failed: "Belum masuk sheet",
     retry: "Kirim ulang ke sheet", retried: "Berhasil masuk Google Sheet ✓",
+    retryAll: "Kirim ulang semua", retryingAll: "Mengirim ulang…",
+    retryAllDone: (ok: number, n: number) => `${ok} dari ${n} baris masuk sheet ✓`,
+    retryAllFail: "Belum ada yang berhasil masuk sheet — periksa koneksi sheet.",
     createdSheetOk: "Pengajuan terkirim & masuk Google Sheet ✓",
     createdSheetFail: "Pengajuan tersimpan, tapi belum masuk Google Sheet.",
     notConfigured: "Google Sheet belum tersambung — pengajuan tetap tersimpan dan bisa dikirim ke sheet begitu kredensial diisi.",
@@ -55,6 +58,9 @@ const STR: Record<Locale, Record<string, string>> = {
     colRequest: "Request", colDept: "Department", colAmount: "Amount", colSheet: "Google Sheet",
     synced: "In sheet", failed: "Not in sheet",
     retry: "Resend to sheet", retried: "Written to Google Sheet ✓",
+    retryAll: "Resend all", retryingAll: "Resending…",
+    retryAllDone: (ok: number, n: number) => `${ok} of ${n} rows written to the sheet ✓`,
+    retryAllFail: "None made it into the sheet — check the sheet connection.",
     createdSheetOk: "Submitted & written to Google Sheet ✓",
     createdSheetFail: "Saved, but not yet written to the Google Sheet.",
     notConfigured: "Google Sheet isn't connected — requests are still stored and can be pushed once credentials are set.",
@@ -103,6 +109,7 @@ export function PaymentView({
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [retryingAll, setRetryingAll] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -139,6 +146,42 @@ export function PaymentView({
       toast.error(t.connection);
     } finally {
       setBusyId(null);
+    }
+  }
+
+  /**
+   * Kirim ulang SEMUA baris yang belum masuk sheet, satu per satu (berurutan —
+   * webhook Apps Script tidak suka diserbu paralel, dan urutan baris di sheet
+   * jadi ikut rapi sesuai waktu pengajuan).
+   */
+  async function retryAll() {
+    const antre = list.filter((r) => r.sheetStatus !== "synced");
+    if (antre.length === 0) return;
+    setRetryingAll(true);
+    let ok = 0;
+    try {
+      for (const r of antre) {
+        try {
+          const res = await fetch("/api/payment-requests", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: r.id }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (data.request) {
+            const saved = data.request as PaymentRequest;
+            setList((cur) => cur.map((x) => (x.id === saved.id ? saved : x)));
+            if (data.ok) ok++;
+          }
+        } catch {
+          /* lanjut ke baris berikutnya — satu gagal tidak menghentikan sisanya */
+        }
+      }
+      if (ok > 0) toast.success(t.retryAllDone(ok, antre.length));
+      else toast.error(t.retryAllFail);
+      router.refresh();
+    } finally {
+      setRetryingAll(false);
     }
   }
   return (
@@ -185,6 +228,17 @@ export function PaymentView({
           <>
             <span className="text-line">·</span>
             <span className="font-medium text-clay tabular-nums">{belum} {t.failed.toLowerCase()}</span>
+            {/* Satu klik membereskan seluruh sisa — tak perlu buka baris satu-satu. */}
+            {canManage && (
+              <button
+                onClick={retryAll}
+                disabled={retryingAll}
+                className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 font-medium text-muted transition-colors hover:bg-sand hover:text-ink disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", retryingAll && "animate-spin")} />
+                {retryingAll ? t.retryingAll : t.retryAll}
+              </button>
+            )}
           </>
         )}
       </div>
