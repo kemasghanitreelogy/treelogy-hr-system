@@ -2,22 +2,20 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapPaymentRequest } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
-import { salinKeSheet } from "../sheet-sync";
+import { notifyPermissionHolders, pushNotifications } from "@/lib/notify";
+import { rupiah } from "@/lib/utils";
+import { composeInvoiceLine } from "@/lib/payment-request";
 
 export const runtime = "nodejs";
 
 /**
- * Keputusan persetujuan dua tahap.
+ * Keputusan persetujuan dua tahap — seluruhnya di database sistem.
  *
  * Tahap ditentukan STATUS baris, bukan pilihan client — pemegang kedua izin
  * sekalipun tidak bisa melompati antrean:
  *  - waiting_ops     → butuh payment.approve_ops (Admin Operasional); Finance/HR
  *                      boleh sebagai cadangan bila approver ops berhalangan.
  *  - waiting_finance → butuh payment.manage (Finance/HR).
- *
- * Setuju di tahap 1 sekaligus menyalin baris ke Google Sheet keuangan — inilah
- * momen pengajuan "sampai ke Finance". Kegagalan penyalinan TIDAK membatalkan
- * persetujuan; barisnya bisa dikirim ulang seperti biasa.
  */
 export async function POST(request: Request) {
   let body: { id?: string; action?: "approve" | "reject"; reason?: string };
@@ -86,20 +84,61 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
 
-  let saved = mapPaymentRequest(data);
+  const saved = mapPaymentRequest(data);
+  const ringkas = `${composeInvoiceLine(saved)} · ${rupiah(saved.totalAmount)}`;
 
-  // Lolos tahap 1 → sekarang barisnya "berangkat" ke Finance (Google Sheet).
-  let sheet: { ok: boolean; reason?: string } = { ok: true };
-  if (current.approvalStatus === "waiting_ops" && body.action === "approve") {
-    const result = await salinKeSheet(saved, new URL(request.url).origin);
-    sheet = result.ok ? { ok: true } : { ok: false, reason: result.reason };
-    saved = {
-      ...saved,
-      sheetStatus: result.ok ? "synced" : "failed",
-      sheetError: result.ok ? null : result.reason,
-      sheetSyncedAt: result.ok ? now : null,
-    };
+  // Notifikasi HP: yang harus BERAKSI berikutnya + pengaju selalu dapat INFO.
+  if (saved.approvalStatus === "waiting_finance") {
+    // Lolos tahap Ops → giliran Finance beraksi.
+    await notifyPermissionHolders(
+      "payment.manage",
+      {
+        type: "payment",
+        title: "Pengajuan pembayaran menunggu Finance",
+        body: `${ringkas} · disetujui Ops (${user.name}) · perlu diproses Anda`,
+        href: "/payment-requests",
+      },
+      { excludeEmployeeId: user.employeeId },
+    );
+    if (saved.employeeId && saved.employeeId !== user.employeeId) {
+      await pushNotifications([
+        {
+          employeeId: saved.employeeId,
+          type: "payment",
+          tone: "approved",
+          title: "Pengajuan pembayaran lolos tahap Ops",
+          body: `${ringkas} · disetujui ${user.name} · diteruskan ke Finance`,
+          href: "/payment-requests",
+        },
+      ]);
+    }
+  } else if (saved.approvalStatus === "approved") {
+    if (saved.employeeId && saved.employeeId !== user.employeeId) {
+      await pushNotifications([
+        {
+          employeeId: saved.employeeId,
+          type: "payment",
+          tone: "paid",
+          title: "Pembayaran selesai diproses",
+          body: `${ringkas} · diproses ${user.name}`,
+          href: "/payment-requests",
+        },
+      ]);
+    }
+  } else if (saved.approvalStatus === "rejected") {
+    if (saved.employeeId && saved.employeeId !== user.employeeId) {
+      await pushNotifications([
+        {
+          employeeId: saved.employeeId,
+          type: "payment",
+          tone: "rejected",
+          title: "Pengajuan pembayaran ditolak",
+          body: `${ringkas} · oleh ${user.name}: "${saved.rejectionReason ?? ""}"`,
+          href: "/payment-requests",
+        },
+      ]);
+    }
   }
 
-  return NextResponse.json({ ok: true, request: saved, sheet });
+  return NextResponse.json({ ok: true, request: saved });
 }

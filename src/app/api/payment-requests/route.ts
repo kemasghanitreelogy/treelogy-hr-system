@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapPaymentRequest } from "@/lib/data";
-import { can, getSessionUser } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
+import { notifyPermissionHolders } from "@/lib/notify";
 import { isValidUploadedPath } from "@/lib/storage-path";
-import { DEPARTMENTS, KINDS, MAX_INVOICE_FILES } from "@/lib/payment-request";
-import { salinKeSheet } from "./sheet-sync";
+import { rupiah } from "@/lib/utils";
+import { DEPARTMENTS, KINDS, MAX_INVOICE_FILES, composeInvoiceLine } from "@/lib/payment-request";
 import type { PaymentDept, PaymentKind } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -103,60 +104,26 @@ export async function POST(request: Request) {
       approval_path: body.approvalPath,
       due_date: body.dueDate || null,
       more_details: body.moreDetails?.trim() || null,
-      sheet_status: "pending",
     })
     .select("*")
     .single();
   if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
 
-  // Alur dua tahap: TIDAK disalin ke Google Sheet di sini. Baris masuk sheet
-  // keuangan setelah tahap 1 (operasional) menyetujui — lihat decide/route.ts.
-  return NextResponse.json({ ok: true, request: mapPaymentRequest(data) });
-}
+  // Alur dua tahap sepenuhnya di database: baris menunggu persetujuan Ops,
+  // lalu diproses Finance lewat decide/route.ts. Tidak ada Google Sheet.
+  const saved = mapPaymentRequest(data);
 
-// ---- Kirim ulang baris yang gagal masuk sheet (Finance/HR) ----
-export async function PATCH(request: Request) {
-  let body: { id?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
-  }
-  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+  // Yang harus BERAKSI diberi tahu di HP-nya: pemegang tahap 1 (Ops).
+  await notifyPermissionHolders(
+    "payment.approve_ops",
+    {
+      type: "payment",
+      title: `${user.name} mengajukan pembayaran`,
+      body: `${composeInvoiceLine(saved)} · ${rupiah(saved.totalAmount)} · perlu persetujuan Ops Anda`,
+      href: "/payment-requests",
+    },
+    { excludeEmployeeId: user.employeeId },
+  );
 
-  const supabase = await createClient();
-  if (!supabase) return NextResponse.json({ error: "unavailable" }, { status: 503 });
-
-  // Wajib diperiksa di sini: sejak status ditulis memakai service role, RLS
-  // tidak lagi menjaga endpoint ini. Tanpa pemeriksaan, karyawan mana pun bisa
-  // memicu penambahan baris ke sheet keuangan.
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!can(user, "payment.manage") && !can(user, "employees.manage")) {
-    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
-  }
-
-  const { data: row } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
-  if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
-
-  // Penjaga anti-duplikat: baris yang sudah masuk sheet tidak boleh dikirim lagi.
-  // Kirim ulang hanya untuk yang benar-benar gagal.
-  if (row.sheet_status === "synced") {
-    return NextResponse.json({ error: "already_synced" }, { status: 400 });
-  }
-  // Belum lolos tahap operasional → memang belum waktunya masuk sheet.
-  const saved = mapPaymentRequest(row);
-  if (saved.approvalStatus === "waiting_ops" || saved.approvalStatus === "rejected") {
-    return NextResponse.json({ error: "not_ops_approved" }, { status: 400 });
-  }
-
-  const result = await salinKeSheet(saved, new URL(request.url).origin);
-  const { data } = await supabase.from("payment_requests").select("*").eq("id", body.id).maybeSingle();
-  if (!data) return NextResponse.json({ error: "not_found" }, { status: 404 });
-
-  return NextResponse.json({
-    ok: result.ok,
-    request: mapPaymentRequest(data),
-    reason: result.ok ? null : result.reason,
-  });
+  return NextResponse.json({ ok: true, request: saved });
 }

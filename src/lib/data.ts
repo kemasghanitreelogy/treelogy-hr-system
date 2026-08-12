@@ -203,9 +203,6 @@ export const mapPaymentRequest = (r: Row): PaymentRequest => ({
   approvalPath: String(r.approval_path ?? ""),
   dueDate: (r.due_date as string) ?? null,
   moreDetails: (r.more_details as string) ?? null,
-  sheetStatus: (r.sheet_status as PaymentRequest["sheetStatus"]) ?? "pending",
-  sheetError: (r.sheet_error as string) ?? null,
-  sheetSyncedAt: (r.sheet_synced_at as string) ?? null,
   submittedAt: String(r.submitted_at ?? ""),
   // Baris dari sebelum fitur persetujuan (atau mode demo) dianggap menunggu ops.
   approvalStatus: (r.approval_status as PaymentRequest["approvalStatus"]) ?? "waiting_ops",

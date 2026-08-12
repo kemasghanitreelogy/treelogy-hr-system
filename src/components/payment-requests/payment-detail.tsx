@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Check, CheckCircle2, Clock3, Loader2, Paperclip, RefreshCw, ShieldCheck, Send, X,
-} from "lucide-react";
+import { Check, Clock3, Loader2, Paperclip, ShieldCheck, Send, X } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -18,16 +16,12 @@ import { PaymentFile } from "./payment-file";
 
 const STR: Record<Locale, Record<string, string>> = {
   id: {
-    sheetLine: "Baris di Google Sheet",
+    sheetLine: "Ringkasan pengajuan",
     requester: "Pengaju", email: "Email", dept: "Departemen", kind: "Jenis",
     invoiceDate: "Tanggal invoice", desc: "Deskripsi", vendor: "Vendor",
     amount: "Total nominal", due: "Jatuh tempo", more: "Detail tambahan",
     submitted: "Diajukan", none: "—",
     invoices: "Lampiran faktur", approval: "Bukti persetujuan atasan",
-    sheetStatus: "Status Google Sheet",
-    synced: "Sudah masuk sheet", failed: "Belum masuk sheet",
-    resend: "Kirim ulang ke sheet", resending: "Mengirim…",
-    sheetError: "Sebab terakhir",
     flow: "Alur persetujuan",
     step1: "Diajukan",
     step2: "Persetujuan Operasional",
@@ -41,20 +35,16 @@ const STR: Record<Locale, Record<string, string>> = {
     approve: "Setujui",
     reject: "Tolak",
     deciding: "Menyimpan…",
-    opsActionHint: "Setelah disetujui, pengajuan otomatis diteruskan ke Finance (masuk Google Sheet).",
+    opsActionHint: "Setelah disetujui, pengajuan otomatis masuk antrean Finance di sistem.",
     financeActionHint: "Menyetujui berarti pembayaran selesai diproses Finance.",
   },
   en: {
-    sheetLine: "Row in the Google Sheet",
+    sheetLine: "Request summary",
     requester: "Requester", email: "Email", dept: "Department", kind: "Type",
     invoiceDate: "Invoice date", desc: "Description", vendor: "Vendor",
     amount: "Total amount", due: "Due date", more: "More details",
     submitted: "Submitted", none: "—",
     invoices: "Invoice attachments", approval: "Dept. head approval",
-    sheetStatus: "Google Sheet status",
-    synced: "Written to the sheet", failed: "Not in the sheet",
-    resend: "Resend to the sheet", resending: "Sending…",
-    sheetError: "Last reason",
     flow: "Approval flow",
     step1: "Submitted",
     step2: "Ops Approval",
@@ -68,7 +58,7 @@ const STR: Record<Locale, Record<string, string>> = {
     approve: "Approve",
     reject: "Reject",
     deciding: "Saving…",
-    opsActionHint: "Once approved, the request is forwarded to Finance (written to the Google Sheet).",
+    opsActionHint: "Once approved, the request joins the Finance queue in the system.",
     financeActionHint: "Approving marks the payment as processed by Finance.",
   },
 };
@@ -140,18 +130,14 @@ export function PaymentDetail({
   request: r,
   canManage,
   canApproveOps,
-  busy,
   decideBusy,
-  onResend,
   onDecide,
 }: {
   request: PaymentRequest;
   canManage: boolean;
   /** Boleh memutus tahap 1 (Admin Operasional; Finance/HR sebagai cadangan). */
   canApproveOps: boolean;
-  busy: boolean;
   decideBusy: boolean;
-  onResend: () => void;
   onDecide: (action: "approve" | "reject", reason?: string) => void;
 }) {
   const locale = useLocale();
@@ -296,34 +282,6 @@ export function PaymentDetail({
         {r.moreDetails && <Row label={t.more}>{r.moreDetails}</Row>}
         <Row label={t.submitted}>{formatDate(r.submittedAt, "long", locale)}</Row>
       </div>
-
-      {/* Status salinan ke sheet — relevan hanya setelah lolos tahap Ops.
-          Sebelum itu "belum masuk sheet" memang kondisi normalnya. */}
-      {(r.approvalStatus === "waiting_finance" || r.approvalStatus === "approved") && (
-        <div className="rounded-2xl border border-line bg-panel p-3.5">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-faint">{t.sheetStatus}</span>
-            {r.sheetStatus === "synced" ? (
-              <Badge tone="matcha" className="!px-2 !py-0.5 !text-[10px]">
-                <CheckCircle2 className="h-3 w-3" /> {t.synced}
-              </Badge>
-            ) : (
-              <Badge tone="clay" className="!px-2 !py-0.5 !text-[10px]">{t.failed}</Badge>
-            )}
-          </div>
-          {r.sheetStatus !== "synced" && r.sheetError && (
-            <p className="mt-2 break-words border-t border-line pt-2 text-[11px] text-muted">
-              <span className="font-medium">{t.sheetError}:</span> {r.sheetError}
-            </p>
-          )}
-          {r.sheetStatus !== "synced" && canManage && (
-            <Button variant="outline" size="sm" className="mt-3 w-full" onClick={onResend} disabled={busy}>
-              <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
-              {busy ? t.resending : t.resend}
-            </Button>
-          )}
-        </div>
-      )}
 
       <RejectDialog
         open={rejecting}

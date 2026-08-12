@@ -43,8 +43,8 @@ const STR: Record<
     preview: "Yang akan diekspor",
     rows: (n) => `${n} pengajuan`,
     noRows: "Tidak ada pengajuan pada rentang ini.",
-    breakdown: (masuk, belum) =>
-      belum > 0 ? `${masuk} masuk sheet · ${belum} belum` : `${masuk} masuk sheet`,
+    breakdown: (selesai, proses) =>
+      proses > 0 ? `${selesai} disetujui · ${proses} dalam proses` : `${selesai} disetujui`,
     topDept: "Departemen terbesar",
     value: "Total nominal",
     download: "Unduh Excel", working: "Menyiapkan…", cancel: "Batal",
@@ -61,8 +61,8 @@ const STR: Record<
     preview: "What will be exported",
     rows: (n) => `${n} requests`,
     noRows: "No requests in this range.",
-    breakdown: (masuk, belum) =>
-      belum > 0 ? `${masuk} in sheet · ${belum} missing` : `${masuk} in sheet`,
+    breakdown: (selesai, proses) =>
+      proses > 0 ? `${selesai} approved · ${proses} in progress` : `${selesai} approved`,
     topDept: "Largest department",
     value: "Total amount",
     download: "Download Excel", working: "Preparing…", cancel: "Cancel",
@@ -121,7 +121,10 @@ export function PaymentExport({
   }, [baris, mode, from, to, rangeInvalid]);
 
   const ringkas = useMemo(() => {
-    const masuk = terpilih.filter((r) => r.sheetStatus === "synced").length;
+    const selesai = terpilih.filter((r) => r.approvalStatus === "approved").length;
+    const proses = terpilih.filter(
+      (r) => r.approvalStatus === "waiting_ops" || r.approvalStatus === "waiting_finance",
+    ).length;
     const perDept = new Map<string, number>();
     for (const r of terpilih) {
       const k = DEPT_LABEL[locale][r.department];
@@ -129,8 +132,8 @@ export function PaymentExport({
     }
     const teratas = [...perDept.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
     return {
-      masuk,
-      belum: terpilih.length - masuk,
+      masuk: selesai,
+      belum: proses,
       total: terpilih.reduce((s, r) => s + r.totalAmount, 0),
       teratas,
     };

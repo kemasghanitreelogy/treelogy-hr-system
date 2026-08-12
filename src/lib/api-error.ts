@@ -55,7 +55,6 @@ const MESSAGES: Record<string, Msg> = {
   invalid_status: { id: "Status tidak valid.", en: "The status is invalid." },
   awaiting_manager: { id: "Menunggu persetujuan atasan dulu sebelum HR.", en: "Waiting for the manager's approval before HR." },
   already_decided: { id: "Pengajuan ini sudah diputuskan.", en: "This request has already been decided." },
-  not_ops_approved: { id: "Pengajuan belum disetujui tahap Ops — belum waktunya masuk sheet.", en: "Not yet Ops-approved — the row isn't due in the sheet yet." },
   reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
   // --- pengajuan pembayaran ---
