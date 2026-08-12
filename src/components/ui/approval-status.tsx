@@ -18,6 +18,7 @@ const T = {
     rejected: "Ditolak",
     byManager: (n: string) => `Atasan: ${n} ✓`,
     byHr: (n: string) => `HR: ${n} ✓`,
+    byApprover: (n: string) => `Disetujui ${n} ✓`,
     rejectedBy: (n: string) => `oleh ${n}`,
   },
   en: {
@@ -27,6 +28,7 @@ const T = {
     rejected: "Rejected",
     byManager: (n: string) => `Manager: ${n} ✓`,
     byHr: (n: string) => `HR: ${n} ✓`,
+    byApprover: (n: string) => `Approved by ${n} ✓`,
     rejectedBy: (n: string) => `by ${n}`,
   },
 };
@@ -34,8 +36,21 @@ const T = {
 /**
  * Dual-approval status: a badge plus, once someone has signed off, a line that
  * says who approved each side (atasan / HR) — or who rejected.
+ *
+ * `singleApprover`: modul dengan SATU penyetuju berbasis izin (mis. perjalanan
+ * dinas) menyimpan tanda tangannya di kolom hr_approver, padahal penyetujunya
+ * belum tentu HR (bisa General Affairs). Mode ini menulis "Disetujui <nama>"
+ * tanpa embel-embel jabatan yang bisa keliru.
  */
-export function ApprovalStatus({ request, align = "end" }: { request: ApprovalInfo; align?: "start" | "end" }) {
+export function ApprovalStatus({
+  request,
+  align = "end",
+  singleApprover = false,
+}: {
+  request: ApprovalInfo;
+  align?: "start" | "end";
+  singleApprover?: boolean;
+}) {
   const locale = useLocale();
   const t = T[locale];
   const { status, managerApprover, hrApprover, approver } = request;
@@ -54,6 +69,9 @@ export function ApprovalStatus({ request, align = "end" }: { request: ApprovalIn
   const lines: string[] = [];
   if (status === "rejected") {
     if (approver) lines.push(t.rejectedBy(approver));
+  } else if (singleApprover) {
+    const name = hrApprover ?? managerApprover ?? approver;
+    if (name) lines.push(t.byApprover(name));
   } else {
     if (managerApprover) lines.push(t.byManager(managerApprover));
     if (hrApprover) lines.push(t.byHr(hrApprover));

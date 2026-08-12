@@ -435,11 +435,11 @@ export function TravelView({
                     {rupiah(r.costTotal, { compact: true })}
                   </span>
                   <span className="hidden min-w-0 xl:block">
-                    <ApprovalStatus request={r} align="start" />
+                    <ApprovalStatus request={r} align="start" singleApprover />
                   </span>
 
                   <span className="shrink-0 xl:hidden">
-                    <ApprovalStatus request={r} />
+                    <ApprovalStatus request={r} singleApprover />
                   </span>
                   <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
                 </button>

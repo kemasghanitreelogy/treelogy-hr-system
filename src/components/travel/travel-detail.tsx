@@ -176,7 +176,7 @@ export function TravelDetail({
             {employeeName} · {r.jobTitle}
           </p>
         </div>
-        <ApprovalStatus request={r} />
+        <ApprovalStatus request={r} singleApprover />
       </div>
 
       {r.status === "rejected" && r.rejectionReason && (
