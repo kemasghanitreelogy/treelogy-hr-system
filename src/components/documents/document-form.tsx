@@ -201,7 +201,7 @@ export function DocumentForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label={t.name}>
+      <Field label={t.name} required>
         <Input
           value={form.name}
           onChange={(e) => set("name", e.target.value)}
@@ -244,7 +244,7 @@ export function DocumentForm({
 
       {/* Keadaan unggahan selalu terlihat: skeleton saat proses, chip berkas
           saat sudah ada — tanpa ini pengguna tidak tahu unggahannya berhasil. */}
-      <Field label={t.file} hint={t.fileHint}>
+      <Field label={t.file} required hint={t.fileHint}>
         <div className="flex items-center gap-3">
           <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={pickFile} />
           {uploading ? (

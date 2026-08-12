@@ -57,6 +57,7 @@ const STR: Record<
     advanceHint: (max: string) => string;
     secMore: string;
     proof: string;
+    requiredNote: string;
     proofHint: string;
     proofAdd: string;
     proofReplace: string;
@@ -110,7 +111,8 @@ const STR: Record<
     advanceAmount: "Nominal diminta",
     advanceHint: (max) => `Maksimal ${max} (total estimasi).`,
     secMore: "V. Informasi Tambahan",
-    proof: "Bukti persetujuan atasan (wajib)",
+    proof: "Bukti persetujuan atasan",
+    requiredNote: "* wajib diisi",
     proofHint: "Contoh: foto/tangkapan layar persetujuan dari atasan (WA atau lainnya). Satu berkas gambar atau PDF.",
     proofAdd: "Pilih berkas",
     proofReplace: "Ganti berkas",
@@ -164,7 +166,8 @@ const STR: Record<
     advanceAmount: "Amount requested",
     advanceHint: (max) => `At most ${max} (the estimated total).`,
     secMore: "V. Additional Information",
-    proof: "Proof of supervisor approval (required)",
+    proof: "Proof of supervisor approval",
+    requiredNote: "* required",
     proofHint: "e.g. a photo/screenshot of the written approval (WA or else). One image or PDF file.",
     proofAdd: "Choose file",
     proofReplace: "Replace file",
@@ -423,7 +426,7 @@ export function TravelForm({
       {/* II. Rincian perjalanan */}
       <div className="space-y-3">
         <SectionTitle>{t.secTravel}</SectionTitle>
-        <Field label={t.purpose}>
+        <Field label={t.purpose} required>
           <Textarea
             value={form.purpose}
             onChange={(e) => set("purpose", e.target.value)}
@@ -432,7 +435,7 @@ export function TravelForm({
             required
           />
         </Field>
-        <Field label={t.destination}>
+        <Field label={t.destination} required>
           <Input
             value={form.destination}
             onChange={(e) => set("destination", e.target.value)}
@@ -441,7 +444,7 @@ export function TravelForm({
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label={t.departure}>
+          <Field label={t.departure} required>
             <Input
               type="date"
               value={form.departureDate}
@@ -449,7 +452,7 @@ export function TravelForm({
               required
             />
           </Field>
-          <Field label={t.ret}>
+          <Field label={t.ret} required>
             <Input
               type="date"
               value={form.returnDate}
@@ -582,7 +585,7 @@ export function TravelForm({
         <SectionTitle>{t.secMore}</SectionTitle>
 
         {/* Bukti persetujuan atasan — WAJIB; tanpa ini tombol kirim tertahan. */}
-        <Field label={t.proof} hint={t.proofHint}>
+        <Field label={t.proof} required hint={t.proofHint}>
           <div className="flex items-center gap-3">
             <input
               ref={proofRef}
@@ -658,6 +661,9 @@ export function TravelForm({
           </span>
         </label>
       </div>
+
+      {/* Legenda penanda — tanda bintang saja ambigu tanpa keterangan sekali di form. */}
+      <p className="text-[11px] text-faint">{t.requiredNote}</p>
 
       <div className="flex gap-2 pt-1">
         <Button type="button" variant="outline" className="flex-1" onClick={onCancel} disabled={saving}>

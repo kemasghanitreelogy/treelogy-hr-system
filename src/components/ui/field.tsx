@@ -24,10 +24,15 @@ export function Field({
     <div className={cn("space-y-1.5", className)}>
       <label htmlFor={htmlFor} className="block text-sm font-medium text-ink">
         {label}
+        {/* Penanda wajib: tanda bintang untuk mata, kata "wajib" untuk pembaca
+            layar — warna saja tidak boleh jadi satu-satunya pembeda. */}
         {required && (
-          <span className="ml-0.5 text-clay" aria-hidden>
-            *
-          </span>
+          <>
+            <span className="ml-0.5 font-semibold text-clay" aria-hidden>
+              *
+            </span>
+            <span className="sr-only"> (wajib diisi)</span>
+          </>
         )}
       </label>
       {children}
