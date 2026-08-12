@@ -30,10 +30,11 @@ export default async function TravelPage() {
   if (!can(user, "travel.view")) redirect("/dashboard");
 
   const t = STR[locale];
-  // Penyetuju TUNGGAL: pemegang travel.approve. Bukan atasan, bukan otomatis HR —
-  // siapa orangnya diatur lewat peran di halaman Peran & Akses (dicek ulang di
-  // API + RLS, jadi ini murni untuk menampilkan tombolnya).
+  // Persetujuan DUA TAHAP: tahap 1 pemegang travel.approve (Ops/GA), tahap 2
+  // pemegang travel.finalize (HR/Admin). Siapa orangnya diatur lewat peran di
+  // halaman Peran & Akses (dicek ulang di API + RLS — ini murni untuk tombol).
   const canApproveAll = can(user, "travel.approve");
+  const canFinalize = can(user, "travel.finalize") || can(user, "employees.manage");
   const canRequestForOthers = can(user, "employees.manage");
 
   const employees = employeesAll
@@ -54,6 +55,7 @@ export default async function TravelPage() {
         employees={employees}
         currentEmployeeId={user?.employeeId ?? null}
         canApproveAll={canApproveAll}
+        canFinalize={canFinalize}
         canRequestForOthers={canRequestForOthers}
         today={liveToday()}
       />

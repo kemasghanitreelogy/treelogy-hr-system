@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Clock3, Loader2, Paperclip, ShieldCheck, Send, X } from "lucide-react";
+import { Check, Loader2, Paperclip, ShieldCheck, Send, X } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { useLocale } from "@/components/layout/locale-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RejectDialog } from "@/components/ui/reject-dialog";
+import { Step, type StepState } from "@/components/ui/step-timeline";
 import { PaymentFile } from "./payment-file";
 
 const STR: Record<Locale, Record<string, string>> = {
@@ -62,60 +63,6 @@ const STR: Record<Locale, Record<string, string>> = {
     financeActionHint: "Approving marks the payment as processed by Finance.",
   },
 };
-
-type StepState = "done" | "current" | "rejected" | "upcoming";
-
-/**
- * Satu langkah pada garis waktu persetujuan. Garis penghubung digambar per
- * langkah (di bawah ikonnya) supaya warnanya mengikuti sejauh mana alur sudah
- * berjalan — hijau untuk yang terlewati, abu untuk yang belum.
- */
-function Step({
-  state,
-  title,
-  detail,
-  last = false,
-}: {
-  state: StepState;
-  title: string;
-  detail: React.ReactNode;
-  last?: boolean;
-}) {
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <span
-          className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-1",
-            state === "done" && "bg-forest-600 text-cream ring-forest-600",
-            state === "current" && "bg-gold-soft text-[#8a6512] ring-gold",
-            state === "rejected" && "bg-clay text-cream ring-clay",
-            state === "upcoming" && "bg-cream text-faint ring-line",
-          )}
-        >
-          {state === "done" && <Check className="h-4 w-4" />}
-          {state === "current" && <Clock3 className="h-4 w-4" />}
-          {state === "rejected" && <X className="h-4 w-4" />}
-          {state === "upcoming" && <span className="h-1.5 w-1.5 rounded-full bg-line" />}
-        </span>
-        {!last && (
-          <span className={cn("w-px flex-1 min-h-4", state === "done" ? "bg-forest-300" : "bg-line")} />
-        )}
-      </div>
-      <div className={cn("min-w-0 pb-4", last && "pb-0")}>
-        <p
-          className={cn(
-            "text-sm font-semibold leading-7",
-            state === "upcoming" ? "text-faint" : state === "rejected" ? "text-clay" : "text-ink",
-          )}
-        >
-          {title}
-        </p>
-        <div className="text-xs text-muted">{detail}</div>
-      </div>
-    </div>
-  );
-}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (

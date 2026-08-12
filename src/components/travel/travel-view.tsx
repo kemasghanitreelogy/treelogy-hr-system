@@ -168,14 +168,17 @@ export function TravelView({
   employees,
   currentEmployeeId,
   canApproveAll,
+  canFinalize,
   canRequestForOthers,
   today,
 }: {
   requests: TravelRequest[];
   employees: TravelEmployee[];
   currentEmployeeId: string | null;
-  /** HR/admin: melihat & memutuskan semua pengajuan. */
+  /** Penyetuju tahap 1 (travel.approve — Ops/GA). */
   canApproveAll: boolean;
+  /** Penyetuju tahap akhir (travel.finalize — HR/Admin). */
+  canFinalize: boolean;
   canRequestForOthers: boolean;
   today: string;
 }) {
@@ -242,9 +245,16 @@ export function TravelView({
   const selected = list.find((r) => r.id === selectedId) ?? null;
   const isFiltered = query.trim() !== "" || status !== "all";
 
-  /** Boleh memutuskan: HANYA pemegang travel.approve, apa pun hierarkinya. */
+  /**
+   * Boleh memutuskan tahap yang SEDANG berjalan — dan tidak pernah untuk
+   * pengajuan milik sendiri (four-eyes; server menegakkan hal yang sama).
+   * Tahap 1 (belum ada tanda tangan): travel.approve, atau finalize sebagai
+   * cadangan. Tahap 2: hanya travel.finalize.
+   */
   function canDecide(r: TravelRequest): boolean {
-    return r.status === "pending" && canApproveAll;
+    if (r.status !== "pending") return false;
+    if (r.employeeId === currentEmployeeId) return false;
+    return r.managerApprover ? canFinalize : canApproveAll || canFinalize;
   }
 
   async function decide(
@@ -435,11 +445,11 @@ export function TravelView({
                     {rupiah(r.costTotal, { compact: true })}
                   </span>
                   <span className="hidden min-w-0 xl:block">
-                    <ApprovalStatus request={r} align="start" singleApprover />
+                    <ApprovalStatus request={r} align="start" twoStep />
                   </span>
 
                   <span className="shrink-0 xl:hidden">
-                    <ApprovalStatus request={r} singleApprover />
+                    <ApprovalStatus request={r} twoStep />
                   </span>
                   <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
                 </button>
@@ -456,7 +466,7 @@ export function TravelView({
             request={selected}
             employeeName={empMap.get(selected.employeeId)?.name ?? "—"}
             canDecide={canDecide(selected)}
-            canReset={canApproveAll && selected.status !== "pending"}
+            canReset={canFinalize && selected.status !== "pending"}
             canRevise={selected.employeeId === currentEmployeeId && selected.status === "pending"}
             busy={busy}
             onApprove={() => decide(selected, "approve")}

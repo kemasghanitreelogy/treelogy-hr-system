@@ -70,7 +70,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { id: "travel.view", label: "Lihat perjalanan dinas" },
       { id: "travel.request", label: "Ajukan perjalanan dinas" },
-      { id: "travel.approve", label: "Setujui / tolak perjalanan dinas" },
+      { id: "travel.approve", label: "Setujui tahap 1 perjalanan dinas (Ops/GA)" },
+      { id: "travel.finalize", label: "Persetujuan akhir perjalanan dinas (tahap 2)" },
     ],
   },
   {

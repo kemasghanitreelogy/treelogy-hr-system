@@ -18,8 +18,12 @@ const T = {
     rejected: "Ditolak",
     byManager: (n: string) => `Atasan: ${n} ✓`,
     byHr: (n: string) => `HR: ${n} ✓`,
-    byApprover: (n: string) => `Disetujui ${n} ✓`,
     rejectedBy: (n: string) => `oleh ${n}`,
+    // Mode dua tahap netral (perjalanan dinas): Ops/GA → persetujuan akhir.
+    waitingStep1: "Menunggu · 0/2",
+    waitingFinal: "Tahap akhir · 1/2",
+    byStep1: (n: string) => `Tahap 1: ${n} ✓`,
+    byFinal: (n: string) => `Final: ${n} ✓`,
   },
   en: {
     pending: "Pending",
@@ -28,8 +32,11 @@ const T = {
     rejected: "Rejected",
     byManager: (n: string) => `Manager: ${n} ✓`,
     byHr: (n: string) => `HR: ${n} ✓`,
-    byApprover: (n: string) => `Approved by ${n} ✓`,
     rejectedBy: (n: string) => `by ${n}`,
+    waitingStep1: "Pending · 0/2",
+    waitingFinal: "Final stage · 1/2",
+    byStep1: (n: string) => `Step 1: ${n} ✓`,
+    byFinal: (n: string) => `Final: ${n} ✓`,
   },
 };
 
@@ -37,19 +44,19 @@ const T = {
  * Dual-approval status: a badge plus, once someone has signed off, a line that
  * says who approved each side (atasan / HR) — or who rejected.
  *
- * `singleApprover`: modul dengan SATU penyetuju berbasis izin (mis. perjalanan
- * dinas) menyimpan tanda tangannya di kolom hr_approver, padahal penyetujunya
- * belum tentu HR (bisa General Affairs). Mode ini menulis "Disetujui <nama>"
- * tanpa embel-embel jabatan yang bisa keliru.
+ * `twoStep`: modul dua tahap BERBASIS IZIN (perjalanan dinas — Ops/GA lalu
+ * persetujuan akhir), bukan atasan/HR. Badge menampilkan progres langkah
+ * ("Tahap akhir · 1/2") sesuai praktik indikator multi-langkah, dan barisnya
+ * memakai label netral "Tahap 1 / Final" — bukan jabatan yang bisa keliru.
  */
 export function ApprovalStatus({
   request,
   align = "end",
-  singleApprover = false,
+  twoStep = false,
 }: {
   request: ApprovalInfo;
   align?: "start" | "end";
-  singleApprover?: boolean;
+  twoStep?: boolean;
 }) {
   const locale = useLocale();
   const t = T[locale];
@@ -61,17 +68,19 @@ export function ApprovalStatus({
     ) : status === "rejected" ? (
       <Badge tone="clay" dot>{t.rejected}</Badge>
     ) : managerApprover ? (
-      <Badge tone="sky" dot>{t.waitingHr}</Badge>
+      <Badge tone="sky" dot>{twoStep ? t.waitingFinal : t.waitingHr}</Badge>
     ) : (
-      <Badge tone="gold" dot>{t.pending}</Badge>
+      <Badge tone="gold" dot>{twoStep ? t.waitingStep1 : t.pending}</Badge>
     );
 
   const lines: string[] = [];
   if (status === "rejected") {
     if (approver) lines.push(t.rejectedBy(approver));
-  } else if (singleApprover) {
-    const name = hrApprover ?? managerApprover ?? approver;
-    if (name) lines.push(t.byApprover(name));
+  } else if (twoStep) {
+    if (managerApprover) lines.push(t.byStep1(managerApprover));
+    if (hrApprover) lines.push(t.byFinal(hrApprover));
+    // Baris lama era penyetuju tunggal: hanya slot final yang terisi.
+    if (!managerApprover && !hrApprover && approver) lines.push(t.byFinal(approver));
   } else {
     if (managerApprover) lines.push(t.byManager(managerApprover));
     if (hrApprover) lines.push(t.byHr(hrApprover));

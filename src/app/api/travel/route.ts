@@ -196,7 +196,9 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, request: mapTravelRequest(data) });
 }
 
-// ---- Keputusan penyetuju tunggal (pemegang travel.approve). RLS ikut menjaga. ----
+// ---- Keputusan dua tahap: Ops (travel.approve) → Final (travel.finalize) ----
+// Tahap ditentukan STATUS baris, bukan pilihan client. Praktik four-eyes:
+// tak boleh menyetujui pengajuan sendiri, dan kedua tahap harus orang berbeda.
 export async function PATCH(req: Request) {
   let body: UpdatePayload;
   try {
@@ -226,8 +228,17 @@ export async function PATCH(req: Request) {
     .maybeSingle();
   if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // SATU penyetuju: pemegang travel.approve. Tidak ada langkah atasan.
-  if (!can(user, "travel.approve")) {
+  const isOps = can(user, "travel.approve");
+  const isFinal = can(user, "travel.finalize") || can(user, "employees.manage");
+  if (!isOps && !isFinal) {
+    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+  }
+  // Empat mata: tidak ada yang boleh memutus pengajuannya SENDIRI.
+  if (body.action !== "reset" && prev.employee_id === user.employeeId) {
+    return NextResponse.json({ error: "self_approval" }, { status: 403 });
+  }
+  // Reset keputusan final hanya oleh pemegang tahap akhir.
+  if (body.action === "reset" && !isFinal) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   }
 
@@ -264,12 +275,26 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true, request: mapTravelRequest(back) });
   }
 
+  // Tahap dari keadaan baris: belum ada tanda tangan Ops → tahap 1 (slot
+  // manager_*); sudah → tahap 2 final (slot hr_*). Pemegang tahap akhir boleh
+  // menjadi cadangan tahap 1 (mis. penyetuju Ops mengajukan untuk dirinya).
+  const stage: "manager" | "hr" = prev.manager_approver ? "hr" : "manager";
+  if (body.action === "approve" || body.action === "reject") {
+    if (stage === "hr" && !isFinal) {
+      return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+    }
+    // Empat mata: kedua tahap harus ditandatangani orang yang BERBEDA.
+    if (stage === "hr" && body.action === "approve" && prev.manager_approver === user.name) {
+      return NextResponse.json({ error: "distinct_approver" }, { status: 400 });
+    }
+  }
+
   const result = applyApproval({
     action: body.action,
-    role: "hr",
+    role: stage,
     actorName: user.name,
-    // Tidak ada tahap atasan pada modul ini — penyetuju tunggal langsung final.
-    managerRequired: false,
+    // Dua tahap wajib berurutan: final tidak bisa melompati tahap Ops.
+    managerRequired: true,
     current: {
       status: prev.status as RequestStatus,
       managerApprover: (prev.manager_approver as string) ?? null,
@@ -290,6 +315,31 @@ export async function PATCH(req: Request) {
     .select("*")
     .maybeSingle();
   if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+  // Tahap 1 selesai (status masih pending) → yang harus BERAKSI berikutnya
+  // adalah pemegang persetujuan akhir; pengaju dapat kabar kemajuannya.
+  if (body.action === "approve" && result.status === "pending") {
+    await notifyPermissionHolders(
+      "travel.finalize",
+      {
+        type: "travel",
+        title: "Perjalanan dinas menunggu persetujuan akhir",
+        body: `${data.destination} · ${formatDate(String(data.departure_date))} · lolos tahap 1 (${user.name}) · perlu keputusan Anda`,
+        href: "/travel",
+      },
+      { excludeEmployeeId: user.employeeId },
+    );
+    await pushNotifications([
+      {
+        employeeId: String(data.employee_id),
+        type: "travel",
+        tone: "pending",
+        title: "Perjalanan dinas lolos tahap 1",
+        body: `${data.destination} · disetujui ${user.name} · menunggu persetujuan akhir`,
+        href: "/travel",
+      },
+    ]);
+  }
 
   if (result.status === "approved" || result.status === "rejected") {
     const reasonNote =

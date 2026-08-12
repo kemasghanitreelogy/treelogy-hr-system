@@ -8,6 +8,7 @@ import { TRANSPORT_LABEL } from "@/lib/travel";
 import { useLocale } from "@/components/layout/locale-context";
 import { PaymentFile } from "@/components/payment-requests/payment-file";
 import { ApprovalStatus } from "@/components/ui/approval-status";
+import { Step, type StepState } from "@/components/ui/step-timeline";
 import { Button } from "@/components/ui/button";
 import { RejectionNote } from "@/components/ui/rejection-note";
 
@@ -36,6 +37,18 @@ const STR: Record<
     proof: string;
     noProof: string;
     requestedAt: string;
+    flow: string;
+    stepSubmitted: string;
+    stepOps: string;
+    stepFinal: string;
+    hintWaitOps: string;
+    hintWaitFinal: string;
+    hintAfterOps: string;
+    byPrefix: string;
+    rejPrefix: string;
+    legacySingle: string;
+    actionHintOps: string;
+    actionHintFinal: string;
     approve: string;
     reject: string;
     reset: string;
@@ -68,6 +81,18 @@ const STR: Record<
     proof: "Bukti persetujuan atasan",
     noProof: "Tidak ada — pengajuan dibuat sebelum lampiran diwajibkan.",
     requestedAt: "Diajukan",
+    flow: "Alur persetujuan",
+    stepSubmitted: "Diajukan",
+    stepOps: "Persetujuan Tahap 1 (Ops/GA)",
+    stepFinal: "Persetujuan Akhir (HR/Admin)",
+    hintWaitOps: "Menunggu persetujuan tahap 1.",
+    hintWaitFinal: "Lolos tahap 1 — menunggu persetujuan akhir.",
+    hintAfterOps: "Menyusul setelah tahap 1 disetujui.",
+    byPrefix: "Disetujui",
+    rejPrefix: "Ditolak",
+    legacySingle: "Disetujui pada era penyetuju tunggal.",
+    actionHintOps: "Persetujuan Anda = tahap 1 dari 2. Setelah ini pengajuan menunggu persetujuan akhir HR/Admin.",
+    actionHintFinal: "Persetujuan Anda bersifat FINAL (tahap 2 dari 2) — status berubah menjadi Disetujui.",
     approve: "Setujui",
     reject: "Tolak",
     reset: "Kembalikan ke menunggu",
@@ -99,6 +124,18 @@ const STR: Record<
     proof: "Supervisor approval proof",
     noProof: "None — submitted before the attachment became mandatory.",
     requestedAt: "Submitted",
+    flow: "Approval flow",
+    stepSubmitted: "Submitted",
+    stepOps: "Step-1 Approval (Ops/GA)",
+    stepFinal: "Final Approval (HR/Admin)",
+    hintWaitOps: "Awaiting step-1 approval.",
+    hintWaitFinal: "Cleared step 1 — awaiting final approval.",
+    hintAfterOps: "Follows once step 1 is approved.",
+    byPrefix: "Approved by",
+    rejPrefix: "Rejected by",
+    legacySingle: "Approved in the single-approver era.",
+    actionHintOps: "Your approval is step 1 of 2. The request then awaits the final HR/Admin approval.",
+    actionHintFinal: "Your approval is FINAL (step 2 of 2) — the status becomes Approved.",
     approve: "Approve",
     reject: "Reject",
     reset: "Reset to pending",
@@ -176,12 +213,64 @@ export function TravelDetail({
             {employeeName} · {r.jobTitle}
           </p>
         </div>
-        <ApprovalStatus request={r} singleApprover />
+        <ApprovalStatus request={r} twoStep />
       </div>
 
       {r.status === "rejected" && r.rejectionReason && (
         <RejectionNote reason={r.rejectionReason} by={r.approver} />
       )}
+
+      {/* Garis waktu dua tahap — siapa pun langsung tahu pengajuan ini sedang
+          di meja siapa, sudah lewat mana, dan kenapa bila ditolak. */}
+      {(() => {
+        const rejectedAtFinal = r.status === "rejected" && !!r.managerApprover;
+        const rejectedAtOps = r.status === "rejected" && !r.managerApprover;
+        const opsState: StepState = rejectedAtOps
+          ? "rejected"
+          : r.managerApprover || r.status === "approved"
+            ? "done"
+            : "current";
+        const finalState: StepState = rejectedAtFinal
+          ? "rejected"
+          : r.status === "approved"
+            ? "done"
+            : r.managerApprover
+              ? "current"
+              : "upcoming";
+        const who = (name?: string | null, at?: string | null, prefix?: string) => (
+          <>
+            {prefix} <span className="font-medium text-ink">{name || "—"}</span>
+            {at && <> · {formatDate(at, "long", locale)}</>}
+          </>
+        );
+        return (
+          <div className="rounded-2xl border border-line bg-panel p-3.5">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-faint">{t.flow}</p>
+            <Step state="done" title={t.stepSubmitted} detail={who(employeeName, r.requestedAt)} />
+            <Step
+              state={opsState}
+              title={t.stepOps}
+              detail={
+                opsState === "rejected" ? who(r.approver, null, t.rejPrefix)
+                  : r.managerApprover ? who(r.managerApprover, r.managerApprovedAt, t.byPrefix)
+                  : opsState === "done" ? t.legacySingle
+                  : t.hintWaitOps
+              }
+            />
+            <Step
+              state={finalState}
+              title={t.stepFinal}
+              last
+              detail={
+                finalState === "rejected" ? who(r.approver, null, t.rejPrefix)
+                  : finalState === "done" ? who(r.hrApprover ?? r.approver, r.hrApprovedAt, t.byPrefix)
+                  : finalState === "current" ? t.hintWaitFinal
+                  : t.hintAfterOps
+              }
+            />
+          </div>
+        );
+      })()}
 
       {/* Dikembalikan untuk diperbaiki — beda dari penolakan: masih bisa dilanjutkan. */}
       {r.revisionNote && (
@@ -260,6 +349,12 @@ export function TravelDetail({
 
       {(canDecide || canReset) && (
         <div className="space-y-2">
+          {/* Penyetuju tahu persis bobot klik-nya: tahap 1 meneruskan, tahap 2 final. */}
+          {canDecide && (
+            <p className="text-[11px] leading-snug text-faint">
+              {r.managerApprover ? t.actionHintFinal : t.actionHintOps}
+            </p>
+          )}
           {canDecide && (
             <Button variant="outline" className="w-full" onClick={onReturnForRevision} disabled={busy}>
               <Undo2 className="h-4 w-4" /> {t.revise}
