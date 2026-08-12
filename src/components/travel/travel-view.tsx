@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { RejectDialog } from "@/components/ui/reject-dialog";
-import { ScopeTabs, inScope, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
+import { ScopeTabs, defaultScopeFor, inScope, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
 import { Sheet } from "@/components/ui/sheet";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
@@ -206,7 +206,7 @@ export function TravelView({
   const scopeOpts = scopeOptionsFor(canApproveAll, hasTeam);
   const [scope, setScope] = useStickyTab<Scope>(
     "travel.scope",
-    "mine",
+    defaultScopeFor(scopeOpts),
     scopeOpts.length ? scopeOpts : ["mine"],
   );
 

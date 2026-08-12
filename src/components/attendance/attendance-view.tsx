@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { RejectDialog } from "@/components/ui/reject-dialog";
 import { Sheet } from "@/components/ui/sheet";
-import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
+import { ScopeTabs, defaultScopeFor, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 import { useLocale } from "@/components/layout/locale-context";
@@ -236,7 +236,11 @@ export function AttendanceView({
 
   // Scope: HR → Semua/Data Saya (default Data Saya). Karyawan: hanya datanya.
   const scopeOpts = scopeOptionsFor(canReviewAll, false);
-  const [scope, setScope] = useStickyTab<Scope>("attendance.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const [scope, setScope] = useStickyTab<Scope>(
+    "attendance.scope",
+    defaultScopeFor(scopeOpts),
+    scopeOpts.length ? scopeOpts : ["mine"],
+  );
   // "reviewing" = tampilan HR (roster, ringkasan, kolom nama). Data Saya → tampilan mandiri.
   const reviewing = canReviewAll && scope !== "mine";
 

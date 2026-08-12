@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ScopeTabs, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
+import { ScopeTabs, defaultScopeFor, scopeOptionsFor, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
@@ -351,7 +351,11 @@ export function ShiftsView({
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   // Scope: HR/pengelola → Semua/Data Saya (default Data Saya).
   const scopeOpts = scopeOptionsFor(canManageShifts, false);
-  const [scope, setScope] = useStickyTab<Scope>("schedule.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const [scope, setScope] = useStickyTab<Scope>(
+    "schedule.scope",
+    defaultScopeFor(scopeOpts),
+    scopeOpts.length ? scopeOpts : ["mine"],
+  );
   const self = currentEmployeeId ? empMap.get(currentEmployeeId) : undefined;
 
   // Deep-link handoff: paksa tab "Semua" agar daftar jadwal karyawan tampil.

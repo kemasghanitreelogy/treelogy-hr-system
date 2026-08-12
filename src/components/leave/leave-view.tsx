@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
+import { ScopeTabs, defaultScopeFor, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
@@ -333,7 +333,11 @@ export function LeaveView({
 
   // Scope: HR → Semua/Data Saya; manajer → Data Tim/Data Saya; default Data Saya.
   const scopeOpts = scopeOptionsFor(canApproveAll, approverTeam != null);
-  const [scope, setScope] = useStickyTab<Scope>("leave.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const [scope, setScope] = useStickyTab<Scope>(
+    "leave.scope",
+    defaultScopeFor(scopeOpts),
+    scopeOpts.length ? scopeOpts : ["mine"],
+  );
   const matchScope = (employeeId: string) =>
     scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.managerId, currentEmployeeId);
   // Tampilkan nama/identitas hanya saat melihat data lebih dari diri sendiri.

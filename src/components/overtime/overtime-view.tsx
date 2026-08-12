@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
-import { ScopeTabs, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
+import { ScopeTabs, defaultScopeFor, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
 
@@ -244,7 +244,11 @@ export function OvertimeView({
   const t = STR[locale];
 
   const scopeOpts = scopeOptionsFor(canApproveAll, approverTeam != null);
-  const [scope, setScope] = useStickyTab<Scope>("overtime.scope", "mine", scopeOpts.length ? scopeOpts : ["mine"]);
+  const [scope, setScope] = useStickyTab<Scope>(
+    "overtime.scope",
+    defaultScopeFor(scopeOpts),
+    scopeOpts.length ? scopeOpts : ["mine"],
+  );
   const matchScope = (employeeId: string) =>
     scopeOpts.length === 0 || inScope(scope, employeeId, empMap.get(employeeId)?.managerId, currentEmployeeId);
   const showEmployee = scope !== "mine" && (canApproveAll || approverTeam != null);

@@ -12,12 +12,25 @@ export type Scope = "all" | "team" | "mine";
  * - HR/admin (canApproveAll): Semua + Data Saya
  * - Manajer (punya tim): Data Tim + Data Saya
  * - Karyawan biasa: tidak ada tab (selalu data sendiri)
- * Default selalu "Data Saya" (elemen terakhir difilter di pemanggil).
  */
 export function scopeOptionsFor(canApproveAll: boolean, hasTeam: boolean): Scope[] {
   if (canApproveAll) return ["all", "mine"];
   if (hasTeam) return ["team", "mine"];
   return [];
+}
+
+/**
+ * Scope awal sebuah menu: SELUAS hak yang dimiliki — "Semua" untuk pemegang
+ * akses penuh, "Data Tim" untuk manajer, "Data Saya" untuk karyawan biasa.
+ *
+ * Alasannya: yang berhak melihat semua data hampir selalu membuka menu untuk
+ * meninjau/menyetujui pekerjaan orang lain. Membuka dengan "Data Saya" membuat
+ * halaman tampak kosong dan menyembunyikan antrean yang perlu dikerjakan —
+ * pilihan sempit sebaiknya diambil sadar, bukan jadi titik awal.
+ * (Pilihan yang pernah ditekan tetap diingat per sesi lewat useStickyTab.)
+ */
+export function defaultScopeFor(options: Scope[]): Scope {
+  return options[0] ?? "mine";
 }
 
 /**
