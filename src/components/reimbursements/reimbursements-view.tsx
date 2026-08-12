@@ -402,7 +402,7 @@ export function ReimbursementsView({
                 <button
                   type="button"
                   onClick={() => setRevising(r)}
-                  className="mr-3 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-forest-600 px-2.5 py-1.5 text-xs font-semibold text-cream transition-colors hover:bg-forest-700"
+                  className="mr-20 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-forest-600 px-2.5 py-1.5 text-xs font-semibold text-cream transition-colors hover:bg-forest-700 lg:mr-3"
                 >
                   <Pencil className="h-3.5 w-3.5" /> {t.reviseShort}
                 </button>
