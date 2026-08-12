@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, History, Loader2, Paperclip, PiggyBank, Plus, X } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, Check, ExternalLink, FileText, History, Loader2, Paperclip, Pencil, PiggyBank, Plus, X } from "lucide-react";
 import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, TabunganEntry, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { leaveHistory, type LeavePeriod } from "@/lib/leave-policy";
@@ -125,6 +125,7 @@ const STR: Record<
     confirmResetTitle: string;
     confirmResetMsg: string;
     reviseTitle: string;
+    reviseShort: string;
     reviseDesc: string;
     revisedToast: string;
   }
@@ -206,6 +207,7 @@ const STR: Record<
     confirmApproveTitle: "Setujui pengajuan ini?",
     confirmApproveMsg: "Pengajuan ditandai disetujui dan saldo karyawan ikut diperbarui.",
     reviseTitle: "Revisi Pengajuan",
+    reviseShort: "Revisi",
     reviseDesc: "Perbaiki datanya, lalu kirim ulang untuk ditinjau.",
     revisedToast: "Pengajuan diperbaiki & dikirim ulang ✓",
     confirmResetTitle: "Ubah keputusan?",
@@ -288,6 +290,7 @@ const STR: Record<
     confirmApproveTitle: "Approve this request?",
     confirmApproveMsg: "The request is marked approved and the employee's balance is updated.",
     reviseTitle: "Revise Request",
+    reviseShort: "Revise",
     reviseDesc: "Fix the details, then resubmit for review.",
     revisedToast: "Request revised & resubmitted ✓",
     confirmResetTitle: "Change decision?",
@@ -471,6 +474,12 @@ export function LeaveView({
                   )}
                 </div>
                 <div className="flex items-center gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
+                  {/* Ditolak & milik sendiri → jalan keluarnya langsung di baris. */}
+                  {r.status === "rejected" && r.employeeId === currentEmployeeId && (
+                    <Button size="sm" onClick={() => setRevising(r)}>
+                      <Pencil className="h-4 w-4" /> {t.reviseShort}
+                    </Button>
+                  )}
                   {canDecide(r) ? (
                     <>
                       <Button size="sm" disabled={decidingId === r.id} onClick={() => setConfirmDecide({ id: r.id, action: "approve" })} className="flex-1 sm:flex-none">

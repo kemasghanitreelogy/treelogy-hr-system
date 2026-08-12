@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Plus, ReceiptText, Search } from "lucide-react";
+import { ChevronRight, Pencil, Plus, ReceiptText, Search } from "lucide-react";
 import type { TravelReimbursement } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -51,6 +51,7 @@ const STR: Record<Locale, Record<string, string>> = {
     connection: "Koneksi bermasalah. Coba lagi.",
     rejectTitle: "Tolak klaim reimbursement",
     reviseTitle: "Revisi Klaim Reimbursement",
+    reviseShort: "Revisi",
     revisedOk: "Klaim diperbaiki & dikirim ulang ✓",
   },
   en: {
@@ -83,6 +84,7 @@ const STR: Record<Locale, Record<string, string>> = {
     connection: "Connection problem. Try again.",
     rejectTitle: "Reject reimbursement claim",
     reviseTitle: "Revise Reimbursement Claim",
+    reviseShort: "Revise",
     revisedOk: "Claim revised & resubmitted ✓",
   },
 };
@@ -175,6 +177,11 @@ export function ReimbursementsView({
    * Boleh memutus tahap yang SEDANG berjalan — dan tidak pernah untuk klaim
    * sendiri (four-eyes; server menegakkan hal yang sama).
    */
+  /** Pengaju sendiri & klaim belum final-disetujui → boleh diperbaiki. */
+  function canRevise(r: TravelReimbursement): boolean {
+    return r.employeeId === currentEmployeeId && r.status === "rejected";
+  }
+
   function canDecide(r: TravelReimbursement): boolean {
     if (r.status !== "pending") return false;
     if (r.employeeId === currentEmployeeId) return false;
@@ -346,13 +353,15 @@ export function ReimbursementsView({
           </div>
           <div className="divide-y divide-line">
             {filtered.map((r, i) => (
+              // Tombol revisi harus bisa diklik tanpa membuka detail dulu →
+              // dijadikan SAUDARA baris, bukan tombol di dalam tombol.
+              <div key={r.id} className="flex items-center">
               <button
-                key={r.id}
                 type="button"
                 onClick={() => setSelectedId(r.id)}
                 style={{ ["--i" as string]: Math.min(i, MAX_STAGGER) }}
                 className={cn(
-                  "stagger-item grid w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
+                  "stagger-item grid min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
                   COLS,
                 )}
               >
@@ -389,6 +398,16 @@ export function ReimbursementsView({
                 </span>
                 <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
               </button>
+              {canRevise(r) && (
+                <button
+                  type="button"
+                  onClick={() => setRevising(r)}
+                  className="mr-3 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-forest-600 px-2.5 py-1.5 text-xs font-semibold text-cream transition-colors hover:bg-forest-700"
+                >
+                  <Pencil className="h-3.5 w-3.5" /> {t.reviseShort}
+                </button>
+              )}
+              </div>
             ))}
           </div>
         </div>

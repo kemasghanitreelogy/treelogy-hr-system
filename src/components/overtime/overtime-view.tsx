@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink, FileText, Loader2, Paperclip, Plus, Wallet, X } from "lucide-react";
+import { Check, ExternalLink, FileText, Loader2, Paperclip, Pencil, Plus, Wallet, X } from "lucide-react";
 import type { ContractType, Employee, OvertimeRequest, Team } from "@/lib/types";
 import { overtimePayEstimate } from "@/lib/overtime";
 import { TEAM_META } from "@/lib/constants";
@@ -87,6 +87,7 @@ const STR: Record<
     confirmResetTitle: string;
     confirmResetMsg: string;
     reviseTitle: string;
+    reviseShort: string;
     reviseDesc: string;
     revisedToast: string;
   }
@@ -147,6 +148,7 @@ const STR: Record<
     confirmApproveTitle: "Setujui lembur ini?",
     confirmApproveMsg: "Pengajuan lembur ditandai disetujui.",
     reviseTitle: "Revisi Pengajuan Lembur",
+    reviseShort: "Revisi",
     reviseDesc: "Perbaiki datanya, lalu kirim ulang untuk ditinjau.",
     revisedToast: "Pengajuan diperbaiki & dikirim ulang ✓",
     confirmResetTitle: "Ubah keputusan?",
@@ -208,6 +210,7 @@ const STR: Record<
     confirmApproveTitle: "Approve this overtime?",
     confirmApproveMsg: "The overtime request is marked approved.",
     reviseTitle: "Revise Overtime Request",
+    reviseShort: "Revise",
     reviseDesc: "Fix the details, then resubmit for review.",
     revisedToast: "Request revised & resubmitted ✓",
     confirmResetTitle: "Change decision?",
@@ -365,6 +368,12 @@ export function OvertimeView({
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2 sm:w-auto" onClick={(e) => e.stopPropagation()}>
+                {/* Ditolak & milik sendiri → jalan keluarnya langsung di baris. */}
+                {r.status === "rejected" && r.employeeId === currentEmployeeId && (
+                  <Button size="sm" onClick={() => setRevising(r)}>
+                    <Pencil className="h-4 w-4" /> {t.reviseShort}
+                  </Button>
+                )}
                 {canDecide(r) ? (
                   <>
                     <Button size="sm" disabled={busyId === r.id} onClick={() => setConfirmDecide({ id: r.id, action: "approve" })} className="flex-1 sm:flex-none">

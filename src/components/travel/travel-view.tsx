@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Download, MapPin, Plane, Plus, Search } from "lucide-react";
+import { ChevronRight, Download, MapPin, Pencil, Plane, Plus, Search } from "lucide-react";
 import type { TravelRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -63,6 +63,7 @@ const STR: Record<
     returnTitle: (dest: string) => string;
     returnDesc: string;
     fixTitle: string;
+    reviseShort: string;
     exportBtn: string;
     exportTitle: string;
     connection: string;
@@ -106,6 +107,7 @@ const STR: Record<
     returnTitle: (dest) => `Kembalikan pengajuan ke ${dest}?`,
     returnDesc: "Tulis apa yang perlu diperbaiki. Pengaju bisa memperbaiki datanya lalu mengirim ulang.",
     fixTitle: "Perbaiki Pengajuan",
+    reviseShort: "Revisi",
     exportBtn: "Ekspor",
     exportTitle: "Ekspor Perjalanan Dinas",
     connection: "Koneksi bermasalah. Coba lagi.",
@@ -148,6 +150,7 @@ const STR: Record<
     returnTitle: (dest) => `Return the request to ${dest}?`,
     returnDesc: "Describe what needs fixing. The requester can correct the data and resubmit.",
     fixTitle: "Fix Request",
+    reviseShort: "Revise",
     exportBtn: "Export",
     exportTitle: "Export Business Travel",
     connection: "Connection problem. Try again.",
@@ -251,6 +254,11 @@ export function TravelView({
    * Tahap 1 (belum ada tanda tangan): travel.approve, atau finalize sebagai
    * cadangan. Tahap 2: hanya travel.finalize.
    */
+  /** Pengaju sendiri & pengajuan ditolak → boleh diperbaiki langsung dari daftar. */
+  function canReviseRow(r: TravelRequest): boolean {
+    return r.employeeId === currentEmployeeId && r.status === "rejected";
+  }
+
   function canDecide(r: TravelRequest): boolean {
     if (r.status !== "pending") return false;
     if (r.employeeId === currentEmployeeId) return false;
@@ -402,12 +410,13 @@ export function TravelView({
               const emp = empMap.get(r.employeeId);
               const ongoing = isOngoing(r, today);
               return (
+                // Tombol revisi jadi SAUDARA baris (tombol di dalam tombol tidak sah).
+                <div key={r.id} className="flex items-center">
                 <button
-                  key={r.id}
                   onClick={() => setSelectedId(r.id)}
                   style={{ ["--i" as string]: Math.min(i, MAX_STAGGER) }}
                   className={cn(
-                    "stagger-item grid w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
+                    "stagger-item grid min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
                     COLS,
                   )}
                 >
@@ -453,6 +462,16 @@ export function TravelView({
                   </span>
                   <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
                 </button>
+                {canReviseRow(r) && (
+                  <button
+                    type="button"
+                    onClick={() => setFixing(r)}
+                    className="mr-3 inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-forest-600 px-2.5 py-1.5 text-xs font-semibold text-cream transition-colors hover:bg-forest-700"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> {t.reviseShort}
+                  </button>
+                )}
+                </div>
               );
             })}
           </div>
