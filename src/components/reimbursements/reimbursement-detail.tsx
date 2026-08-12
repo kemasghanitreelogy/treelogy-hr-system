@@ -8,7 +8,7 @@ import { REIMB_CATEGORY_LABEL, tripDuration } from "@/lib/reimbursement";
 import { useLocale } from "@/components/layout/locale-context";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { Button } from "@/components/ui/button";
-import { RejectionNote } from "@/components/ui/rejection-note";
+import { RevisionBanner } from "@/components/ui/revision-banner";
 import { Step, type StepState } from "@/components/ui/step-timeline";
 import { PaymentFile } from "@/components/payment-requests/payment-file";
 
@@ -89,20 +89,25 @@ export function ReimbursementDetail({
   employeeName,
   canDecide,
   canReset,
+  canRevise,
   busy,
   onApprove,
   onReject,
   onReset,
+  onRevise,
 }: {
   request: TravelReimbursement;
   employeeName: string;
   /** Boleh memutus TAHAP YANG SEDANG berjalan (bukan klaim sendiri). */
   canDecide: boolean;
   canReset: boolean;
+  /** Pengaju sendiri & klaim masih bisa diperbaiki (menunggu / ditolak). */
+  canRevise: boolean;
   busy: boolean;
   onApprove: () => void;
   onReject: () => void;
   onReset: () => void;
+  onRevise: () => void;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -144,9 +149,13 @@ export function ReimbursementDetail({
         <ApprovalStatus request={r} twoStep />
       </div>
 
-      {r.status === "rejected" && r.rejectionReason && (
-        <RejectionNote reason={r.rejectionReason} by={r.approver} />
-      )}
+      <RevisionBanner
+        rejectionReason={r.status === "rejected" ? r.rejectionReason : null}
+        rejectedBy={r.approver}
+        revisionNote={r.status !== "rejected" ? r.revisionNote : null}
+        canRevise={canRevise}
+        onRevise={onRevise}
+      />
 
       {/* Garis waktu dua tahap — sama seperti perjalanan dinas. */}
       <div className="rounded-2xl border border-line bg-panel p-3.5">

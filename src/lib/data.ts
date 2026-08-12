@@ -213,6 +213,7 @@ export const mapTravelReimbursement = (r: Row): TravelReimbursement => ({
   hrApprover: (r.hr_approver as string) ?? null,
   hrApprovedAt: (r.hr_approved_at as string) ?? null,
   requestedAt: String(r.requested_at ?? ""),
+  revisionNote: (r.revision_note as string) ?? null,
 });
 
 export const mapOutgoingLetter = (r: Row): OutgoingLetter => ({
@@ -410,6 +411,7 @@ export const mapLeave = (r: Row): LeaveRequest => ({
   hrApprovedAt: (r.hr_approved_at as string) ?? null,
   requestedAt: String(r.requested_at),
   proofPath: (r.proof_path as string) ?? null,
+  revisionNote: (r.revision_note as string) ?? null,
 });
 
 export const mapOvertime = (r: Row): OvertimeRequest => ({
@@ -432,6 +434,7 @@ export const mapOvertime = (r: Row): OvertimeRequest => ({
   hrApprovedAt: (r.hr_approved_at as string) ?? null,
   proofPath: (r.proof_path as string) ?? null,
   requestedAt: String(r.requested_at),
+  revisionNote: (r.revision_note as string) ?? null,
 });
 
 const mapBalance = (r: Row): LeaveBalance => ({

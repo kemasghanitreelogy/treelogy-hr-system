@@ -7,6 +7,7 @@ import { applyApproval, type ApprovalAction } from "@/lib/approval";
 import { can, getSessionUser } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import { isValidUploadedPath } from "@/lib/storage-path";
+import { revisionGuard, revisionReset } from "@/lib/revision";
 import type { LeaveType, RequestStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -159,6 +160,78 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, request: mapLeave(data) });
 }
 
+// ---- Revisi oleh PENGAJU: perbaiki datanya lalu kirim ulang ----
+//
+// Dipakai setelah pengajuan DITOLAK (atau selagi masih menunggu). Statusnya
+// kembali 'pending' dan seluruh tanda tangan sebelumnya dihapus, sehingga
+// penyetuju menilai ulang dari nol — lihat lib/revision.ts.
+export async function PUT(req: Request) {
+  let body: CreatePayload & { id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+  if (!body.type || !LEAVE_TYPES.includes(body.type)) {
+    return NextResponse.json({ error: "invalid_type" }, { status: 400 });
+  }
+  if (!body.startDate || !body.endDate || !ISO_DATE.test(body.startDate) || !ISO_DATE.test(body.endDate)) {
+    return NextResponse.json({ error: "invalid_dates" }, { status: 400 });
+  }
+  if (body.endDate < body.startDate) {
+    return NextResponse.json({ error: "end_before_start" }, { status: 400 });
+  }
+
+  const { supabase, error: authErr } = await auth();
+  if (authErr) return authErr;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { data: prev } = await supabase!
+    .from("leave_requests")
+    .select("employee_id, status, rejection_reason, proof_path")
+    .eq("id", body.id)
+    .maybeSingle();
+  if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const guard = revisionGuard(prev, user.employeeId ?? null);
+  if (guard) return NextResponse.json({ error: guard }, { status: guard === "already_decided" ? 400 : 403 });
+
+  // Lampiran baru menggantikan yang lama; tanpa lampiran baru, yang lama tetap.
+  let proofPath: string | null = (prev.proof_path as string) ?? null;
+  if (body.proofPath) {
+    if (!isValidUploadedPath(body.proofPath, String(prev.employee_id), PROOF_EXTS)) {
+      return NextResponse.json({ error: "invalid_path" }, { status: 400 });
+    }
+    proofPath = body.proofPath;
+  }
+
+  const { data, error } = await supabase!
+    .from("leave_requests")
+    .update({
+      type: body.type,
+      start_date: body.startDate,
+      end_date: body.endDate,
+      days: dayCount(body.startDate, body.endDate),
+      reason: body.reason?.trim() || null,
+      proof_path: proofPath,
+      ...revisionReset(prev.rejection_reason),
+    })
+    .eq("id", body.id)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+  await notifyApprovers(String(prev.employee_id), {
+    type: "leave",
+    title: `${user.name} memperbaiki pengajuan cuti/izin`,
+    body: `${formatDate(body.startDate)}–${formatDate(body.endDate)} · perlu ditinjau ulang`,
+    href: "/leave",
+  });
+
+  return NextResponse.json({ ok: true, request: mapLeave(data) });
+}
+
 // ---- Dual approval: manager (atasan) first, then HR. RLS gates who may write. ----
 export async function PATCH(req: Request) {
   let body: UpdatePayload;
@@ -253,7 +326,9 @@ export async function PATCH(req: Request) {
         type: "leave",
         tone: result.status,
         title: `${label} ${result.status === "approved" ? "disetujui" : "ditolak"}`,
-        body: `${range}${data.approver ? ` · oleh ${data.approver}` : ""}${reasonNote}`,
+        body: `${range}${data.approver ? ` · oleh ${data.approver}` : ""}${reasonNote}${
+          result.status === "rejected" ? " · Buka untuk perbaiki & kirim ulang" : ""
+        }`,
         href: "/leave",
       },
     ]);

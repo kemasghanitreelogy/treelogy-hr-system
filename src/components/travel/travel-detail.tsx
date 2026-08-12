@@ -10,7 +10,7 @@ import { PaymentFile } from "@/components/payment-requests/payment-file";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { Step, type StepState } from "@/components/ui/step-timeline";
 import { Button } from "@/components/ui/button";
-import { RejectionNote } from "@/components/ui/rejection-note";
+import { RevisionBanner } from "@/components/ui/revision-banner";
 
 const STR: Record<
   Locale,
@@ -216,9 +216,12 @@ export function TravelDetail({
         <ApprovalStatus request={r} twoStep />
       </div>
 
-      {r.status === "rejected" && r.rejectionReason && (
-        <RejectionNote reason={r.rejectionReason} by={r.approver} />
-      )}
+      <RevisionBanner
+        rejectionReason={r.status === "rejected" ? r.rejectionReason : null}
+        rejectedBy={r.approver}
+        canRevise={canRevise}
+        onRevise={onFix}
+      />
 
       {/* Garis waktu dua tahap — siapa pun langsung tahu pengajuan ini sedang
           di meja siapa, sudah lewat mana, dan kenapa bila ditolak. */}
@@ -272,22 +275,9 @@ export function TravelDetail({
         );
       })()}
 
-      {/* Dikembalikan untuk diperbaiki — beda dari penolakan: masih bisa dilanjutkan. */}
-      {r.revisionNote && (
-        <div className="rounded-2xl border border-gold/40 bg-gold-soft/60 p-4">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold/20 text-[#8a6512]">
-              <Undo2 className="h-4 w-4" />
-            </span>
-            <p className="text-sm font-semibold text-[#8a6512]">{t.reviseBanner}</p>
-          </div>
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-ink">{r.revisionNote}</p>
-          {canRevise && (
-            <Button size="sm" className="mt-3" onClick={onFix}>
-              <Pencil className="h-4 w-4" /> {t.fixNow}
-            </Button>
-          )}
-        </div>
+      {/* Dikembalikan/dikirim ulang — konteks bagi penyetuju & pengaju. */}
+      {r.status !== "rejected" && (
+        <RevisionBanner revisionNote={r.revisionNote} canRevise={canRevise} onRevise={onFix} />
       )}
 
       <div className="overflow-hidden rounded-2xl border border-line bg-panel divide-y divide-line">

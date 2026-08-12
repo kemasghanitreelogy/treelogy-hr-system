@@ -10,7 +10,7 @@ import type { ApprovalAction } from "@/lib/approval";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { RejectDialog } from "@/components/ui/reject-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { RejectionNote } from "@/components/ui/rejection-note";
+import { RevisionBanner } from "@/components/ui/revision-banner";
 import { prepareFileForBucket } from "@/lib/upload";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, formatTime } from "@/lib/utils";
@@ -124,6 +124,9 @@ const STR: Record<
     confirmApproveMsg: string;
     confirmResetTitle: string;
     confirmResetMsg: string;
+    reviseTitle: string;
+    reviseDesc: string;
+    revisedToast: string;
   }
 > = {
   id: {
@@ -202,6 +205,9 @@ const STR: Record<
     setPending: "Kembalikan ke Menunggu",
     confirmApproveTitle: "Setujui pengajuan ini?",
     confirmApproveMsg: "Pengajuan ditandai disetujui dan saldo karyawan ikut diperbarui.",
+    reviseTitle: "Revisi Pengajuan",
+    reviseDesc: "Perbaiki datanya, lalu kirim ulang untuk ditinjau.",
+    revisedToast: "Pengajuan diperbaiki & dikirim ulang ✓",
     confirmResetTitle: "Ubah keputusan?",
     confirmResetMsg: "Keputusan sebelumnya dibatalkan dan pengajuan kembali ke status menunggu.",
   },
@@ -281,6 +287,9 @@ const STR: Record<
     setPending: "Back to Pending",
     confirmApproveTitle: "Approve this request?",
     confirmApproveMsg: "The request is marked approved and the employee's balance is updated.",
+    reviseTitle: "Revise Request",
+    reviseDesc: "Fix the details, then resubmit for review.",
+    revisedToast: "Request revised & resubmitted ✓",
     confirmResetTitle: "Change decision?",
     confirmResetMsg: "The previous decision is undone and the request returns to pending.",
   },
@@ -318,6 +327,8 @@ export function LeaveView({
   const [tab, setTab] = useStickyTab<Tab>("leave.primary", "requests", ["requests", "balances"]);
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
+  /** Pengajuan yang sedang diperbaiki pengaju (setelah ditolak / masih menunggu). */
+  const [revising, setRevising] = useState<LeaveRequest | null>(null);
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<LeaveRequest | null>(null);
   // Id of the request awaiting a rejection reason (drives the RejectDialog).
@@ -498,6 +509,30 @@ export function LeaveView({
         />
       </Sheet>
 
+      {/* Revisi oleh pengaju — form yang sama, terisi data lama. */}
+      <Sheet
+        open={revising !== null}
+        onClose={() => setRevising(null)}
+        title={t.reviseTitle}
+        description={t.reviseDesc}
+      >
+        {revising && (
+          <LeaveForm
+            item={revising}
+            employees={employees}
+            currentEmployeeId={currentEmployeeId}
+            canRequestForOthers={false}
+            onSubmit={(saved) => {
+              setRevising(null);
+              setList((cur) => cur.map((r) => (r.id === saved.id ? saved : r)));
+              toast.success(t.revisedToast);
+              router.refresh();
+            }}
+            onCancel={() => setRevising(null)}
+          />
+        )}
+      </Sheet>
+
       <Sheet
         open={selected !== null}
         onClose={() => setSelected(null)}
@@ -515,8 +550,13 @@ export function LeaveView({
               locale={locale}
               canDecide={canDecide(live)}
               canReset={canReset(live)}
+              canRevise={live.employeeId === currentEmployeeId && live.status !== "approved"}
               deciding={decidingId === live.id}
               onDecide={(action) => (action === "reject" ? setRejectId(live.id) : setConfirmDecide({ id: live.id, action }))}
+              onRevise={() => {
+                setSelected(null);
+                setRevising(live);
+              }}
             />
           );
         })()}
@@ -556,8 +596,10 @@ function LeaveDetail({
   locale,
   canDecide,
   canReset,
+  canRevise,
   deciding,
   onDecide,
+  onRevise,
 }: {
   request: LeaveRequest;
   emp?: Pick<Employee, "id" | "name" | "team" | "position">;
@@ -565,8 +607,11 @@ function LeaveDetail({
   locale: Locale;
   canDecide: boolean;
   canReset: boolean;
+  /** Pengaju sendiri & pengajuan masih bisa diperbaiki (menunggu / ditolak). */
+  canRevise: boolean;
   deciding: boolean;
   onDecide: (action: ApprovalAction) => void;
+  onRevise: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -582,7 +627,13 @@ function LeaveDetail({
         <span className="ml-auto"><ApprovalStatus request={r} /></span>
       </div>
 
-      {r.status === "rejected" && <RejectionNote reason={r.rejectionReason} by={r.approver} />}
+      <RevisionBanner
+        rejectionReason={r.status === "rejected" ? r.rejectionReason : null}
+        rejectedBy={r.approver}
+        revisionNote={r.revisionNote}
+        canRevise={canRevise}
+        onRevise={onRevise}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <Info label={t.type}>
@@ -942,12 +993,15 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 }
 
 function LeaveForm({
+  item,
   employees,
   currentEmployeeId = null,
   canRequestForOthers = true,
   onSubmit,
   onCancel,
 }: {
+  /** Diisi saat pengaju MEMPERBAIKI pengajuannya (ditolak / masih menunggu). */
+  item?: LeaveRequest;
   employees: Pick<Employee, "id" | "name" | "team" | "position">[];
   currentEmployeeId?: string | null;
   canRequestForOthers?: boolean;
@@ -962,11 +1016,11 @@ function LeaveForm({
   const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
   const lockToSelf = !canRequestForOthers && !!selfEmployee;
   const [form, setForm] = useState({
-    employeeId: lockToSelf ? selfEmployee!.id : employees[0]?.id ?? "",
-    type: "annual" as LeaveType,
-    startDate: "",
-    endDate: "",
-    reason: "",
+    employeeId: item?.employeeId ?? (lockToSelf ? selfEmployee!.id : employees[0]?.id ?? ""),
+    type: (item?.type ?? "annual") as LeaveType,
+    startDate: item?.startDate ?? "",
+    endDate: item?.endDate ?? "",
+    reason: item?.reason ?? "",
   });
   // Optional proof attachment (image or PDF). Kept as a File and uploaded
   // straight to storage on submit (no request-body size limit).
@@ -1007,9 +1061,11 @@ function LeaveForm({
         attach = up.path ? { proofPath: up.path } : { proofFile: up.dataUrl ?? undefined };
       }
       const res = await fetch("/api/leave", {
-        method: "POST",
+        // PUT = pengaju memperbaiki & mengirim ulang (status kembali menunggu).
+        method: item ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(item ? { id: item.id } : {}),
           employeeId: form.employeeId,
           type: form.type,
           startDate: form.startDate,

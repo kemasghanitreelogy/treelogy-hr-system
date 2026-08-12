@@ -467,7 +467,7 @@ export function TravelView({
             employeeName={empMap.get(selected.employeeId)?.name ?? "—"}
             canDecide={canDecide(selected)}
             canReset={canFinalize && selected.status !== "pending"}
-            canRevise={selected.employeeId === currentEmployeeId && selected.status === "pending"}
+            canRevise={selected.employeeId === currentEmployeeId && selected.status !== "approved"}
             busy={busy}
             onApprove={() => decide(selected, "approve")}
             onReject={() => setRejecting(selected)}

@@ -7,6 +7,7 @@ import { applyApproval, type ApprovalAction } from "@/lib/approval";
 import { TRANSPORTS, travelDuration, travelTotal } from "@/lib/travel";
 import { can, getSessionUser } from "@/lib/auth";
 import { isValidUploadedPath } from "@/lib/storage-path";
+import { revisionGuard, revisionReset } from "@/lib/revision";
 import type { RequestStatus, TravelTransport } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -352,7 +353,7 @@ export async function PATCH(req: Request) {
         title: `Perjalanan dinas ${result.status === "approved" ? "disetujui" : "ditolak"}`,
         body: `${data.destination} · ${formatDate(String(data.departure_date))}${
           data.approver ? ` · oleh ${data.approver}` : ""
-        }${reasonNote}`,
+        }${reasonNote}${result.status === "rejected" ? " · Buka untuk perbaiki & kirim ulang" : ""}`,
         href: "/travel",
       },
     ]);
@@ -386,22 +387,22 @@ export async function PUT(req: Request) {
 
   const { data: prev } = await supabase!
     .from("travel_requests")
-    .select("employee_id, status")
+    .select("employee_id, status, rejection_reason")
     .eq("id", body.id)
     .maybeSingle();
   if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (prev.employee_id !== user.employeeId) {
-    return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
-  }
-  if (prev.status !== "pending") {
-    return NextResponse.json({ error: "already_decided" }, { status: 400 });
-  }
+  // Boleh diperbaiki selagi masih menunggu ATAU setelah ditolak — penolakan
+  // bukan jalan buntu (lib/revision.ts).
+  const guard = revisionGuard(prev, user.employeeId ?? null);
+  if (guard) return NextResponse.json({ error: guard }, { status: guard === "already_decided" ? 400 : 403 });
   const buktiErr = validasiBukti(body.approvalPath, String(prev.employee_id));
   if (buktiErr) return NextResponse.json({ error: buktiErr }, { status: 400 });
 
   const { data, error } = await supabase!
     .from("travel_requests")
-    .update({ ...built.row, approval_path: body.approvalPath, revision_note: null })
+    // Kirim ulang = kembali ke meja penyetuju dari nol; alasan penolakan
+    // sebelumnya disimpan sebagai konteks di revision_note.
+    .update({ ...built.row, approval_path: body.approvalPath, ...revisionReset(prev.rejection_reason) })
     .eq("id", body.id)
     .select("*")
     .maybeSingle();

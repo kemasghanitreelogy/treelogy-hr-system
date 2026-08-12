@@ -12,7 +12,7 @@ import type { ApprovalAction } from "@/lib/approval";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { RejectDialog } from "@/components/ui/reject-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { RejectionNote } from "@/components/ui/rejection-note";
+import { RevisionBanner } from "@/components/ui/revision-banner";
 import { formatDate, formatTime, rupiah } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
@@ -86,6 +86,9 @@ const STR: Record<
     confirmApproveMsg: string;
     confirmResetTitle: string;
     confirmResetMsg: string;
+    reviseTitle: string;
+    reviseDesc: string;
+    revisedToast: string;
   }
 > = {
   id: {
@@ -143,6 +146,9 @@ const STR: Record<
     openInNewTab: "Buka di tab baru",
     confirmApproveTitle: "Setujui lembur ini?",
     confirmApproveMsg: "Pengajuan lembur ditandai disetujui.",
+    reviseTitle: "Revisi Pengajuan Lembur",
+    reviseDesc: "Perbaiki datanya, lalu kirim ulang untuk ditinjau.",
+    revisedToast: "Pengajuan diperbaiki & dikirim ulang ✓",
     confirmResetTitle: "Ubah keputusan?",
     confirmResetMsg: "Keputusan sebelumnya dibatalkan dan pengajuan kembali ke status menunggu.",
   },
@@ -201,6 +207,9 @@ const STR: Record<
     openInNewTab: "Open in new tab",
     confirmApproveTitle: "Approve this overtime?",
     confirmApproveMsg: "The overtime request is marked approved.",
+    reviseTitle: "Revise Overtime Request",
+    reviseDesc: "Fix the details, then resubmit for review.",
+    revisedToast: "Request revised & resubmitted ✓",
     confirmResetTitle: "Change decision?",
     confirmResetMsg: "The previous decision is undone and the request returns to pending.",
   },
@@ -231,6 +240,8 @@ export function OvertimeView({
 }) {
   const [list, setList] = useState(requests);
   const [adding, setAdding] = useState(false);
+  /** Pengajuan yang sedang diperbaiki pengaju (setelah ditolak / masih menunggu). */
+  const [revising, setRevising] = useState<OvertimeRequest | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<OvertimeRequest | null>(null);
   // Id of the request awaiting a rejection reason (drives the RejectDialog).
@@ -395,6 +406,32 @@ export function OvertimeView({
         />
       </Sheet>
 
+      {/* Revisi oleh pengaju — form yang sama, terisi data lama. */}
+      <Sheet
+        open={revising !== null}
+        onClose={() => setRevising(null)}
+        title={t.reviseTitle}
+        description={t.reviseDesc}
+      >
+        {revising && (
+          <OvertimeForm
+            item={revising}
+            employees={employees}
+            currentEmployeeId={currentEmployeeId}
+            canRequestForOthers={false}
+            selfRatePerHour={selfRatePerHour}
+            selfContractType={selfContractType}
+            onSubmit={(saved) => {
+              setRevising(null);
+              setList((cur) => cur.map((r) => (r.id === saved.id ? saved : r)));
+              toast.success(t.revisedToast);
+              router.refresh();
+            }}
+            onCancel={() => setRevising(null)}
+          />
+        )}
+      </Sheet>
+
       <Sheet
         open={selected !== null}
         onClose={() => setSelected(null)}
@@ -412,8 +449,13 @@ export function OvertimeView({
               locale={locale}
               canDecide={canDecide(live)}
               canReset={canReset(live)}
+              canRevise={live.employeeId === currentEmployeeId && live.status !== "approved"}
               busy={busyId === live.id}
               onDecide={(action) => (action === "reject" ? setRejectId(live.id) : setConfirmDecide({ id: live.id, action }))}
+              onRevise={() => {
+                setSelected(null);
+                setRevising(live);
+              }}
             />
           );
         })()}
@@ -453,8 +495,10 @@ function OvertimeDetail({
   locale,
   canDecide,
   canReset,
+  canRevise,
   busy,
   onDecide,
+  onRevise,
 }: {
   request: OvertimeRequest;
   emp?: Emp;
@@ -462,8 +506,11 @@ function OvertimeDetail({
   locale: Locale;
   canDecide: boolean;
   canReset: boolean;
+  /** Pengaju sendiri & pengajuan masih bisa diperbaiki (menunggu / ditolak). */
+  canRevise: boolean;
   busy: boolean;
   onDecide: (action: ApprovalAction) => void;
+  onRevise: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -479,7 +526,13 @@ function OvertimeDetail({
         <span className="ml-auto"><ApprovalStatus request={r} /></span>
       </div>
 
-      {r.status === "rejected" && <RejectionNote reason={r.rejectionReason} by={r.approver} />}
+      <RevisionBanner
+        rejectionReason={r.status === "rejected" ? r.rejectionReason : null}
+        rejectedBy={r.approver}
+        revisionNote={r.revisionNote}
+        canRevise={canRevise}
+        onRevise={onRevise}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <OtInfo label={`${formatDate(r.date, "short", locale)}`}>
@@ -569,6 +622,7 @@ function toMin(t: string): number | null {
 }
 
 function OvertimeForm({
+  item,
   employees,
   currentEmployeeId = null,
   canRequestForOthers = true,
@@ -577,6 +631,8 @@ function OvertimeForm({
   onSubmit,
   onCancel,
 }: {
+  /** Diisi saat pengaju MEMPERBAIKI pengajuannya (ditolak / masih menunggu). */
+  item?: OvertimeRequest;
   employees: Emp[];
   currentEmployeeId?: string | null;
   canRequestForOthers?: boolean;
@@ -592,11 +648,11 @@ function OvertimeForm({
   const selfEmployee = currentEmployeeId ? employees.find((e) => e.id === currentEmployeeId) : undefined;
   const lockToSelf = !canRequestForOthers && !!selfEmployee;
   const [form, setForm] = useState({
-    employeeId: lockToSelf ? selfEmployee!.id : employees[0]?.id ?? "",
-    date: "",
-    startTime: "",
-    endTime: "",
-    reason: "",
+    employeeId: item?.employeeId ?? (lockToSelf ? selfEmployee!.id : employees[0]?.id ?? ""),
+    date: item?.date ?? "",
+    startTime: item?.startTime ?? "",
+    endTime: item?.endTime ?? "",
+    reason: item?.reason ?? "",
   });
   const [proof, setProof] = useState<{ file: File; name: string } | null>(null);
 
@@ -635,9 +691,11 @@ function OvertimeForm({
         attach = up.path ? { proofPath: up.path } : { proofFile: up.dataUrl ?? undefined };
       }
       const res = await fetch("/api/overtime", {
-        method: "POST",
+        // PUT = pengaju memperbaiki & mengirim ulang (status kembali menunggu).
+        method: item ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(item ? { id: item.id } : {}),
           employeeId: form.employeeId,
           date: form.date,
           startTime: form.startTime,

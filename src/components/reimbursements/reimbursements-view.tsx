@@ -50,6 +50,8 @@ const STR: Record<Locale, Record<string, string>> = {
     resetOk: "Klaim dikembalikan ke menunggu ✓",
     connection: "Koneksi bermasalah. Coba lagi.",
     rejectTitle: "Tolak klaim reimbursement",
+    reviseTitle: "Revisi Klaim Reimbursement",
+    revisedOk: "Klaim diperbaiki & dikirim ulang ✓",
   },
   en: {
     searchPh: "Search description, purpose, name…",
@@ -80,6 +82,8 @@ const STR: Record<Locale, Record<string, string>> = {
     resetOk: "Claim reset to pending ✓",
     connection: "Connection problem. Try again.",
     rejectTitle: "Reject reimbursement claim",
+    reviseTitle: "Revise Reimbursement Claim",
+    revisedOk: "Claim revised & resubmitted ✓",
   },
 };
 
@@ -119,6 +123,8 @@ export function ReimbursementsView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [rejecting, setRejecting] = useState<TravelReimbursement | null>(null);
+  /** Klaim yang sedang diperbaiki pengaju (setelah ditolak / masih menunggu). */
+  const [revising, setRevising] = useState<TravelReimbursement | null>(null);
   const [busy, setBusy] = useState(false);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
@@ -407,10 +413,15 @@ export function ReimbursementsView({
             employeeName={empMap.get(selected.employeeId)?.name ?? "—"}
             canDecide={canDecide(selected)}
             canReset={canFinalize && selected.status !== "pending"}
+            canRevise={selected.employeeId === currentEmployeeId && selected.status !== "approved"}
             busy={busy}
             onApprove={() => decide(selected, "approve")}
             onReject={() => setRejecting(selected)}
             onReset={() => decide(selected, "reset")}
+            onRevise={() => {
+              setSelectedId(null);
+              setRevising(selected);
+            }}
           />
         )}
       </Sheet>
@@ -429,6 +440,30 @@ export function ReimbursementsView({
               router.refresh();
             }}
             onCancel={() => setRequesting(false)}
+          />
+        )}
+      </Sheet>
+
+      {/* Revisi oleh pengaju — form yang sama, terisi data lama. */}
+      <Sheet
+        open={revising !== null}
+        onClose={() => setRevising(null)}
+        title={t.reviseTitle}
+        width="lg"
+      >
+        {revising && currentEmployeeId && (
+          <ReimbursementForm
+            item={revising}
+            employees={employees}
+            defaultEmployeeId={currentEmployeeId}
+            canPickEmployee={false}
+            onSaved={(saved) => {
+              setRevising(null);
+              setList((cur) => cur.map((x) => (x.id === saved.id ? saved : x)));
+              toast.success(t.revisedOk);
+              router.refresh();
+            }}
+            onCancel={() => setRevising(null)}
           />
         )}
       </Sheet>

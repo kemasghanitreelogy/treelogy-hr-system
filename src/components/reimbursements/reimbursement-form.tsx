@@ -118,12 +118,15 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export function ReimbursementForm({
+  item,
   employees,
   defaultEmployeeId,
   canPickEmployee,
   onSaved,
   onCancel,
 }: {
+  /** Diisi saat pengaju MEMPERBAIKI klaimnya (ditolak / masih menunggu). */
+  item?: TravelReimbursement;
   employees: ReimbEmployeeOption[];
   defaultEmployeeId: string;
   /** HR boleh mengajukan atas nama karyawan lain; karyawan hanya dirinya. */
@@ -136,17 +139,20 @@ export function ReimbursementForm({
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const [employeeId, setEmployeeId] = useState(defaultEmployeeId);
-  const [purpose, setPurpose] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [employeeId, setEmployeeId] = useState(item?.employeeId ?? defaultEmployeeId);
+  const [purpose, setPurpose] = useState(item?.purpose ?? "");
+  const [startDate, setStartDate] = useState(item?.startDate ?? "");
+  const [endDate, setEndDate] = useState(item?.endDate ?? "");
   // Tanggal biaya default HARI INI — kasus paling umum.
-  const [expenseDate, setExpenseDate] = useState(() => witaToday());
-  const [category, setCategory] = useState<ReimbursementCategory>("transportation");
-  const [description, setDescription] = useState("");
-  const [receiptNumber, setReceiptNumber] = useState("");
-  const [amount, setAmount] = useState("");
-  const [receipts, setReceipts] = useState<{ path: string; label: string }[]>([]);
+  const [expenseDate, setExpenseDate] = useState(() => item?.expenseDate ?? witaToday());
+  const [category, setCategory] = useState<ReimbursementCategory>(item?.category ?? "transportation");
+  const [description, setDescription] = useState(item?.description ?? "");
+  const [receiptNumber, setReceiptNumber] = useState(item?.receiptNumber ?? "");
+  const [amount, setAmount] = useState(item ? String(item.amount) : "");
+  const [receipts, setReceipts] = useState<{ path: string; label: string }[]>(() =>
+    (item?.receiptPaths ?? []).map((path, i) => ({ path, label: `Bukti ${i + 1}` })),
+  );
+  // Pernyataan wajib dicentang ulang tiap kirim — harus disadari kembali.
   const [confirmed, setConfirmed] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -184,9 +190,11 @@ export function ReimbursementForm({
     setSaving(true);
     try {
       const res = await fetch("/api/reimbursements", {
-        method: "POST",
+        // PUT = pengaju memperbaiki & mengirim ulang (status kembali menunggu).
+        method: item ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(item ? { id: item.id } : {}),
           employeeId,
           purpose,
           startDate,

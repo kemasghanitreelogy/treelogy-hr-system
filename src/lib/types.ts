@@ -151,6 +151,9 @@ export interface LeaveRequest {
   requestedAt: string;
   /** Storage path of the optional proof file (image/PDF); null when none. */
   proofPath?: string | null;
+  /** Alasan penolakan yang memicu revisi ini — konteks bagi penyetuju saat
+   *  pengajuan dikirim ulang. Kosong pada kiriman pertama. */
+  revisionNote?: string | null;
 }
 
 export interface OvertimeRequest {
@@ -176,6 +179,8 @@ export interface OvertimeRequest {
   hrApprovedAt?: string | null;
   proofPath?: string | null;
   requestedAt: string;
+  /** Alasan penolakan yang memicu revisi ini (lihat LeaveRequest). */
+  revisionNote?: string | null;
 }
 
 /**
@@ -556,6 +561,8 @@ export interface TravelReimbursement {
   hrApprover?: string | null;
   hrApprovedAt?: string | null;
   requestedAt: string;
+  /** Alasan penolakan yang memicu revisi ini (lihat LeaveRequest). */
+  revisionNote?: string | null;
 }
 
 /* ============================================================

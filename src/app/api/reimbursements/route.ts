@@ -5,6 +5,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { notifyPermissionHolders, pushNotifications } from "@/lib/notify";
 import { applyApproval, type ApprovalAction } from "@/lib/approval";
 import { isValidUploadedPath } from "@/lib/storage-path";
+import { revisionGuard, revisionReset } from "@/lib/revision";
 import { formatDate, rupiah } from "@/lib/utils";
 import { MAX_RECEIPTS, RECEIPT_EXTS, REIMB_CATEGORIES } from "@/lib/reimbursement";
 import type { ReimbursementCategory, RequestStatus } from "@/lib/types";
@@ -47,6 +48,38 @@ async function auth() {
   return { supabase };
 }
 
+/**
+ * Aturan isian klaim — dipakai POST (pengajuan baru) DAN PUT (revisi) supaya
+ * validasinya tidak pernah bercabang. Mengembalikan kode error atau null.
+ */
+function validateClaim(body: CreatePayload & { employeeId?: string }): string | null {
+  if (!body.employeeId) return "employee_required";
+  if (!body.purpose?.trim()) return "purpose_required";
+  if (!body.description?.trim()) return "description_required";
+  if (!body.startDate || !ISO_DATE.test(body.startDate) || !body.endDate || !ISO_DATE.test(body.endDate)) {
+    return "invalid_dates";
+  }
+  if (body.endDate < body.startDate) return "end_before_start";
+  const days = Math.round((Date.parse(body.endDate) - Date.parse(body.startDate)) / 86_400_000) + 1;
+  if (days > MAX_TRIP_DAYS) return "out_of_range";
+  if (!body.expenseDate || !ISO_DATE.test(body.expenseDate)) return "invalid_date";
+  if (!REIMB_CATEGORIES.includes(body.category ?? "other")) return "invalid_category";
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_RUPIAH) return "amount_required";
+  // Pernyataan karyawan pada form asli — diperiksa di server juga supaya tidak
+  // bisa dilewati dengan memanggil API langsung.
+  if (body.confirmed !== true) return "confirmation_required";
+
+  // Klaim tanpa bukti tidak bisa diverifikasi Finance.
+  const receiptPaths = (body.receiptPaths ?? []).filter(Boolean);
+  if (receiptPaths.length === 0) return "receipt_required";
+  if (receiptPaths.length > MAX_RECEIPTS) return "too_many_files";
+  for (const path of receiptPaths) {
+    if (!isValidUploadedPath(path, body.employeeId, RECEIPT_EXTS)) return "invalid_path";
+  }
+  return null;
+}
+
 // ---- Ajukan klaim ----
 export async function POST(req: Request) {
   let body: CreatePayload;
@@ -56,39 +89,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
-  if (!body.employeeId) return NextResponse.json({ error: "employee_required" }, { status: 400 });
-  if (!body.purpose?.trim()) return NextResponse.json({ error: "purpose_required" }, { status: 400 });
-  if (!body.description?.trim()) return NextResponse.json({ error: "description_required" }, { status: 400 });
-  if (!body.startDate || !ISO_DATE.test(body.startDate) || !body.endDate || !ISO_DATE.test(body.endDate)) {
-    return NextResponse.json({ error: "invalid_dates" }, { status: 400 });
-  }
-  if (body.endDate < body.startDate) return NextResponse.json({ error: "end_before_start" }, { status: 400 });
-  const days = Math.round((Date.parse(body.endDate) - Date.parse(body.startDate)) / 86_400_000) + 1;
-  if (days > MAX_TRIP_DAYS) return NextResponse.json({ error: "out_of_range" }, { status: 400 });
-  if (!body.expenseDate || !ISO_DATE.test(body.expenseDate)) {
-    return NextResponse.json({ error: "invalid_date" }, { status: 400 });
-  }
-  const category = body.category ?? "other";
-  if (!REIMB_CATEGORIES.includes(category)) {
-    return NextResponse.json({ error: "invalid_category" }, { status: 400 });
-  }
-  const amount = Number(body.amount);
-  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_RUPIAH) {
-    return NextResponse.json({ error: "amount_required" }, { status: 400 });
-  }
-  // Pernyataan karyawan pada form asli — diperiksa di server juga supaya tidak
-  // bisa dilewati dengan memanggil API langsung.
-  if (body.confirmed !== true) return NextResponse.json({ error: "confirmation_required" }, { status: 400 });
-
-  // Klaim tanpa bukti tidak bisa diverifikasi Finance.
+  const invalid = validateClaim(body);
+  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
   const receiptPaths = (body.receiptPaths ?? []).filter(Boolean);
-  if (receiptPaths.length === 0) return NextResponse.json({ error: "receipt_required" }, { status: 400 });
-  if (receiptPaths.length > MAX_RECEIPTS) return NextResponse.json({ error: "too_many_files" }, { status: 400 });
-  for (const path of receiptPaths) {
-    if (!isValidUploadedPath(path, body.employeeId, RECEIPT_EXTS)) {
-      return NextResponse.json({ error: "invalid_path" }, { status: 400 });
-    }
-  }
+  const category = body.category ?? "other";
 
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
@@ -106,14 +110,14 @@ export async function POST(req: Request) {
     .insert({
       employee_id: body.employeeId,
       job_title: (emp.position as string)?.trim() || "—",
-      purpose: body.purpose.trim(),
+      purpose: body.purpose!.trim(),
       start_date: body.startDate,
       end_date: body.endDate,
       expense_date: body.expenseDate,
       category,
-      description: body.description.trim(),
+      description: body.description!.trim(),
       receipt_number: body.receiptNumber?.trim() || null,
-      amount: Math.round(amount),
+      amount: Math.round(Number(body.amount)),
       receipt_paths: receiptPaths,
       confirmed: true,
       status: "pending",
@@ -132,6 +136,71 @@ export async function POST(req: Request) {
       href: "/reimbursements",
     },
     { excludeEmployeeId: body.employeeId },
+  );
+
+  return NextResponse.json({ ok: true, request: mapTravelReimbursement(data) });
+}
+
+// ---- Revisi oleh PENGAJU: perbaiki datanya lalu kirim ulang ----
+//
+// Dipakai setelah klaim DITOLAK (atau selagi masih menunggu). Statusnya
+// kembali 'pending' dan tanda tangan tahap 1/2 dihapus — lihat lib/revision.ts.
+export async function PUT(req: Request) {
+  let body: CreatePayload & { id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "id_required" }, { status: 400 });
+
+  const { supabase, error: authErr } = await auth();
+  if (authErr) return authErr;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const { data: prev } = await supabase!
+    .from("travel_reimbursements")
+    .select("employee_id, status, rejection_reason, receipt_paths")
+    .eq("id", body.id)
+    .maybeSingle();
+  if (!prev) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const guard = revisionGuard(prev, user.employeeId ?? null);
+  if (guard) return NextResponse.json({ error: guard }, { status: guard === "already_decided" ? 400 : 403 });
+
+  // Aturan isian sama persis dengan pengajuan baru — tidak boleh bercabang.
+  const invalid = validateClaim({ ...body, employeeId: String(prev.employee_id) });
+  if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
+
+  const { data, error } = await supabase!
+    .from("travel_reimbursements")
+    .update({
+      purpose: body.purpose!.trim(),
+      start_date: body.startDate,
+      end_date: body.endDate,
+      expense_date: body.expenseDate,
+      category: body.category ?? "other",
+      description: body.description!.trim(),
+      receipt_number: body.receiptNumber?.trim() || null,
+      amount: Math.round(Number(body.amount)),
+      receipt_paths: (body.receiptPaths ?? []).filter(Boolean),
+      confirmed: true,
+      ...revisionReset(prev.rejection_reason),
+    })
+    .eq("id", body.id)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
+
+  await notifyPermissionHolders(
+    "reimbursement.approve",
+    {
+      type: "reimbursement",
+      title: `${user.name} memperbaiki klaim reimbursement`,
+      body: `${data.description} · ${rupiah(Number(data.amount))} · perlu ditinjau ulang`,
+      href: "/reimbursements",
+    },
+    { excludeEmployeeId: user.employeeId },
   );
 
   return NextResponse.json({ ok: true, request: mapTravelReimbursement(data) });
@@ -252,7 +321,7 @@ export async function PATCH(req: Request) {
         title: `Reimbursement ${result.status === "approved" ? "disetujui" : "ditolak"}`,
         body: `${ringkas} · ${formatDate(String(data.expense_date))}${
           data.approver ? ` · oleh ${data.approver}` : ""
-        }${alasan}`,
+        }${alasan}${result.status === "rejected" ? " · Buka untuk perbaiki & kirim ulang" : ""}`,
         href: "/reimbursements",
       },
     ]);
