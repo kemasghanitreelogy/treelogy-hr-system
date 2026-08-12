@@ -60,10 +60,13 @@ const kindText = (r) =>
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
+// Jalur dinas baru boleh masuk sheet SETELAH persetujuan akhir — jangan
+// sampai klaim yang masih menunggu Ops/Finance ikut terkirim.
 const { data: rows, error } = await db
   .from("payment_requests")
   .select("*")
   .neq("sheet_status", "synced")
+  .or("flow.eq.biasa,approval_status.eq.approved")
   .order("submitted_at", { ascending: true });
 if (error) {
   console.error("Gagal membaca baris:", error.message);
