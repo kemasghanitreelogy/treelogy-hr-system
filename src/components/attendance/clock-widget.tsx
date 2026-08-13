@@ -47,6 +47,7 @@ const STR: Record<
     pendingSent: (dir: "in" | "out") => string;
     clockInOk: string;
     clockOutOk: string;
+    timeAdjusted: string;
     connectionProblem: string;
     clockQueued: string;
     status: string;
@@ -107,6 +108,7 @@ const STR: Record<
     pendingSent: (dir) => `Pengajuan clock-${dir} di luar area terkirim — menunggu konfirmasi HR ✓`,
     clockInOk: "Clock-in berhasil terekam ✓",
     clockOutOk: "Clock-out berhasil terekam ✓",
+    timeAdjusted: "Tercatat memakai jam server — ketukan Anda terlalu lama tertunda untuk dipakai jamnya. Minta HR mengoreksi bila perlu.",
     connectionProblem: "Koneksi bermasalah. Coba lagi.",
     clockQueued: "Sinyal lemah — absen disimpan & terkirim otomatis saat online.",
     status: "Status",
@@ -166,6 +168,7 @@ const STR: Record<
     pendingSent: (dir) => `Out-of-area clock-${dir} request sent — awaiting HR confirmation ✓`,
     clockInOk: "Clock-in recorded ✓",
     clockOutOk: "Clock-out recorded ✓",
+    timeAdjusted: "Recorded with the server clock — your tap was queued too long to use its original time. Ask HR to correct it if needed.",
     connectionProblem: "Connection problem. Try again.",
     clockQueued: "Weak signal — attendance saved & sent automatically once online.",
     status: "Status",
@@ -308,7 +311,7 @@ export function ClockWidget({
   const [clockInAt, setClockInAt] = useState<Date | null>(seedIn ? new Date(seedIn) : null);
   const [clockOutAt, setClockOutAt] = useState<Date | null>(seedOut ? new Date(seedOut) : null);
   const [flow, setFlow] = useState<Flow>("idle");
-  const [notice, setNotice] = useState<{ tone: "error" | "ok"; text: string; retry?: () => void } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "error" | "ok" | "warn"; text: string; retry?: () => void } | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
   // Alur "di luar area": modal danger → catatan opsional → kirim sebagai
   // pengajuan konfirmasi HR (absensi tidak langsung tercatat).
@@ -490,10 +493,16 @@ export function ClockWidget({
       if (pendingDir === "in") {
         setClockInAt(new Date());
         setPhase("in");
-        setNotice({
-          tone: "ok",
-          text: offDayChoice === "swap" ? t.swapSent : offDayChoice === "overtime" ? t.overtimeSent : t.clockInOk,
-        });
+        // Jam yang diganti server TIDAK boleh lewat diam-diam: karyawan harus
+        // tahu absensinya tercatat pada jam lain agar bisa minta koreksi.
+        setNotice(
+          data.timeAdjusted
+            ? { tone: "warn", text: t.timeAdjusted }
+            : {
+                tone: "ok",
+                text: offDayChoice === "swap" ? t.swapSent : offDayChoice === "overtime" ? t.overtimeSent : t.clockInOk,
+              },
+        );
         // Celebrate a normal clock-in (not the swap/overtime off-day flows) with a
         // color-psychology feedback stamp: green on-time vs gentle amber if late.
         if (data.recorded && typeof data.lateMinutes === "number") {
@@ -502,7 +511,7 @@ export function ClockWidget({
       } else {
         setClockOutAt(new Date());
         setPhase("done");
-        setNotice({ tone: "ok", text: t.clockOutOk });
+        setNotice(data.timeAdjusted ? { tone: "warn", text: t.timeAdjusted } : { tone: "ok", text: t.clockOutOk });
         // Clock-out stamp: content green "good work" vs proud amber if overtime.
         if (data.recorded && typeof data.overtimeMinutes === "number") {
           setStamp({ dir: "out", flag: data.overtimeMinutes > 0, minutes: data.overtimeMinutes });
@@ -616,10 +625,18 @@ export function ClockWidget({
             <div
               className={cn(
                 "mb-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-sm",
-                notice.tone === "error" ? "bg-clay-soft text-[#8c3c1f]" : "bg-[#e9f0d8] text-forest-700",
+                notice.tone === "error"
+                  ? "bg-clay-soft text-[#8c3c1f]"
+                  : notice.tone === "warn"
+                    ? "bg-gold-soft text-[#8a6512]"
+                    : "bg-[#e9f0d8] text-forest-700",
               )}
             >
-              {notice.tone === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />}
+              {notice.tone === "ok" ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              )}
               <span className="flex-1">{notice.text}</span>
               {notice.retry && (
                 <button

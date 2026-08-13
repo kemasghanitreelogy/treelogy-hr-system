@@ -351,6 +351,8 @@ const mapAttendance = (r: Row): AttendanceRecord => ({
   clockInLng: numOrNull(r.clock_in_lng),
   clockInDistanceM: numOrNull(r.clock_in_distance_m),
   clockInPhoto: (r.clock_in_photo as string) ?? null,
+  clockInAdjusted: Boolean(r.clock_in_adjusted),
+  clockOutAdjusted: Boolean(r.clock_out_adjusted),
   clockOutLat: numOrNull(r.clock_out_lat),
   clockOutLng: numOrNull(r.clock_out_lng),
   clockOutDistanceM: numOrNull(r.clock_out_distance_m),

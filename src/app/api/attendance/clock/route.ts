@@ -46,22 +46,33 @@ interface Body {
 // clock-in must be inside the geofence, so an offline gap is only the minutes
 // until signal returns at the office — a tight window covers that while bounding
 // any backdating. Beyond it we fall back to the (tamper-proof) server clock.
-const CLIENT_TIME_MAX_STALE_MS = 15 * 60_000; // 15 minutes
+// Sengaja LEBAR: ketukan offline sering baru terkirim berjam-jam kemudian
+// (petugas lapangan tanpa sinyal seharian). Batas sempit membuat jam ketukan
+// asli dibuang dan absensi tercatat pada jam sinkronisasi — bukan jam kerja
+// sebenarnya. 12 jam menampung satu shift penuh, tetap membatasi backdating.
+const CLIENT_TIME_MAX_STALE_MS = 12 * 60 * 60_000; // 12 jam
 const CLIENT_TIME_MAX_SKEW_MS = 120_000; // 2 min future skew tolerance
 
 /**
- * The moment to record. Use the device's real tap time when it's sane — not in
- * the future (small skew) and not more than 15min stale — so an offline queued
- * clock keeps its true time; otherwise fall back to the server clock.
+ * Momen yang dicatat: waktu ketukan asli dari perangkat bila masuk akal —
+ * tidak di masa depan (toleransi selisih jam kecil) dan tidak tertunda
+ * melebihi batas — sehingga ketukan yang sempat mengantre offline tetap
+ * memakai jamnya yang benar. Selain itu, jam server yang dipakai.
+ *
+ * `adjusted` menandai bahwa penggantian itu TERJADI, supaya bisa dicatat di
+ * absensi dan diberitahukan ke karyawan — jam yang berubah tanpa jejak
+ * membuat orang tampak telat berjam-jam tanpa bisa ditelusuri.
  */
-function effectiveNow(clientTime?: string): Date {
+function effectiveNow(clientTime?: string): { at: Date; adjusted: boolean } {
   const server = new Date();
-  if (!clientTime) return server;
+  if (!clientTime) return { at: server, adjusted: false };
   const t = new Date(clientTime);
-  if (Number.isNaN(t.getTime())) return server;
-  const diff = server.getTime() - t.getTime(); // >0 → client in the past
-  if (diff < -CLIENT_TIME_MAX_SKEW_MS || diff > CLIENT_TIME_MAX_STALE_MS) return server;
-  return t;
+  if (Number.isNaN(t.getTime())) return { at: server, adjusted: true };
+  const diff = server.getTime() - t.getTime(); // >0 → perangkat di masa lalu
+  if (diff < -CLIENT_TIME_MAX_SKEW_MS || diff > CLIENT_TIME_MAX_STALE_MS) {
+    return { at: server, adjusted: true };
+  }
+  return { at: t, adjusted: false };
 }
 
 export async function POST(req: Request) {
@@ -113,7 +124,7 @@ export async function POST(req: Request) {
   // keagamaan sesuai agama karyawan).
   const workDays = Array.isArray(emp?.work_days) ? emp!.work_days!.map(Number) : [1, 2, 3, 4, 5];
   // The single source of "now" for this clock — the real tap time when valid.
-  const clockAt = effectiveNow(body.clientTime);
+  const { at: clockAt, adjusted: timeAdjusted } = effectiveNow(body.clientTime);
   const todayStr = witaDateStr(clockAt);
   let isOffDay = !workDays.includes(witaDow(clockAt));
   if (!isOffDay) {
@@ -284,6 +295,7 @@ export async function POST(req: Request) {
           clock_in_lng: body.lng ?? null,
           clock_in_distance_m: distance,
           clock_in_photo: photoPath,
+          clock_in_adjusted: timeAdjusted,
           // A fresh clock-in starts a clean session: never inherit a stale
           // clock-out (which would make clock_out < clock_in).
           clock_out: null,
@@ -314,6 +326,7 @@ export async function POST(req: Request) {
           clock_out_lng: body.lng ?? null,
           clock_out_distance_m: distance,
           clock_out_photo: photoPath,
+          clock_out_adjusted: timeAdjusted,
         })
         .eq("employee_id", profile.employee_id)
         .eq("date", today)
@@ -327,5 +340,5 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, recorded, distance, lateMinutes, overtimeMinutes });
+  return NextResponse.json({ ok: true, recorded, distance, lateMinutes, overtimeMinutes, timeAdjusted });
 }

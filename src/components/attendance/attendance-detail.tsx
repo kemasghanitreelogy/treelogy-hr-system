@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Camera, Clock3, LogIn, LogOut, MapPin, X } from "lucide-react";
+import { AlertTriangle, Camera, Clock3, LogIn, LogOut, MapPin, X } from "lucide-react";
 import type { AttendanceRecord, Team } from "@/lib/types";
 import { TEAM_META } from "@/lib/constants";
 import { cn, formatDate, formatTime, minutesToHM } from "@/lib/utils";
@@ -26,6 +26,7 @@ const STR: Record<
     overtime: string;
     workDuration: string;
     source: (source: string) => string;
+    adjustedNote: string;
   }
 > = {
   id: {
@@ -40,6 +41,7 @@ const STR: Record<
     overtime: "Lembur",
     workDuration: "Durasi kerja",
     source: (source) => `Sumber: ${source} · diverifikasi lokasi & foto wajah`,
+    adjustedNote: "Jam ini memakai jam server — waktu ketukan dari perangkat terlalu lama tertunda untuk dipakai. Koreksi manual bila perlu.",
   },
   en: {
     photoAlt: (label) => `${label} photo`,
@@ -53,6 +55,7 @@ const STR: Record<
     overtime: "Overtime",
     workDuration: "Work duration",
     source: (source) => `Source: ${source} · location & face photo verified`,
+    adjustedNote: "This time uses the server clock — the device tap time was queued too long to be used. Correct it manually if needed.",
   },
 };
 
@@ -93,6 +96,7 @@ function Punch({
   lat,
   lng,
   photo,
+  adjusted,
 }: {
   dir: "in" | "out";
   time?: string | null;
@@ -100,6 +104,8 @@ function Punch({
   lat?: number | null;
   lng?: number | null;
   photo?: string | null;
+  /** Jam ini memakai jam server karena waktu ketukan perangkat ditolak. */
+  adjusted?: boolean;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -121,6 +127,14 @@ function Punch({
           {formatTime(time)}
         </span>
       </div>
+
+      {/* Jam yang bukan waktu ketukan asli harus terbaca jelas — tanpa ini
+          karyawan bisa tampak telat berjam-jam tanpa penjelasan. */}
+      {adjusted && (
+        <p className="mb-3 flex items-start gap-1.5 rounded-xl border border-gold/40 bg-gold-soft/60 px-2.5 py-2 text-[11px] leading-snug text-[#8a6512]">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {t.adjustedNote}
+        </p>
+      )}
 
       <Selfie path={photo} label={label} />
 
@@ -251,6 +265,7 @@ export function AttendanceDetail({
             lat={record.clockInLat}
             lng={record.clockInLng}
             photo={record.clockInPhoto}
+            adjusted={record.clockInAdjusted}
           />
           <Punch
             dir="out"
@@ -259,6 +274,7 @@ export function AttendanceDetail({
             lat={record.clockOutLat}
             lng={record.clockOutLng}
             photo={record.clockOutPhoto}
+            adjusted={record.clockOutAdjusted}
           />
         </div>
 

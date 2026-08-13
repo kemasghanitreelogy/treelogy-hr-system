@@ -108,6 +108,9 @@ export interface AttendanceRecord {
   clockOutPhoto?: string | null;
   /** Saat clock-in di hari libur: 'swap' (tukar→tabungan) / 'overtime' (lembur). */
   offDayChoice?: "swap" | "overtime" | null;
+  /** True = waktu ketukan perangkat ditolak; jam ini memakai jam server. */
+  clockInAdjusted?: boolean;
+  clockOutAdjusted?: boolean;
 }
 
 export interface Shift {
