@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, ChevronRight, Download, Pencil, Plus, ReceiptText, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Download, Layers, Pencil, Plane, Plus, ReceiptText, RefreshCw, Search, Zap } from "lucide-react";
 import type { PaymentFlow, PaymentRequest } from "@/lib/types";
+import type { FlowFilter } from "@/lib/payment-xlsx";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -51,6 +52,11 @@ const STR: Record<Locale, Record<string, any>> = {
     reviseShort: "Revisi",
     revisedOk: "Pengajuan diperbaiki & dikirim ulang ✓",
     allStatus: "Semua status",
+    allFlows: "Semua",
+    // Label pendek untuk layar sempit — nama panjang di sana berakhir jadi
+    // "Rei…" / "Reim…", yang justru membuat tabnya mustahil dibedakan.
+    shortAll: "Semua", shortBiasa: "Biasa", shortDinas: "Dinas",
+    filterFlow: "Saring menurut jalur pengajuan",
     waitingOpsShort: "menunggu ops",
     waitingFinanceShort: "menunggu finance",
     approvedOk: "Disetujui ✓",
@@ -86,6 +92,9 @@ const STR: Record<Locale, Record<string, any>> = {
     reviseShort: "Revise",
     revisedOk: "Request revised & resubmitted ✓",
     allStatus: "All statuses",
+    allFlows: "All",
+    shortAll: "All", shortBiasa: "Regular", shortDinas: "Trip",
+    filterFlow: "Filter by request flow",
     waitingOpsShort: "awaiting ops",
     waitingFinanceShort: "awaiting finance",
     approvedOk: "Approved ✓",
@@ -136,6 +145,8 @@ export function PaymentView({
   const [query, setQuery] = useState("");
   const [dept, setDept] = useState("all");
   const [status, setStatus] = useState("all");
+  /** Jalur yang sedang dilihat: reimburse biasa, dinas, atau keduanya. */
+  const [flowFilter, setFlowFilter] = useState<FlowFilter>("all");
   const [open, setOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -148,7 +159,9 @@ export function PaymentView({
   const [rejecting, setRejecting] = useState<PaymentRequest | null>(null);
   const [decideBusyId, setDecideBusyId] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
+  // Disaring dua tahap: hasil TANPA saringan jalur dipakai untuk menghitung
+  // isi tiap tab, supaya angkanya tetap benar saat satu tab sedang aktif.
+  const seDeptStatus = useMemo(() => {
     const q = query.trim().toLowerCase();
     return list.filter((r) => {
       if (dept !== "all" && r.department !== dept) return false;
@@ -157,6 +170,20 @@ export function PaymentView({
       return [r.description, r.vendorName ?? "", r.requesterName, r.email].some((f) => f.toLowerCase().includes(q));
     });
   }, [list, query, dept, status]);
+
+  const filtered = useMemo(
+    () => (flowFilter === "all" ? seDeptStatus : seDeptStatus.filter((r) => r.flow === flowFilter)),
+    [seDeptStatus, flowFilter],
+  );
+
+  const perJalur = useMemo(
+    () => ({
+      all: seDeptStatus.length,
+      biasa: seDeptStatus.filter((r) => r.flow === "biasa").length,
+      dinas: seDeptStatus.filter((r) => r.flow === "dinas").length,
+    }),
+    [seDeptStatus],
+  );
 
   const total = useMemo(() => filtered.reduce((s, r) => s + r.totalAmount, 0), [filtered]);
   const selected = list.find((x) => x.id === selectedId) ?? null;
@@ -296,12 +323,16 @@ export function PaymentView({
               <option key={k} value={k}>{v}</option>
             ))}
           </Select>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t.allStatus} className="min-w-0 sm:w-44">
-            <option value="all">{t.allStatus}</option>
-            {APPROVAL_STATUSES.map((v) => (
-              <option key={v} value={v}>{APPROVAL_LABEL[locale][v]}</option>
-            ))}
-          </Select>
+          {/* Status persetujuan hanya ada pada jalur dinas — menyodorkannya saat
+              tab "Reimburse Biasa" aktif hanya akan membingungkan. */}
+          {flowFilter !== "biasa" && (
+            <Select value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t.allStatus} className="min-w-0 sm:w-44">
+              <option value="all">{t.allStatus}</option>
+              {APPROVAL_STATUSES.map((v) => (
+                <option key={v} value={v}>{APPROVAL_LABEL[locale][v]}</option>
+              ))}
+            </Select>
+          )}
           <Button
             variant="outline"
             onClick={() => setExportOpen(true)}
@@ -314,6 +345,54 @@ export function PaymentView({
             <Plus className="h-4 w-4" /> {t.submit}
           </Button>
         </div>
+      </div>
+
+      {/* Pemisah jalur dibuat sebagai tab, bukan dropdown ketiga: ini pembagian
+          utama daftar ini, dan angkanya harus terbaca tanpa membuka apa pun. */}
+      <div
+        role="tablist"
+        aria-label={t.filterFlow}
+        className="flex gap-1.5 overflow-x-auto rounded-2xl border border-line bg-panel p-1"
+      >
+        {([
+          ["all", Layers, t.allFlows, t.shortAll, perJalur.all],
+          ["biasa", Zap, FLOW_LABEL[locale].biasa, t.shortBiasa, perJalur.biasa],
+          ["dinas", Plane, FLOW_LABEL[locale].dinas, t.shortDinas, perJalur.dinas],
+        ] as const).map(([id, Icon, label, pendek, jml]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={flowFilter === id}
+            onClick={() => {
+              setFlowFilter(id);
+              // Saringan status ikut disembunyikan pada jalur biasa — jangan
+              // tinggalkan saringan tak terlihat yang diam-diam menyembunyikan baris.
+              if (id === "biasa") setStatus("all");
+            }}
+            className={cn(
+              // min-h-11 = 44px, ambang nyaman untuk ditekan jempol di ponsel.
+              // px lebih rapat di ponsel: sepertiga lebar layar hanya cukup
+              // untuk label + jumlah bila bantalannya tidak boros.
+              "flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400 sm:min-h-0 sm:px-3",
+              flowFilter === id
+                ? "bg-forest-50 text-forest-700 ring-1 ring-forest-200"
+                : "text-muted hover:bg-cream/70 hover:text-ink",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate sm:hidden">{pendek}</span>
+            <span className="hidden truncate sm:inline">{label}</span>
+            <span
+              className={cn(
+                "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] tabular-nums",
+                flowFilter === id ? "bg-forest-100 text-forest-700" : "bg-sand text-faint",
+              )}
+            >
+              {jml}
+            </span>
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
@@ -486,6 +565,7 @@ export function PaymentView({
             requests={list}
             fileLinks={fileLinks}
             today={today}
+            initialFlow={flowFilter}
             onClose={() => setExportOpen(false)}
           />
         )}

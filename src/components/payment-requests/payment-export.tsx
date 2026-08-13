@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarRange, Download, Layers, Loader2 } from "lucide-react";
+import { CalendarRange, Download, Layers, Loader2, Plane, Zap } from "lucide-react";
 import type { PaymentRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { cn, formatDate, rupiah } from "@/lib/utils";
-import { exportPaymentXlsx, filterPaymentRange, type PaymentRow } from "@/lib/payment-xlsx";
-import { DEPT_LABEL } from "@/lib/payment-request";
+import { exportPaymentXlsx, selectPaymentRows, type FlowFilter, type PaymentRow } from "@/lib/payment-xlsx";
+import { DEPT_LABEL, FLOW_LABEL } from "@/lib/payment-request";
 import { useLocale } from "@/components/layout/locale-context";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
@@ -19,6 +19,8 @@ const STR: Record<
   Locale,
   {
     intro: string;
+    flowTitle: string; flowAll: string;
+    flowCount: (n: number) => string;
     modeAll: string; modeAllHint: string;
     modeRange: string; modeRangeHint: string;
     from: string; to: string;
@@ -36,6 +38,8 @@ const STR: Record<
 > = {
   id: {
     intro: "File Excel (.xlsx) berisi sheet rincian per pengajuan — lengkap dengan tautan lampiran yang bisa diklik — dan sheet ringkasan per departemen & per jenis.",
+    flowTitle: "Jalur yang diekspor", flowAll: "Semua jalur",
+    flowCount: (n) => `${n} pengajuan`,
     modeAll: "Semua data", modeAllHint: "Seluruh pengajuan yang bisa Anda lihat",
     modeRange: "Rentang tanggal", modeRangeHint: "Disaring menurut tanggal pengajuan",
     from: "Dari tanggal", to: "Sampai tanggal",
@@ -54,6 +58,8 @@ const STR: Record<
   },
   en: {
     intro: "The Excel (.xlsx) file has a detail sheet per request — including clickable attachment links — plus a summary by department and by type.",
+    flowTitle: "Which flow to export", flowAll: "All flows",
+    flowCount: (n) => `${n} requests`,
     modeAll: "All data", modeAllHint: "Every request you can see",
     modeRange: "Date range", modeRangeHint: "Filtered by submission date",
     from: "From date", to: "To date",
@@ -83,12 +89,15 @@ export function PaymentExport({
   requests,
   fileLinks,
   today,
+  initialFlow = "all",
   onClose,
 }: {
   requests: PaymentRequest[];
   /** Tautan bertanda tangan dari server — supaya sel di Excel bisa dibuka siapa pun. */
   fileLinks: PaymentFileLinks;
   today: string;
+  /** Jalur yang sedang disaring di daftar — dipakai sebagai pilihan awal. */
+  initialFlow?: FlowFilter;
   onClose: () => void;
 }) {
   const locale = useLocale();
@@ -96,6 +105,7 @@ export function PaymentExport({
   const toast = useToast();
 
   const [mode, setMode] = useState<Mode>("all");
+  const [flow, setFlow] = useState<FlowFilter>(initialFlow);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -115,9 +125,20 @@ export function PaymentExport({
   );
 
   const terpilih = useMemo(() => {
-    if (mode === "all") return baris;
     if (rangeInvalid) return [];
-    return filterPaymentRange(baris, from || null, to || null);
+    const [a, b] = mode === "all" ? [null, null] : [from || null, to || null];
+    return selectPaymentRows(baris, a, b, flow);
+  }, [baris, mode, from, to, flow, rangeInvalid]);
+
+  /** Berapa baris yang akan ikut untuk tiap jalur, pada rentang yang berlaku. */
+  const perJalur = useMemo(() => {
+    const [a, b] = mode === "all" ? [null, null] : [from || null, to || null];
+    const dalamRentang = rangeInvalid ? [] : selectPaymentRows(baris, a, b, "all");
+    return {
+      all: dalamRentang.length,
+      biasa: dalamRentang.filter((r) => r.flow === "biasa").length,
+      dinas: dalamRentang.filter((r) => r.flow === "dinas").length,
+    };
   }, [baris, mode, from, to, rangeInvalid]);
 
   const ringkas = useMemo(() => {
@@ -157,6 +178,7 @@ export function PaymentExport({
         requests: baris,
         from: mode === "all" ? null : from || null,
         to: mode === "all" ? null : to || null,
+        flow,
         locale,
       });
       if (n === 0) { toast.error(t.empty); return; }
@@ -174,6 +196,39 @@ export function PaymentExport({
       <p className="rounded-xl border border-line bg-cream/60 px-3 py-2.5 text-xs leading-relaxed text-muted">
         {t.intro}
       </p>
+
+      {/* Jalur dulu, baru periode: keduanya menyempitkan data, dan pengguna
+          hampir selalu sudah tahu sedang menyiapkan rekap yang mana. */}
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-faint">{t.flowTitle}</p>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            ["all", Layers, t.flowAll, perJalur.all],
+            ["biasa", Zap, FLOW_LABEL[locale].biasa, perJalur.biasa],
+            ["dinas", Plane, FLOW_LABEL[locale].dinas, perJalur.dinas],
+          ] as const).map(([id, Icon, judul, jml]) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={flow === id}
+              onClick={() => setFlow(id)}
+              className={cn(
+                "cursor-pointer rounded-2xl border p-3 text-left transition-colors",
+                flow === id
+                  ? "border-forest-400 bg-forest-50 ring-1 ring-forest-200"
+                  : "border-line bg-panel hover:bg-cream/60",
+                jml === 0 && flow !== id && "opacity-60",
+              )}
+            >
+              <Icon className={cn("h-4 w-4", flow === id ? "text-forest-600" : "text-faint")} />
+              <p className={cn("mt-1.5 text-xs font-semibold leading-snug", flow === id ? "text-forest-700" : "text-ink")}>
+                {judul}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted tabular-nums">{t.flowCount(jml)}</p>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Pilihan cakupan — dua kartu besar, jelas mana yang aktif */}
       <div className="grid grid-cols-2 gap-2">

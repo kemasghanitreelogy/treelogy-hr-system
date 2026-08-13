@@ -1,8 +1,8 @@
 // XLSX export untuk Pengajuan Pembayaran — sheet rincian + sheet ringkasan.
 // ExcelJS di-import dinamis agar tidak membebani bundle halaman.
-import type { PaymentRequest } from "./types";
+import type { PaymentFlow, PaymentRequest } from "./types";
 import type { Locale } from "./i18n";
-import { DEPT_LABEL, KIND_LABEL } from "./payment-request";
+import { APPROVAL_LABEL, DEPT_LABEL, FLOW_LABEL, KIND_LABEL } from "./payment-request";
 import { witaToday } from "./utils";
 
 /** Baris + tautan berkas yang sudah ditandatangani server (bisa dibuka siapa pun). */
@@ -11,11 +11,16 @@ export interface PaymentRow extends PaymentRequest {
   approvalUrl?: string;
 }
 
+/** Jalur yang diekspor: satu jalur saja, atau keduanya. */
+export type FlowFilter = PaymentFlow | "all";
+
 export interface PaymentXlsxOptions {
   requests: PaymentRow[];
   /** null = semua tanggal. Disaring menurut TANGGAL PENGAJUAN. */
   from: string | null;
   to: string | null;
+  /** Reimburse biasa saja, dinas saja, atau semuanya. */
+  flow: FlowFilter;
   locale: Locale;
   title?: string;
 }
@@ -36,12 +41,14 @@ const STR: Record<Locale, Record<string, string>> = {
     periodAll: "Seluruh periode",
     generated: "Dibuat", by: "Treelogy HR",
     no: "No", submitted: "Waktu ajukan", dept: "Departemen", requester: "Pengaju",
-    email: "Email", kind: "Jenis", invoiceDate: "Tgl invoice", desc: "Deskripsi",
+    email: "Email", kind: "Jenis", flow: "Jalur", approval: "Status persetujuan",
+    invoiceDate: "Tgl invoice", desc: "Deskripsi",
     vendor: "Vendor", amount: "Nominal", due: "Jatuh tempo", more: "Detail tambahan",
     files: "Jml lampiran", invoiceLink: "Tautan faktur", approvalLink: "Tautan persetujuan",
     grandTotal: "TOTAL",
-    byDept: "Per departemen", byKind: "Per jenis",
+    byDept: "Per departemen", byKind: "Per jenis", byFlow: "Per jalur",
     count: "Jumlah", sum: "Total nominal",
+    allFlows: "Semua jalur", noApproval: "Tanpa persetujuan",
   },
   en: {
     sheetDetail: "Payment Requests", sheetSummary: "Summary",
@@ -49,12 +56,14 @@ const STR: Record<Locale, Record<string, string>> = {
     periodAll: "All periods",
     generated: "Generated", by: "Treelogy HR",
     no: "No", submitted: "Submitted", dept: "Department", requester: "Requester",
-    email: "Email", kind: "Type", invoiceDate: "Invoice date", desc: "Description",
+    email: "Email", kind: "Type", flow: "Flow", approval: "Approval status",
+    invoiceDate: "Invoice date", desc: "Description",
     vendor: "Vendor", amount: "Amount", due: "Due date", more: "More details",
     files: "Files", invoiceLink: "Invoice link", approvalLink: "Approval link",
     grandTotal: "TOTAL",
-    byDept: "By department", byKind: "By type",
+    byDept: "By department", byKind: "By type", byFlow: "By flow",
     count: "Count", sum: "Total amount",
+    allFlows: "All flows", noApproval: "No approval needed",
   },
 };
 
@@ -66,13 +75,30 @@ export function filterPaymentRange(rows: PaymentRow[], from: string | null, to: 
   });
 }
 
+/**
+ * Baris yang benar-benar diekspor: rentang tanggal DAN jalur.
+ *
+ * Dipakai pratinjau maupun penulis berkas, supaya jumlah yang terbaca di layar
+ * tidak mungkin berbeda dengan isi file yang terunduh.
+ */
+export function selectPaymentRows(
+  rows: PaymentRow[],
+  from: string | null,
+  to: string | null,
+  flow: FlowFilter,
+): PaymentRow[] {
+  const seRentang = filterPaymentRange(rows, from, to);
+  return flow === "all" ? seRentang : seRentang.filter((r) => r.flow === flow);
+}
+
 export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<number> {
-  const { from, to, locale } = opts;
+  const { from, to, locale, flow } = opts;
   const t = STR[locale];
-  const rows = filterPaymentRange(opts.requests, from, to)
+  const rows = selectPaymentRows(opts.requests, from, to, flow)
     .slice()
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
   if (rows.length === 0) return 0;
+  const flowLabel = flow === "all" ? t.allFlows : FLOW_LABEL[locale][flow];
 
   const mod = await import("exceljs");
   const ExcelJS = mod.default ?? (mod as unknown as typeof mod.default);
@@ -95,6 +121,11 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
     { label: t.requester, width: 22 },
     { label: t.email, width: 26 },
     { label: t.kind, width: 20 },
+    // Jalur & status persetujuan ikut diekspor walau sedang menyaring satu
+    // jalur saja — file yang beredar lepas dari layar harus bisa berdiri
+    // sendiri, tanpa perlu mengingat filter apa yang dipakai saat mengunduh.
+    { label: t.flow, width: 18 },
+    { label: t.approval, width: 18 },
     { label: t.invoiceDate, width: 12 },
     { label: t.desc, width: 38 },
     { label: t.vendor, width: 20 },
@@ -108,6 +139,15 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   const lastCol = cols.length;
   cols.forEach((c, i) => (ws.getColumn(i + 1).width = c.width));
 
+  // Nomor kolom dicari dari label, bukan ditulis tetap: menyisipkan satu kolom
+  // saja sudah cukup untuk menggeser sel total & hyperlink ke tempat yang salah.
+  const kolom = (label: string) => cols.findIndex((c) => c.label === label) + 1;
+  const colAmount = kolom(t.amount);
+  const colInvoiceLink = kolom(t.invoiceLink);
+  const colApprovalLink = kolom(t.approvalLink);
+  const colDesc = kolom(t.desc);
+  const colMore = kolom(t.more);
+
   ws.mergeCells(1, 1, 1, lastCol);
   const title = ws.getCell(1, 1);
   title.value = (opts.title ?? "TREELOGY REGENERATIVE MORINGA").toUpperCase();
@@ -115,7 +155,8 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   ws.getRow(1).height = 24;
 
   ws.mergeCells(2, 1, 2, lastCol);
-  ws.getCell(2, 1).value = `${t.title} · ${from && to ? `${from} — ${to}` : t.periodAll}`;
+  ws.getCell(2, 1).value =
+    `${t.title} · ${from && to ? `${from} — ${to}` : t.periodAll} · ${flowLabel}`;
   ws.getCell(2, 1).font = { name: "Calibri", bold: true, size: 11, color: { argb: C.slate } };
 
   ws.mergeCells(3, 1, 3, lastCol);
@@ -142,6 +183,10 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
       r.requesterName,
       r.email,
       KIND_LABEL[locale][r.kind] + (r.kind === "other" && r.kindOther ? `: ${r.kindOther}` : ""),
+      FLOW_LABEL[locale][r.flow],
+      // Reimburse biasa tidak melewati antrean persetujuan; menuliskan
+      // "Disetujui" di sana akan terbaca seolah ada yang menyetujuinya.
+      r.flow === "dinas" ? APPROVAL_LABEL[locale][r.approvalStatus] : t.noApproval,
       r.invoiceDate ?? "",
       r.description,
       r.vendorName ?? "",
@@ -157,16 +202,16 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
       cell.value = v;
       cell.border = border;
       cell.font = { name: "Calibri", size: 10, color: { argb: C.slate } };
-      cell.alignment = { vertical: "middle", wrapText: ci === 7 || ci === 11 };
+      cell.alignment = { vertical: "middle", wrapText: ci + 1 === colDesc || ci + 1 === colMore };
       if (i % 2 === 1) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.zebra } };
       if (cols[ci].money) { cell.numFmt = RP; cell.alignment = { ...cell.alignment, horizontal: "right" }; }
       if (cols[ci].num) cell.alignment = { ...cell.alignment, horizontal: "center" };
     });
     // Tautan dibuat benar-benar bisa diklik di Excel, bukan sekadar teks panjang.
     const inv = (r.invoiceUrls ?? [])[0];
-    if (inv) row.getCell(14).value = { text: `${(r.invoicePaths ?? []).length} berkas`, hyperlink: inv };
-    if (r.approvalUrl) row.getCell(15).value = { text: "Buka", hyperlink: r.approvalUrl };
-    for (const c of [14, 15]) {
+    if (inv) row.getCell(colInvoiceLink).value = { text: `${(r.invoicePaths ?? []).length} berkas`, hyperlink: inv };
+    if (r.approvalUrl) row.getCell(colApprovalLink).value = { text: "Buka", hyperlink: r.approvalUrl };
+    for (const c of [colInvoiceLink, colApprovalLink]) {
       const cell = row.getCell(c);
       if (typeof cell.value === "object") {
         cell.font = { name: "Calibri", size: 10, color: { argb: "FF1D4ED8" }, underline: true };
@@ -177,21 +222,21 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   });
 
   const totalRow = HEAD + 1 + rows.length;
-  ws.mergeCells(totalRow, 1, totalRow, 9);
+  ws.mergeCells(totalRow, 1, totalRow, colAmount - 1);
   const lbl = ws.getCell(totalRow, 1);
   lbl.value = t.grandTotal;
   lbl.font = { name: "Calibri", bold: true, size: 11, color: { argb: C.ink } };
   lbl.alignment = { horizontal: "right", vertical: "middle" };
   lbl.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.totalBg } };
   lbl.border = border;
-  const totalCell = ws.getCell(totalRow, 10);
+  const totalCell = ws.getCell(totalRow, colAmount);
   totalCell.value = rows.reduce((s, r) => s + r.totalAmount, 0);
   totalCell.numFmt = RP;
   totalCell.font = { name: "Calibri", bold: true, size: 11, color: { argb: C.ink } };
   totalCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.totalBg } };
   totalCell.alignment = { horizontal: "right", vertical: "middle" };
   totalCell.border = border;
-  for (let c = 11; c <= lastCol; c++) {
+  for (let c = colAmount + 1; c <= lastCol; c++) {
     const cell = ws.getCell(totalRow, c);
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: C.totalBg } };
     cell.border = border;
@@ -205,7 +250,7 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   ws2.getCell(1, 1).value = `${t.title} — ${t.sheetSummary}`;
   ws2.getCell(1, 1).font = { name: "Calibri", bold: true, size: 14, color: { argb: C.ink } };
   ws2.mergeCells(2, 1, 2, 3);
-  ws2.getCell(2, 1).value = from && to ? `${from} — ${to}` : t.periodAll;
+  ws2.getCell(2, 1).value = `${from && to ? `${from} — ${to}` : t.periodAll} · ${flowLabel}`;
   ws2.getCell(2, 1).font = { name: "Calibri", size: 10, color: { argb: C.muted } };
 
   const head2 = (r: number, labels: string[]) =>
@@ -258,6 +303,18 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
     dataRow(baris, [k, v.n, v.total]); baris++;
   }
 
+  // Rekap per jalur hanya bermakna saat keduanya ikut terekspor.
+  if (flow === "all") {
+    baris += 3;
+    ws2.getCell(baris, 1).value = t.byFlow;
+    ws2.getCell(baris, 1).font = { name: "Calibri", bold: true, size: 11, color: { argb: C.ink } };
+    baris++;
+    head2(baris, [t.flow, t.count, t.sum]); baris++;
+    for (const [k, v] of kelompok((r) => FLOW_LABEL[locale][r.flow])) {
+      dataRow(baris, [k, v.n, v.total]); baris++;
+    }
+  }
+
   /* ── Unduh ── */
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {
@@ -266,9 +323,12 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
+  // Jalur ikut ke nama berkas: mengunduh biasa lalu dinas di hari yang sama
+  // tidak boleh menghasilkan dua file bernama sama di folder Unduhan.
+  const namaJalur = flow === "all" ? "" : `-${flow}`;
   a.download = from && to
-    ? `pengajuan-pembayaran-${from}_${to}.xlsx`
-    : `pengajuan-pembayaran-semua-${witaToday()}.xlsx`;
+    ? `pengajuan-pembayaran${namaJalur}-${from}_${to}.xlsx`
+    : `pengajuan-pembayaran${namaJalur}-semua-${witaToday()}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
   return rows.length;
