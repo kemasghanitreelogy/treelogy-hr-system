@@ -2,28 +2,15 @@ import { OvertimeView } from "@/components/overtime/overtime-view";
 import { getEmployees, getOvertimeRequests } from "@/lib/data";
 import { contractRatePerHour } from "@/lib/overtime";
 import { can, getSessionUser } from "@/lib/auth";
-import { getLocale } from "@/lib/locale-server";
-import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Lembur — Treelogy HR" };
 
-const STR: Record<Locale, { desc1: string }> = {
-  id: {
-    desc1: "Ajukan & kelola lembur.",
-  },
-  en: {
-    desc1: "Request & manage overtime.",
-  },
-};
-
 export default async function OvertimePage() {
-  const [requests, employeesAll, user, locale] = await Promise.all([
+  const [requests, employeesAll, user] = await Promise.all([
     getOvertimeRequests(),
     getEmployees(),
     getSessionUser(),
-    getLocale(),
   ]);
-  const t = STR[locale];
   const employees = employeesAll
     .filter((e) => e.status === "active")
     .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position, managerId: e.managerId ?? null }));
@@ -36,7 +23,6 @@ export default async function OvertimePage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{t.desc1}</p>
       <OvertimeView
         requests={requests}
         employees={employees}

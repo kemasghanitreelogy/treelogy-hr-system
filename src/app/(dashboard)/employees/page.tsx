@@ -2,31 +2,16 @@ import { redirect } from "next/navigation";
 import { EmployeesView } from "@/components/employees/employees-view";
 import { getAllContracts, getEmployees, getRoles, getSystemUsers } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
-import { getLocale } from "@/lib/locale-server";
-import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Karyawan — Treelogy HR" };
 
-const STR: Record<Locale, { description: string }> = {
-  id: {
-    description:
-      "Database karyawan terpusat — kelola data, status aktif/nonaktif, kompensasi, dan rekening gaji.",
-  },
-  en: {
-    description:
-      "Centralized employee database — manage data, active/inactive status, compensation, and salary accounts.",
-  },
-};
-
 export default async function EmployeesPage() {
-  const [employees, user, users, locale, contracts] = await Promise.all([
+  const [employees, user, users, contracts] = await Promise.all([
     getEmployees(),
     getSessionUser(),
     getSystemUsers(),
-    getLocale(),
     getAllContracts(),
   ]);
-  const t = STR[locale];
   // Employees DB is HR/admin only (employees.manage) — even division heads are
   // blocked. Guard the route, not just the menu, so it can't be reached by URL.
   if (!can(user, "employees.manage")) redirect("/dashboard");
@@ -37,7 +22,6 @@ export default async function EmployeesPage() {
   for (const u of users) roleByEmployee[u.employeeId] = u.roleId;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{t.description}</p>
       <EmployeesView
         initial={employees}
         canManage={canManage}

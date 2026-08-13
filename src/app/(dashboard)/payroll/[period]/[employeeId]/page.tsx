@@ -6,26 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { buildPayslip, getAttendanceForEmployee, getEmployees, getOvertimeRequests } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
-import { monthLabel } from "@/lib/utils";
 import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Detail Slip Gaji — Treelogy HR" };
 
-const STR: Record<
-  Locale,
-  {
-    backToPayroll: string;
-    intro: (month: string) => string;
-  }
-> = {
-  id: {
-    backToPayroll: "Kembali ke Payroll",
-    intro: (month) => `Slip gaji ${month}. Lembur yang disetujui sudah termasuk di gaji.`,
-  },
-  en: {
-    backToPayroll: "Back to Payroll",
-    intro: (month) => `Payslip for ${month}. Approved overtime is included in the salary.`,
-  },
+const STR: Record<Locale, { backToPayroll: string }> = {
+  id: { backToPayroll: "Kembali ke Payroll" },
+  en: { backToPayroll: "Back to Payroll" },
 };
 
 const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -63,9 +50,6 @@ export default async function PayslipPage({
       >
         <ArrowLeft className="h-4 w-4" /> {t.backToPayroll}
       </Link>
-      <p className="text-sm text-muted">
-        {t.intro(monthLabel(period, locale))}
-      </p>
       <Card>
         <CardContent>
           <PayslipDetail slip={slip} emp={emp} />

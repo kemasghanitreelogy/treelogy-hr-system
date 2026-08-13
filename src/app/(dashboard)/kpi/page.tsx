@@ -31,16 +31,19 @@ export default async function KpiPage() {
     byEmployee.set(k.employeeId, arr);
   }
 
+  // Tanpa data KPI halaman ini kosong melompong; beri keadaan kosong yang
+  // menjelaskan dirinya, bukan layar putih tanpa penanda apa pun.
+  if (byEmployee.size === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-line bg-cream/40 px-5 py-12 text-center fade-up">
+        <Target className="mx-auto h-8 w-8 text-faint" />
+        <p className="mt-2 text-sm text-faint">Belum ada data KPI.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 fade-up">
-      <div className="flex items-start gap-2 rounded-2xl border border-line bg-panel p-4">
-        <Target className="mt-0.5 h-5 w-5 shrink-0 text-forest-600" />
-        <p className="text-sm text-muted">
-          Pelacakan KPI &amp; kinerja per karyawan. Modul ini berprioritas rendah — dapat dikembangkan
-          bertahap dengan siklus review &amp; bobot per metrik.
-        </p>
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-2">
         {Array.from(byEmployee.entries()).map(([empId, items]) => {
           const emp = empMap.get(empId);

@@ -11,11 +11,6 @@ export default async function OrgStructurePage() {
   const employees = employeesAll.filter((e) => e.status === "active");
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {canManage
-          ? "Atur siapa memimpin tiap divisi dan garis pelaporannya. Pindahkan karyawan antar divisi atau ubah atasan langsungnya — perubahan langsung dipakai untuk persetujuan cuti per divisi."
-          : "Lihat struktur organisasi dan garis pelaporan tiap divisi. Hanya HR/Admin yang dapat mengubahnya."}
-      </p>
       <OrgView initial={employees} canManage={canManage} />
     </div>
   );

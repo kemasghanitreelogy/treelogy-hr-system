@@ -19,10 +19,6 @@ export default async function AccessPage() {
   }));
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        Kelola peran &amp; hak akses (RBAC). Buat, edit, atau hapus peran, atur hak akses per modul,
-        dan tetapkan peran ke setiap pengguna.
-      </p>
       <AccessView roles={getRoles()} users={users} employees={employees} />
     </div>
   );

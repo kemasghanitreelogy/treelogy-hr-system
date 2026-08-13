@@ -4,29 +4,15 @@ import { PaymentView, type PaymentFileLinks } from "@/components/payment-request
 import { can, getSessionUser } from "@/lib/auth";
 import { getPaymentRequests } from "@/lib/data";
 import { signedFileUrl } from "@/lib/file-link";
-import { getLocale } from "@/lib/locale-server";
 import { sheetsMode } from "@/lib/sheets";
 import { witaToday } from "@/lib/utils";
-import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Pengajuan Pembayaran — Treelogy HR" };
 
-const STR: Record<Locale, { intro: string }> = {
-  id: {
-    intro:
-      "Pengajuan pembayaran & reimbursement. Pilih jalurnya saat mengajukan: reimburse biasa langsung masuk Google Sheet keuangan, sedangkan reimburse dinas disetujui Ops/GA lalu Finance dulu.",
-  },
-  en: {
-    intro:
-      "Payment & reimbursement requests. Pick the path when submitting: regular claims go straight into the finance Google Sheet, business-trip claims pass Ops/GA then Finance first.",
-  },
-};
-
 export default async function PaymentRequestsPage() {
-  const [requests, user, locale, h] = await Promise.all([
+  const [requests, user, h] = await Promise.all([
     getPaymentRequests(),
     getSessionUser(),
-    getLocale(),
     headers(),
   ]);
   if (
@@ -51,10 +37,8 @@ export default async function PaymentRequestsPage() {
     ]),
   );
 
-  const t = STR[locale];
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{t.intro}</p>
       <PaymentView
         requests={requests}
         fileLinks={fileLinks}

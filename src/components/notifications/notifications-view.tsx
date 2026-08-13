@@ -17,15 +17,12 @@ const TONE: Record<NotifTone, { icon: typeof Check; wrap: string }> = {
 };
 
 const STR: Record<Locale, {
-  intro: string;
   empty: string;
 }> = {
   id: {
-    intro: "Riwayat persetujuan cuti, lembur, pembayaran, dan tukar libur.",
     empty: "Belum ada notifikasi.",
   },
   en: {
-    intro: "History of leave, overtime, payment, and day-off swap approvals.",
     empty: "No notifications yet.",
   },
 };
@@ -47,8 +44,6 @@ export function NotificationsView({ items }: { items: AppNotification[] }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 fade-up">
-      <p className="text-sm text-muted">{t.intro}</p>
-
       {items.length === 0 ? (
         <div className="card flex flex-col items-center gap-2 px-5 py-14 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sand text-faint">

@@ -21,22 +21,16 @@ const STR: Record<
   Locale,
   {
     notLinked: string;
-    selfIntro: string;
     myPayslips: string;
-    opsIntro: string;
   }
 > = {
   id: {
     notLinked: "Akun Anda belum tertaut ke data karyawan. Hubungi HR.",
-    selfIntro: "Slip gaji Anda per bulan — klik untuk melihat detail. Lembur yang disetujui sudah termasuk di gaji.",
     myPayslips: "Slip Gaji Saya",
-    opsIntro: "Payroll otomatis dari rekap hari kerja — gaji bersih sudah termasuk lembur, plus ekspor transfer bank.",
   },
   en: {
     notLinked: "Your account is not linked to an employee record. Contact HR.",
-    selfIntro: "Your monthly payslips — click to view details. Approved overtime is included in the salary.",
     myPayslips: "My Payslips",
-    opsIntro: "Payroll automated from working-day summaries — net pay already includes overtime, plus bank transfer export.",
   },
 };
 
@@ -87,9 +81,6 @@ export default async function PayrollPage() {
     const slips = buildHistory([me], attendance, overtime, leave);
     return (
       <div className="space-y-4 fade-up">
-        <p className="text-sm text-muted">
-          {t.selfIntro}
-        </p>
         <PayslipList slips={slips} employees={[me]} title={t.myPayslips} />
       </div>
     );
@@ -100,9 +91,6 @@ export default async function PayrollPage() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {t.opsIntro}
-      </p>
       <PayrollView slips={slips} employees={employees} runs={runs} period={period} />
     </div>
   );

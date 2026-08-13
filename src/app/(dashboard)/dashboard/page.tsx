@@ -48,7 +48,6 @@ const LEAVE_LABEL: Record<Locale, Record<string, string>> = {
 const STR: Record<Locale, {
   scheduleLabel: (start: string, end: string) => string;
   welcome: (name: string) => string;
-  summary: string;
   needsActionTitle: (n: number) => string;
   needsActionSub: string;
   presentToday: string;
@@ -83,7 +82,6 @@ const STR: Record<Locale, {
   id: {
     scheduleLabel: (start, end) => `Jam kerja · ${start}–${end}`,
     welcome: (name) => `Selamat datang kembali, ${name} 🌿`,
-    summary: "Ringkasan SDM Treelogy hari ini.",
     needsActionTitle: (n) => `${n} permintaan menunggu persetujuan Anda`,
     needsActionSub: "Cuti, izin, dan tukar libur perlu ditinjau.",
     presentToday: "Hadir hari ini",
@@ -118,7 +116,6 @@ const STR: Record<Locale, {
   en: {
     scheduleLabel: (start, end) => `Work hours · ${start}–${end}`,
     welcome: (name) => `Welcome back, ${name} 🌿`,
-    summary: "Today's Treelogy HR overview.",
     needsActionTitle: (n) => `${n} request${n === 1 ? "" : "s"} awaiting your approval`,
     needsActionSub: "Leave, permits, and day-off swaps need review.",
     presentToday: "Present today",
@@ -228,7 +225,6 @@ export default async function DashboardPage() {
         <h2 className="font-display text-xl font-bold text-ink sm:text-2xl">
           {t.welcome(firstName)}
         </h2>
-        <p className="text-sm text-muted">{t.summary}</p>
       </div>
 
       {/* Needs-action banner (Zeigarnik: surface unfinished tasks first) */}

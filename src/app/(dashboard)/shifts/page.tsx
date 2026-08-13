@@ -1,19 +1,8 @@
 import { ShiftsView } from "@/components/shifts/shifts-view";
 import { getEmployees, getScheduleTemplates } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
-import { getLocale } from "@/lib/locale-server";
-import type { Locale } from "@/lib/i18n";
 
 export const metadata = { title: "Jadwal — Treelogy HR" };
-
-const STR: Record<Locale, { intro: string }> = {
-  id: {
-    intro: "Atur jadwal kerja (hari & jam) lewat template atau per karyawan.",
-  },
-  en: {
-    intro: "Manage work schedules (days & hours) via templates or per employee.",
-  },
-};
 
 export default async function ShiftsPage({
   searchParams,
@@ -26,8 +15,6 @@ export default async function ShiftsPage({
     getSessionUser(),
     searchParams,
   ]);
-  const locale = await getLocale();
-  const t = STR[locale];
   const employees = employeesAll
     .filter((e) => e.status === "active")
     .map((e) => ({
@@ -53,7 +40,6 @@ export default async function ShiftsPage({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{t.intro}</p>
       <ShiftsView
         templates={templates}
         employees={employees}
