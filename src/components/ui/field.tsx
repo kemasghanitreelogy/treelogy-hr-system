@@ -41,8 +41,34 @@ export function Field({
   );
 }
 
-export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(base, className)} {...props} />;
+export function Input({
+  className,
+  onWheel,
+  onKeyDown,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement>) {
+  const angka = props.type === "number";
+  return (
+    <input
+      className={cn(base, className)}
+      onWheel={(e) => {
+        // Roda mouse di atas <input type="number"> MENGUBAH ISINYA di semua
+        // browser desktop. Nominal yang sudah benar bisa berkurang beberapa
+        // rupiah hanya karena pengguna menggulir formulir — tanpa jejak, tanpa
+        // sadar. Melepas fokus mengembalikan gulirannya untuk menggulir
+        // halaman, bukan mengedit angka.
+        if (angka) e.currentTarget.blur();
+        onWheel?.(e);
+      }}
+      onKeyDown={(e) => {
+        // Alasan sama untuk panah atas/bawah: pada isian nominal, menekannya
+        // mengubah angka, bukan memindahkan kursor seperti dugaan pengguna.
+        if (angka && (e.key === "ArrowUp" || e.key === "ArrowDown")) e.preventDefault();
+        onKeyDown?.(e);
+      }}
+      {...props}
+    />
+  );
 }
 
 export function Select({ className, children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
