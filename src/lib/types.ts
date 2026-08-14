@@ -534,44 +534,21 @@ export interface CompanyDocument {
    Surat Keluar (agenda surat keluar)
    ============================================================ */
 
-export type LetterCategory =
-  | "undangan"
-  | "penawaran"
-  | "permohonan"
-  | "pemberitahuan"
-  | "perjanjian"
-  | "surat_tugas"
-  | "surat_keterangan"
-  | "penagihan"
-  | "lainnya";
-
-export type LetterUrgency = "biasa" | "segera" | "sangat_segera" | "rahasia";
-export type LetterStatus = "draft" | "terkirim" | "dibatalkan";
-export type LetterDelivery = "email" | "kurir" | "pos" | "langsung" | "whatsapp";
+/** Departemen tujuan surat — menentukan singkatan pada nomornya. */
+export type LetterDept = "hr_ga" | "sales" | "finance" | "farm" | "factory";
 
 export interface OutgoingLetter {
   id: string;
-  /** Nomor agenda unik yang dibuat database (SK-0001). */
+  /** Nomor surat resmi utuh, mis. "0001/HRD-TRM/VIII/2026". Dibuat database. */
   code: string;
-  /** Nomor surat resmi sesuai tata naskah — boleh kosong saat masih draft. */
-  letterNumber?: string | null;
-  letterDate: string; // YYYY-MM-DD
-  recipient: string;
-  recipientAddress?: string | null;
-  /** Perihal. */
-  subject: string;
-  category: LetterCategory;
-  urgency: LetterUrgency;
-  /** Penanda tangan (nama + jabatan). */
-  signer?: string | null;
-  delivery?: LetterDelivery | null;
-  status: LetterStatus;
-  sentDate?: string | null; // YYYY-MM-DD
-  /** Berkas surat di bucket privat `letter-files`. */
-  filePath?: string | null;
-  note?: string | null;
+  department: LetterDept;
+  /** Bagian penyusun kode — dipakai untuk menyaring & mengurutkan. */
+  seq: number;
+  year: number;
+  month: number;
+  /** Nama penerbit nomor; kosong bila akunnya sudah dihapus. */
+  createdByName?: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface Kpi {

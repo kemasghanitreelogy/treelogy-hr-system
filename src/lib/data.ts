@@ -192,21 +192,12 @@ export const mapCompanyDocument = (r: Row): CompanyDocument => ({
 export const mapOutgoingLetter = (r: Row): OutgoingLetter => ({
   id: String(r.id),
   code: String(r.code),
-  letterNumber: (r.letter_number as string) ?? null,
-  letterDate: String(r.letter_date ?? ""),
-  recipient: String(r.recipient ?? ""),
-  recipientAddress: (r.recipient_address as string) ?? null,
-  subject: String(r.subject ?? ""),
-  category: r.category as OutgoingLetter["category"],
-  urgency: (r.urgency as OutgoingLetter["urgency"]) ?? "biasa",
-  signer: (r.signer as string) ?? null,
-  delivery: (r.delivery as OutgoingLetter["delivery"]) ?? null,
-  status: (r.status as OutgoingLetter["status"]) ?? "draft",
-  sentDate: (r.sent_date as string) ?? null,
-  filePath: (r.file_path as string) ?? null,
-  note: (r.note as string) ?? null,
+  department: r.department as OutgoingLetter["department"],
+  seq: Number(r.seq ?? 0),
+  year: Number(r.year ?? 0),
+  month: Number(r.month ?? 0),
+  createdByName: (r.created_by_name as string) ?? null,
   createdAt: String(r.created_at ?? ""),
-  updatedAt: String(r.updated_at ?? ""),
 });
 
 export const mapPaymentRequest = (r: Row): PaymentRequest => ({
@@ -502,9 +493,9 @@ export async function getInventoryItems(): Promise<InventoryItem[]> {
 /** Agenda surat keluar — surat terbaru dulu (tanggal surat menurun). */
 export async function getOutgoingLetters(): Promise<OutgoingLetter[]> {
   const rows = await fetchTable("outgoing_letters", mapOutgoingLetter, seedLetters);
-  return rows
-    .slice()
-    .sort((a, b) => b.letterDate.localeCompare(a.letterDate) || b.code.localeCompare(a.code));
+  // Terbaru dulu: tahun menurun, lalu nomor urut menurun — bukan menurut teks
+  // kode, karena "0010/…" mendahului "0009/…" bila diurutkan sebagai huruf.
+  return rows.slice().sort((a, b) => b.year - a.year || b.seq - a.seq);
 }
 
 /** Dokumen perusahaan, terbaru dulu (kode menurun = urutan pendaftaran). */

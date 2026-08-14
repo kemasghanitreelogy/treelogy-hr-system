@@ -1,124 +1,74 @@
 import type { Locale } from "./i18n";
-import type {
-  LetterCategory,
-  LetterDelivery,
-  LetterStatus,
-  LetterUrgency,
-  OutgoingLetter,
-} from "./types";
+import type { LetterDept } from "./types";
 
 /* ============================================================
-   Surat keluar — label, tone, dan helper turunan.
-   Satu sumber kebenaran untuk enum → teks/warna, dipakai form,
-   daftar, dan detail.
+   Surat Keluar — penomoran surat resmi.
+
+       0001/HRD-TRM/VIII/2026
+       └──┘ └─┘ └─┘ └──┘ └──┘
+        │    │   │    │    └── tahun
+        │    │   │    └─────── bulan pembuatan (angka Romawi)
+        │    │   └──────────── Treelogy
+        │    └──────────────── departemen tujuan
+        └───────────────────── nomor urut, satu deret perusahaan per tahun
+
+   Nomor SUNGGUHAN selalu dibuat database (trigger `letter_assign_code`) supaya
+   tidak mungkin kembar. Yang di sini hanya untuk PRATINJAU di layar sebelum
+   tombol ditekan — karena itu bagian nomor urutnya sengaja ditulis "0000",
+   bukan menebak angka yang belum tentu jadi miliknya.
    ============================================================ */
 
-export const LETTER_CATEGORIES: LetterCategory[] = [
-  "undangan",
-  "penawaran",
-  "permohonan",
-  "pemberitahuan",
-  "perjanjian",
-  "surat_tugas",
-  "surat_keterangan",
-  "penagihan",
-  "lainnya",
-];
+export const LETTER_DEPTS: LetterDept[] = ["hr_ga", "sales", "finance", "farm", "factory"];
 
-export const LETTER_CATEGORY_LABEL: Record<Locale, Record<LetterCategory, string>> = {
+/** Singkatan yang tercetak di nomor surat. Harus sama persis dengan
+ *  `letter_dept_code()` di database — di sanalah nomor asli dibentuk. */
+export const DEPT_CODE: Record<LetterDept, string> = {
+  hr_ga: "HRD",
+  sales: "SLS",
+  finance: "FIN",
+  farm: "FRM",
+  factory: "FCT",
+};
+
+export const DEPT_NAME: Record<Locale, Record<LetterDept, string>> = {
   id: {
-    undangan: "Undangan",
-    penawaran: "Penawaran",
-    permohonan: "Permohonan",
-    pemberitahuan: "Pemberitahuan",
-    perjanjian: "Perjanjian / Kontrak",
-    surat_tugas: "Surat Tugas",
-    surat_keterangan: "Surat Keterangan",
-    penagihan: "Penagihan",
-    lainnya: "Lainnya",
+    hr_ga: "HR & GA",
+    sales: "Sales",
+    finance: "Finance",
+    farm: "Farm",
+    factory: "Factory",
   },
   en: {
-    undangan: "Invitation",
-    penawaran: "Quotation",
-    permohonan: "Request",
-    pemberitahuan: "Notice",
-    perjanjian: "Agreement / Contract",
-    surat_tugas: "Assignment Letter",
-    surat_keterangan: "Certificate Letter",
-    penagihan: "Collection",
-    lainnya: "Other",
+    hr_ga: "HR & GA",
+    sales: "Sales",
+    finance: "Finance",
+    farm: "Farm",
+    factory: "Factory",
   },
 };
 
-export const LETTER_STATUSES: LetterStatus[] = ["draft", "terkirim", "dibatalkan"];
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 
-export const LETTER_STATUS_LABEL: Record<Locale, Record<LetterStatus, string>> = {
-  id: { draft: "Draft", terkirim: "Terkirim", dibatalkan: "Dibatalkan" },
-  en: { draft: "Draft", terkirim: "Sent", dibatalkan: "Cancelled" },
-};
+/** Bulan 1–12 → angka Romawi. */
+export function romanMonth(month: number): string {
+  return ROMAN[month - 1] ?? "";
+}
 
-type Tone = "forest" | "olive" | "matcha" | "gold" | "clay" | "sky" | "neutral";
-
-export const LETTER_STATUS_TONE: Record<LetterStatus, Tone> = {
-  draft: "gold",
-  terkirim: "matcha",
-  dibatalkan: "neutral",
-};
-
-export const LETTER_URGENCIES: LetterUrgency[] = ["biasa", "segera", "sangat_segera", "rahasia"];
-
-export const LETTER_URGENCY_LABEL: Record<Locale, Record<LetterUrgency, string>> = {
-  id: { biasa: "Biasa", segera: "Segera", sangat_segera: "Sangat segera", rahasia: "Rahasia" },
-  en: { biasa: "Normal", segera: "Urgent", sangat_segera: "Very urgent", rahasia: "Confidential" },
-};
-
-export const LETTER_URGENCY_TONE: Record<LetterUrgency, Tone> = {
-  biasa: "neutral",
-  segera: "gold",
-  sangat_segera: "clay",
-  rahasia: "sky",
-};
-
-/** Warna teks sifat surat saat ditulis polos (tanpa chip). */
-export const LETTER_URGENCY_TEXT: Record<LetterUrgency, string> = {
-  biasa: "text-faint",
-  segera: "text-[#8a6512]",
-  sangat_segera: "text-clay",
-  rahasia: "text-sky",
-};
-
-export const LETTER_DELIVERIES: LetterDelivery[] = ["email", "kurir", "pos", "langsung", "whatsapp"];
-
-export const LETTER_DELIVERY_LABEL: Record<Locale, Record<LetterDelivery, string>> = {
-  id: {
-    email: "Email",
-    kurir: "Kurir / ekspedisi",
-    pos: "Pos",
-    langsung: "Diantar langsung",
-    whatsapp: "WhatsApp",
-  },
-  en: {
-    email: "Email",
-    kurir: "Courier",
-    pos: "Post",
-    langsung: "Hand-delivered",
-    whatsapp: "WhatsApp",
-  },
-};
-
-/** Ekstensi berkas yang diterima untuk arsip surat. */
-export const LETTER_EXTS = ["pdf", "jpg", "jpeg", "png", "webp", "doc", "docx"];
-
-/** Ekstensi dari path storage — helper yang sama dengan modul dokumen. */
-export { fileExt as fileExtOf } from "./documents";
+/** Tanggal hari ini menurut WITA — penentu bulan & tahun pada nomor surat. */
+export function witaNow(): { year: number; month: number } {
+  const p = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Makassar",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(p.find((x) => x.type === t)?.value ?? 0);
+  return { year: get("year"), month: get("month") };
+}
 
 /**
- * Surat yang butuh perhatian: masih draft padahal tanggal suratnya sudah
- * lewat — artinya surat sudah bertanggal tapi belum tercatat terkirim.
+ * Pratinjau nomor untuk departemen tertentu. `seq` sengaja tidak diisi:
+ * nomor urut baru diketahui saat database menerbitkannya.
  */
-export function letterNeedsAttention(
-  letter: Pick<OutgoingLetter, "status" | "letterDate">,
-  today: string,
-): boolean {
-  return letter.status === "draft" && letter.letterDate < today;
+export function previewCode(dept: LetterDept, at = witaNow()): string {
+  return `0000/${DEPT_CODE[dept]}-TRM/${romanMonth(at.month)}/${at.year}`;
 }

@@ -1,262 +1,230 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, MailPlus, MailSearch, Plus, Search } from "lucide-react";
-import type { OutgoingLetter } from "@/lib/types";
+import {
+  Check, Copy, Factory, Loader2, Mail, Plus, Search, Sprout, Trash2, TrendingUp, Users, Wallet,
+} from "lucide-react";
+import type { LetterDept, OutgoingLetter } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
-import { cn, formatDate, witaToday } from "@/lib/utils";
-import {
-  LETTER_CATEGORIES, LETTER_CATEGORY_LABEL, LETTER_STATUSES, LETTER_STATUS_LABEL,
-  LETTER_STATUS_TONE, LETTER_URGENCY_LABEL, LETTER_URGENCY_TEXT, fileExtOf, letterNeedsAttention,
-} from "@/lib/letters";
+import { cn, formatDate } from "@/lib/utils";
+import { DEPT_CODE, DEPT_NAME, LETTER_DEPTS, previewCode, witaNow } from "@/lib/letters";
 import { useLocale } from "@/components/layout/locale-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { SuccessCheck } from "@/components/ui/success-check";
 import { useToast } from "@/components/ui/toast";
-import { DocFileBadge } from "@/components/documents/doc-file-badge";
-import { LetterDetail } from "./letter-detail";
-import { LetterForm } from "./letter-form";
 
-const STR: Record<Locale, Record<string, string>> = {
+const STR: Record<Locale, Record<string, any>> = {
   id: {
-    searchPh: "Cari perihal, tujuan, nomor surat…",
-    allCategories: "Semua jenis",
-    allStatuses: "Semua status",
-    add: "Catat surat",
-    sumLetters: "surat",
-    filteredOf: "dari",
-    sumDraft: "draft",
-    sumStale: "draft lewat tanggal",
-    colLetter: "Surat",
-    colRecipient: "Tujuan",
-    colDate: "Tanggal",
-    colStatus: "Status",
-    empty: "Belum ada surat keluar tercatat.",
-    emptyHint: "Cukup isi tujuan dan perihalnya. Nomor agenda dibuat otomatis — arsip langsung rapi.",
-    emptyCta: "Catat surat pertama",
-    fab: "Catat surat",
-    emptyFiltered: "Tidak ada surat yang cocok.",
-    reset: "Hapus filter",
-    detailTitle: "Detail Surat Keluar",
-    addTitle: "Catat Surat Keluar",
-    editTitle: "Ubah Surat Keluar",
-    deleteTitle: "Hapus surat",
-    deleteMsg: "Data surat pada agenda tidak bisa dikembalikan.",
-    deleteConfirm: "Ya, hapus",
-    created: "Surat tercatat ✓",
-    updated: "Surat diperbarui ✓",
-    deleted: "Surat dihapus ✓",
-    sentOk: "Surat ditandai terkirim ✓",
+    searchPh: "Cari nomor surat…",
+    allDept: "Semua departemen",
+    create: "Terbitkan Nomor",
+    createTitle: "Terbitkan Nomor Surat",
+    chooseHint: "Pilih departemen tujuan surat. Nomornya langsung terbit — tidak ada isian lain.",
+    thisMonth: (bulan: string, tahun: number) => `Bulan berjalan: ${bulan} ${tahun}`,
+    count: "nomor terbit",
+    empty: "Belum ada nomor surat yang diterbitkan.",
+    emptyHint: "Pilih departemen tujuan, nomornya langsung jadi.",
+    emptyFiltered: "Tidak ada nomor yang cocok.",
+    issuing: "Menerbitkan…",
+    issued: "Nomor surat terbit ✓",
+    copy: "Salin nomor",
+    copied: "Nomor tersalin ✓",
+    copyFail: "Tidak bisa menyalin — silakan salin manual.",
+    again: "Terbitkan lagi",
+    done: "Selesai",
+    by: "Diterbitkan oleh",
+    deleteTitle: "Batalkan nomor ini?",
+    deleteMsg:
+      "Nomor tidak akan dipakai ulang oleh sistem, jadi deretnya akan berlubang. Lakukan hanya bila surat ini belum terkirim keluar.",
+    deleteYes: "Ya, batalkan",
+    deleted: "Nomor dibatalkan.",
     connection: "Koneksi bermasalah. Coba lagi.",
-    notFound: "Surat tidak ditemukan.",
+    delete: "Batalkan nomor",
   },
   en: {
-    searchPh: "Search subject, recipient, letter number…",
-    allCategories: "All types",
-    allStatuses: "All statuses",
-    add: "Register letter",
-    sumLetters: "letters",
-    filteredOf: "of",
-    sumDraft: "draft",
-    sumStale: "overdue drafts",
-    colLetter: "Letter",
-    colRecipient: "Recipient",
-    colDate: "Date",
-    colStatus: "Status",
-    empty: "No outgoing letters registered yet.",
-    emptyHint: "Just fill in the recipient and subject. The agenda number is generated for you.",
-    emptyCta: "Register the first letter",
-    fab: "Register letter",
-    emptyFiltered: "No matching letters.",
-    reset: "Clear filters",
-    detailTitle: "Outgoing Letter Detail",
-    addTitle: "Register Outgoing Letter",
-    editTitle: "Edit Outgoing Letter",
-    deleteTitle: "Delete letter",
-    deleteMsg: "The agenda entry cannot be restored.",
-    deleteConfirm: "Yes, delete",
-    created: "Letter registered ✓",
-    updated: "Letter updated ✓",
-    deleted: "Letter deleted ✓",
-    sentOk: "Letter marked as sent ✓",
+    searchPh: "Search letter number…",
+    allDept: "All departments",
+    create: "Issue Number",
+    createTitle: "Issue Letter Number",
+    chooseHint: "Pick the destination department. The number is issued instantly — nothing else to fill in.",
+    thisMonth: (bulan: string, tahun: number) => `Current month: ${bulan} ${tahun}`,
+    count: "numbers issued",
+    empty: "No letter numbers issued yet.",
+    emptyHint: "Pick a destination department and the number is ready.",
+    emptyFiltered: "No matching numbers.",
+    issuing: "Issuing…",
+    issued: "Letter number issued ✓",
+    copy: "Copy number",
+    copied: "Number copied ✓",
+    copyFail: "Couldn't copy — please copy it manually.",
+    again: "Issue another",
+    done: "Done",
+    by: "Issued by",
+    deleteTitle: "Void this number?",
+    deleteMsg:
+      "The system will not reuse it, so the sequence will have a gap. Only do this if the letter has not gone out yet.",
+    deleteYes: "Yes, void it",
+    deleted: "Number voided.",
     connection: "Connection problem. Try again.",
-    notFound: "Letter not found.",
+    delete: "Void number",
   },
 };
 
-/** Delay stagger di-cap: daftar panjang tetap tiba dalam satu ketukan (≤ 0.32s). */
-const MAX_STAGGER = 8;
+const DEPT_ICON: Record<LetterDept, typeof Users> = {
+  hr_ga: Users,
+  sales: TrendingUp,
+  finance: Wallet,
+  farm: Sprout,
+  factory: Factory,
+};
 
-/**
- * Kolom sejajar di layar lebar; di ponsel menyusut jadi ikon · surat · status.
- * Pola minmax(0,…) + min-w-0 sama seperti modul lain — kolom menyusut dan teks
- * di-truncate, bukan mendorong halaman jadi scroll horizontal.
- */
-const COLS =
-  "grid-cols-[36px_minmax(0,1fr)_auto] " +
-  "xl:grid-cols-[36px_minmax(0,1fr)_minmax(0,190px)_minmax(0,110px)_minmax(0,120px)_16px]";
+const DEPT_TONE: Record<LetterDept, "sky" | "gold" | "forest" | "olive" | "clay"> = {
+  hr_ga: "sky",
+  sales: "gold",
+  finance: "forest",
+  farm: "olive",
+  factory: "clay",
+};
+
+const MONTH_ID = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+/** Tombol salin dengan tanda centang sesaat — konfirmasi tanpa toast beruntun. */
+function CopyButton({
+  value,
+  label,
+  copiedLabel,
+  failLabel,
+  className,
+}: {
+  value: string;
+  label: string;
+  copiedLabel: string;
+  failLabel: string;
+  className?: string;
+}) {
+  const toast = useToast();
+  const [ok, setOk] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(value);
+          setOk(true);
+          setTimeout(() => setOk(false), 1600);
+        } catch {
+          toast.error(failLabel);
+        }
+      }}
+      className={cn(
+        "inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors",
+        ok ? "bg-forest-50 text-forest-700" : "text-muted hover:bg-sand hover:text-ink",
+        className,
+      )}
+    >
+      {ok ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      <span className="hidden sm:inline">{ok ? copiedLabel.replace(" ✓", "") : label}</span>
+    </button>
+  );
+}
 
 export function LettersView({
   letters,
   canManage,
-  initialCode,
 }: {
   letters: OutgoingLetter[];
   canManage: boolean;
-  /** Kode dari ?surat=… — detailnya dibuka otomatis (tautan bisa dibagikan). */
-  initialCode?: string | null;
 }) {
   const locale = useLocale();
   const t = STR[locale];
   const router = useRouter();
   const toast = useToast();
-  const today = witaToday();
 
   const [list, setList] = useState(letters);
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<string>("all");
-  const [status, setStatus] = useState<string>("all");
+  const [dept, setDept] = useState<string>("all");
+  const [open, setOpen] = useState(false);
+  /** Nomor yang baru terbit — ditampilkan besar sebagai hasil, bukan toast saja. */
+  const [hasil, setHasil] = useState<OutgoingLetter | null>(null);
+  const [busyDept, setBusyDept] = useState<LetterDept | null>(null);
+  const [hapus, setHapus] = useState<OutgoingLetter | null>(null);
+  const [busyHapus, setBusyHapus] = useState(false);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** Surat yang baru dicatat — detailnya menyorot nomor agenda baru sekali saja. */
-  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<OutgoingLetter | null>(null);
-  const [deleting, setDeleting] = useState<OutgoingLetter | null>(null);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [removingId, setRemovingId] = useState<string | null>(null);
-
-  // Deep link: buka detail sekali saat halaman dimuat.
-  const deepLinked = useRef(false);
-  useEffect(() => {
-    if (deepLinked.current || !initialCode) return;
-    deepLinked.current = true;
-    const hit = list.find((l) => l.code.toUpperCase() === initialCode.toUpperCase());
-    if (hit) setSelectedId(hit.id);
-    else toast.error(t.notFound);
-    // sengaja hanya sekali saat mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialCode]);
-
-  // URL mengikuti detail yang terbuka → tautan bisa dibagikan / di-refresh.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const letter = list.find((l) => l.id === selectedId);
-    const url = new URL(window.location.href);
-    if (letter) url.searchParams.set("surat", letter.code);
-    else url.searchParams.delete("surat");
-    window.history.replaceState(null, "", url.toString());
-  }, [selectedId, list]);
+  const sekarang = witaNow();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return list.filter((l) => {
-      if (category !== "all" && l.category !== category) return false;
-      if (status !== "all" && l.status !== status) return false;
-      if (!q) return true;
-      return [l.subject, l.recipient, l.code, l.letterNumber, l.signer, l.note]
-        .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(q));
+      if (dept !== "all" && l.department !== dept) return false;
+      return !q || l.code.toLowerCase().includes(q);
     });
-  }, [list, query, category, status]);
+  }, [list, query, dept]);
 
-  const stats = useMemo(
-    () => ({
-      draft: filtered.filter((l) => l.status === "draft").length,
-      stale: filtered.filter((l) => letterNeedsAttention(l, today)).length,
-    }),
-    [filtered, today],
-  );
-
-  const selected = list.find((l) => l.id === selectedId) ?? null;
-  const isFiltered = query.trim() !== "" || category !== "all" || status !== "all";
-
-  function clearFilters() {
-    setQuery("");
-    setCategory("all");
-    setStatus("all");
-  }
-
-  function upsert(saved: OutgoingLetter, mode: "create" | "update") {
-    setList((cur) => (mode === "create" ? [saved, ...cur] : cur.map((l) => (l.id === saved.id ? saved : l))));
-    toast.success(mode === "create" ? t.created : t.updated);
-    // Surat baru langsung membuka detailnya: nomor agenda yang baru dibuat
-    // terlihat saat itu juga.
-    if (mode === "create") {
-      setSelectedId(saved.id);
-      setJustCreatedId(saved.id);
-    }
-    router.refresh();
-  }
-
-  /** Jalur cepat draft → terkirim, tanpa membuka form. */
-  async function markSent(letter: OutgoingLetter) {
-    setBusyId(letter.id);
+  async function terbitkan(d: LetterDept) {
+    setBusyDept(d);
     try {
       const res = await fetch("/api/letters", {
-        method: "PATCH",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: letter.id, status: "terkirim", sentDate: today }),
+        body: JSON.stringify({ department: d }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.letter) {
         toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
-      const saved = data.letter as OutgoingLetter;
-      setList((cur) => cur.map((l) => (l.id === saved.id ? saved : l)));
-      toast.success(t.sentOk);
+      const baru = data.letter as OutgoingLetter;
+      setList((cur) => [baru, ...cur]);
+      setHasil(baru);
+      toast.success(t.issued);
       router.refresh();
     } catch {
       toast.error(t.connection);
     } finally {
-      setBusyId(null);
+      setBusyDept(null);
     }
   }
 
-  async function remove() {
-    if (!deleting) return;
-    setDeleteBusy(true);
+  async function batalkan(l: OutgoingLetter) {
+    setBusyHapus(true);
     try {
-      const res = await fetch("/api/letters", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deleting.id }),
-      });
+      const res = await fetch(`/api/letters?id=${encodeURIComponent(l.id)}`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
+      if (!res.ok) {
         toast.error(apiErrorMessage(data?.error, locale, res.status));
         return;
       }
-      // Baris menyusut keluar dulu, baru dilepas dari state — penghapusan terasa
-      // dilakukan, bukan sekadar hilang.
-      const goneId = deleting.id;
-      setSelectedId((cur) => (cur === goneId ? null : cur));
-      setRemovingId(goneId);
-      setTimeout(() => {
-        setList((cur) => cur.filter((l) => l.id !== goneId));
-        setRemovingId(null);
-      }, 240);
+      setList((cur) => cur.filter((x) => x.id !== l.id));
       toast.success(t.deleted);
       router.refresh();
     } catch {
       toast.error(t.connection);
     } finally {
-      setDeleteBusy(false);
-      setDeleting(null);
+      setBusyHapus(false);
+      setHapus(null);
     }
+  }
+
+  function tutup() {
+    setOpen(false);
+    setHasil(null);
   }
 
   return (
     <div className="space-y-3">
-      {/* Baris aksi — pencarian + dua filter; di ponsel filter dibagi dua kolom. */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <Input
@@ -269,250 +237,202 @@ export function LettersView({
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
           <Select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            aria-label={t.allCategories}
-            className="min-w-0 sm:w-48"
+            value={dept}
+            onChange={(e) => setDept(e.target.value)}
+            aria-label={t.allDept}
+            className="min-w-0 sm:w-44"
           >
-            <option value="all">{t.allCategories}</option>
-            {LETTER_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {LETTER_CATEGORY_LABEL[locale][c]}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            aria-label={t.allStatuses}
-            className="min-w-0 sm:w-40"
-          >
-            <option value="all">{t.allStatuses}</option>
-            {LETTER_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {LETTER_STATUS_LABEL[locale][s]}
+            <option value="all">{t.allDept}</option>
+            {LETTER_DEPTS.map((d) => (
+              <option key={d} value={d}>
+                {DEPT_NAME[locale][d]}
               </option>
             ))}
           </Select>
           {canManage && (
-            <Button onClick={() => setAdding(true)} className="hidden shrink-0 lg:inline-flex">
-              <MailPlus className="h-4 w-4" /> {t.add}
+            <Button onClick={() => setOpen(true)} className="shrink-0">
+              <Plus className="h-4 w-4" /> {t.create}
             </Button>
           )}
         </div>
       </div>
 
-      {/* Ringkasan satu baris — angka yang sama, tanpa kotak-kotak */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-        <span key={`n-${filtered.length}`} className="animate-count-up font-semibold text-ink tabular-nums">
-          {filtered.length} {t.sumLetters}
+        <span key={filtered.length} className="animate-count-up font-semibold text-ink tabular-nums">
+          {filtered.length} {t.count}
         </span>
-        {isFiltered && (
-          <span className="text-faint">
-            {t.filteredOf} {list.length}
-          </span>
-        )}
-        {stats.draft > 0 && (
-          <>
-            <span className="text-line">·</span>
-            <span key={`d-${stats.draft}`} className="animate-count-up text-muted tabular-nums">
-              {stats.draft} {t.sumDraft}
-            </span>
-          </>
-        )}
-        {stats.stale > 0 && (
-          <>
-            <span className="text-line">·</span>
-            <span key={`s-${stats.stale}`} className="animate-count-up font-medium text-clay tabular-nums">
-              {stats.stale} {t.sumStale}
-            </span>
-          </>
-        )}
-        {isFiltered && (
-          <button
-            onClick={clearFilters}
-            className="ml-auto cursor-pointer rounded-lg px-2 py-1 font-medium text-muted transition-colors hover:bg-sand hover:text-ink"
-          >
-            {t.reset}
-          </button>
-        )}
+        <span className="text-line">·</span>
+        <span className="text-muted">
+          {t.thisMonth(MONTH_ID[sekarang.month - 1], sekarang.year)}
+        </span>
       </div>
 
-      {/* Daftar padat: satu panel, baris demi baris */}
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-cream/40 px-5 py-12 text-center">
-          <MailSearch className="mx-auto h-8 w-8 text-faint" />
+          <Mail className="mx-auto h-8 w-8 text-faint" />
           <p className="mt-2 text-sm text-faint">{list.length === 0 ? t.empty : t.emptyFiltered}</p>
           {list.length === 0 && canManage && (
             <>
-              <p className="mx-auto mt-1 max-w-sm text-xs text-faint">{t.emptyHint}</p>
-              <Button className="mt-4" onClick={() => setAdding(true)}>
-                <MailPlus className="h-4 w-4" /> {t.emptyCta}
+              <p className="mx-auto mt-1 max-w-md text-xs text-faint">{t.emptyHint}</p>
+              <Button className="mt-4" onClick={() => setOpen(true)}>
+                <Plus className="h-4 w-4" /> {t.create}
               </Button>
             </>
-          )}
-          {list.length > 0 && isFiltered && (
-            <Button variant="outline" size="sm" className="mt-4" onClick={clearFilters}>
-              {t.reset}
-            </Button>
           )}
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-line bg-panel">
-          {/* Kepala kolom hanya di layar lebar */}
-          <div
-            className={cn(
-              "hidden items-center gap-3 border-b border-line bg-cream/50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-faint xl:grid",
-              COLS,
-            )}
-          >
-            {/* Kolom ikon tak berjudul — jumlah sel harus persis sama dengan baris data */}
-            <span />
-            <span>{t.colLetter}</span>
-            <span>{t.colRecipient}</span>
-            <span>{t.colDate}</span>
-            <span>{t.colStatus}</span>
-            <span />
-          </div>
-
           <div className="divide-y divide-line">
-            {filtered.map((l, i) => (
-              <button
-                key={l.id}
-                onClick={() => setSelectedId(l.id)}
-                style={{ ["--i" as string]: Math.min(i, MAX_STAGGER) }}
-                className={cn(
-                  "stagger-item grid w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-cream/60 focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-forest-400",
-                  COLS,
-                  removingId === l.id && "animate-row-out",
-                )}
-              >
-                <DocFileBadge ext={fileExtOf(l.filePath)} />
+            {filtered.map((l, i) => {
+              const Icon = DEPT_ICON[l.department];
+              return (
+                <div
+                  key={l.id}
+                  style={{ ["--i" as string]: Math.min(i, 8) }}
+                  className="stagger-item flex items-center gap-3 px-3 py-2.5"
+                >
+                  <span
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                      l.department === "hr_ga" && "bg-sky-soft text-[#2b5d7c]",
+                      l.department === "sales" && "bg-gold-soft text-[#8a6512]",
+                      l.department === "finance" && "bg-forest-50 text-forest-600",
+                      l.department === "farm" && "bg-[#e9f0d8] text-forest-700",
+                      l.department === "factory" && "bg-clay-soft text-clay",
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
 
-                <span className="block min-w-0">
-                  <span className="flex min-w-0 items-baseline gap-2">
-                    <span className="shrink-0 font-mono text-[11px] font-semibold text-faint tabular-nums">
+                  <span className="min-w-0 flex-1">
+                    {/* Nomornya adalah isi utama baris ini — dibuat monospasi
+                        agar deret angka & garis miringnya terbaca tepat. */}
+                    <span className="block truncate font-mono text-sm font-semibold tracking-tight text-ink">
                       {l.code}
                     </span>
-                    <span className="truncate text-sm font-medium text-ink">{l.subject}</span>
-                  </span>
-                  {/* Di ponsel kolom lain disembunyikan → ringkas di satu baris meta. */}
-                  <span className="mt-0.5 block truncate text-xs text-faint">
-                    {l.recipient}
-                    <span className="xl:hidden">
-                      {" · "}
-                      {formatDate(l.letterDate, "short", locale)}
+                    <span className="mt-0.5 block truncate text-xs text-faint">
+                      {DEPT_NAME[locale][l.department]}
+                      {l.createdByName ? ` · ${l.createdByName}` : ""} ·{" "}
+                      {formatDate(l.createdAt, "short", locale)}
                     </span>
-                    {l.urgency !== "biasa" && (
-                      <span className={LETTER_URGENCY_TEXT[l.urgency]}>
-                        {" · "}
-                        {LETTER_URGENCY_LABEL[locale][l.urgency]}
-                      </span>
-                    )}
                   </span>
-                </span>
 
-                <span className="hidden min-w-0 truncate text-sm text-muted xl:block">
-                  {l.recipient}
-                  {l.letterNumber && (
-                    <span className="mt-0.5 block truncate font-mono text-[11px] text-faint">
-                      {l.letterNumber}
-                    </span>
-                  )}
-                </span>
-                <span className="hidden min-w-0 truncate text-sm text-muted tabular-nums xl:block">
-                  {formatDate(l.letterDate, "short", locale)}
-                </span>
-                <span className="hidden min-w-0 xl:block">
-                  <Badge tone={LETTER_STATUS_TONE[l.status]} dot className="max-w-full !px-2 !py-0.5 !text-[10px]">
-                    <span className="truncate">{LETTER_STATUS_LABEL[locale][l.status]}</span>
+                  <Badge tone={DEPT_TONE[l.department]} className="hidden shrink-0 sm:inline-flex">
+                    {DEPT_CODE[l.department]}
                   </Badge>
-                  {letterNeedsAttention(l, today) && (
-                    <span className="mt-1 block truncate text-[10px] font-medium text-clay">{t.sumStale}</span>
-                  )}
-                </span>
 
-                {/* Ponsel: status sebagai chip; layar lebar: chevron penanda bisa dibuka */}
-                <Badge tone={LETTER_STATUS_TONE[l.status]} dot className="shrink-0 !px-2 !py-0.5 !text-[10px] xl:hidden">
-                  {LETTER_STATUS_LABEL[locale][l.status]}
-                </Badge>
-                <ChevronRight className="hidden h-4 w-4 shrink-0 text-faint xl:block" />
-              </button>
-            ))}
+                  <CopyButton
+                    value={l.code}
+                    label={t.copy}
+                    copiedLabel={t.copied}
+                    failLabel={t.copyFail}
+                  />
+
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setHapus(l)}
+                      aria-label={t.delete}
+                      title={t.delete}
+                      className="shrink-0 cursor-pointer rounded-lg p-1.5 text-faint transition-colors hover:bg-clay-soft hover:text-clay"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Tombol tambah mengambang — aksi utama di zona jempol, di atas bottom nav. */}
-      {canManage && list.length > 0 && (
-        <button
-          onClick={() => setAdding(true)}
-          aria-label={t.fab}
-          className="fixed bottom-20 right-4 z-30 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-forest-600 text-cream shadow-pop transition-transform hover:bg-forest-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400 focus-visible:ring-offset-2 focus-visible:ring-offset-cream lg:hidden"
-        >
-          <Plus className="h-6 w-6" />
-        </button>
-      )}
-
-      {/* Detail */}
-      <Sheet
-        open={selected !== null}
-        onClose={() => {
-          setSelectedId(null);
-          setJustCreatedId(null);
-        }}
-        title={t.detailTitle}
-        width="lg"
-      >
-        {selected && (
-          <LetterDetail
-            letter={selected}
-            justCreated={justCreatedId === selected.id}
-            canManage={canManage}
-            busy={busyId === selected.id}
-            onEdit={() => setEditing(selected)}
-            onDelete={() => setDeleting(selected)}
-            onMarkSent={() => markSent(selected)}
-          />
+      {/* Terbitkan: pilih departemen → nomor langsung jadi. */}
+      <Sheet open={open} onClose={tutup} title={t.createTitle}>
+        {open && !hasil && (
+          <div className="space-y-3">
+            <p className="rounded-xl border border-line bg-cream/60 px-3 py-2.5 text-xs leading-relaxed text-muted">
+              {t.chooseHint}
+            </p>
+            {LETTER_DEPTS.map((d) => {
+              const Icon = DEPT_ICON[d];
+              const sibuk = busyDept === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  disabled={busyDept !== null}
+                  onClick={() => terbitkan(d)}
+                  className="group flex w-full cursor-pointer items-center gap-3 rounded-2xl border border-line bg-panel p-4 text-left transition-colors hover:border-forest-300 hover:bg-cream/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400 disabled:opacity-60"
+                >
+                  <span
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                      d === "hr_ga" && "bg-sky-soft text-[#2b5d7c]",
+                      d === "sales" && "bg-gold-soft text-[#8a6512]",
+                      d === "finance" && "bg-forest-50 text-forest-600",
+                      d === "farm" && "bg-[#e9f0d8] text-forest-700",
+                      d === "factory" && "bg-clay-soft text-clay",
+                    )}
+                  >
+                    {sibuk ? <Loader2 className="h-5 w-5 animate-spin" /> : <Icon className="h-5 w-5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-ink">{DEPT_NAME[locale][d]}</span>
+                    {/* Pratinjau bentuk nomornya; 0000 karena nomor urut baru
+                        diketahui saat database menerbitkannya. */}
+                    <span className="mt-0.5 block truncate font-mono text-[11px] text-faint">
+                      {sibuk ? t.issuing : previewCode(d, sekarang)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
-      </Sheet>
 
-      {/* Catat */}
-      <Sheet open={adding} onClose={() => setAdding(false)} title={t.addTitle} width="lg">
-        {adding && (
-          <LetterForm
-            onSaved={(saved) => {
-              setAdding(false);
-              upsert(saved, "create");
-            }}
-            onCancel={() => setAdding(false)}
-          />
-        )}
-      </Sheet>
-
-      {/* Ubah */}
-      <Sheet open={editing !== null} onClose={() => setEditing(null)} title={t.editTitle} width="lg">
-        {editing && (
-          <LetterForm
-            letter={editing}
-            onSaved={(saved) => {
-              setEditing(null);
-              upsert(saved, "update");
-            }}
-            onCancel={() => setEditing(null)}
-          />
+        {open && hasil && (
+          <div className="space-y-4 text-center">
+            <div className="flex justify-center text-forest-600">
+              <SuccessCheck />
+            </div>
+            <div className="rounded-2xl border border-forest-200 bg-forest-50 px-4 py-5">
+              <p className="text-xs font-medium text-forest-700">
+                {DEPT_NAME[locale][hasil.department]}
+              </p>
+              <p className="mt-1 break-all font-mono text-xl font-bold tracking-tight text-ink sm:text-2xl">
+                {hasil.code}
+              </p>
+              <div className="mt-2 flex justify-center">
+                <CopyButton
+                  value={hasil.code}
+                  label={t.copy}
+                  copiedLabel={t.copied}
+                  failLabel={t.copyFail}
+                  className="!bg-panel !px-3 !py-2 !text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setHasil(null)}>
+                <Plus className="h-4 w-4" /> {t.again}
+              </Button>
+              <Button className="flex-1" onClick={tutup}>
+                {t.done}
+              </Button>
+            </div>
+          </div>
         )}
       </Sheet>
 
       <ConfirmDialog
-        open={deleting !== null}
-        title={`${t.deleteTitle} ${deleting?.code ?? ""}?`}
+        open={hapus !== null}
+        title={t.deleteTitle}
         message={t.deleteMsg}
-        confirmLabel={t.deleteConfirm}
+        confirmLabel={t.deleteYes}
         tone="danger"
-        busy={deleteBusy}
-        onConfirm={remove}
-        onCancel={() => setDeleting(null)}
+        busy={busyHapus}
+        onConfirm={() => hapus && batalkan(hapus)}
+        onCancel={() => setHapus(null)}
       />
     </div>
   );
