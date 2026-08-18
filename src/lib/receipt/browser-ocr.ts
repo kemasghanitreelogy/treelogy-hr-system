@@ -72,6 +72,27 @@ if (typeof Promise.withResolvers !== "function") {
 }
 
 /**
+ * Rangkum sebuah kegagalan menjadi satu baris yang bisa ditindaklanjuti.
+ *
+ * Pesan pustaka sendirian sering tidak cukup ("undefined is not a function")
+ * — yang menentukan justru DI MANA ia terjadi: pustaka PDF, pembaca barcode,
+ * atau kode aplikasi. Bingkai teratas dari jejak tumpukan menjawab itu, dan
+ * itulah satu-satunya petunjuk yang tersedia saat kegagalannya di perangkat
+ * orang lain.
+ */
+export function describeError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const frame = (e.stack ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.includes("://"));
+  if (!frame) return e.message;
+  // Safari: "fn@https://host/_next/static/chunks/abc.js:12:34"
+  const m = frame.match(/([^/]+\.(?:m?js|wasm))(?::(\d+))?/);
+  return m ? `${e.message} [${m[1]}${m[2] ? ":" + m[2] : ""}]` : e.message;
+}
+
+/**
  * Lepaskan memori kanvas segera setelah dipakai.
  *
  * Satu halaman 400 dpi memakan belasan MB, dan Safari di iPhone jauh lebih
@@ -87,7 +108,13 @@ function releaseCanvas(canvas: HTMLCanvasElement) {
 let pdfjsPromise: Promise<any> | null = null;
 async function getPdfjs() {
   if (!pdfjsPromise) {
-    pdfjsPromise = import("pdfjs-dist").then((pdfjs) => {
+    // Build "legacy" — bukan build biasa. Isinya sama, tetapi sudah ditranspilasi
+    // dan membawa polyfill untuk browser yang beberapa versi tertinggal. Build
+    // biasa memakai API yang baru ada di Safari/iOS 17.4, dan di iPhone yang
+    // belum diperbarui ia gagal dengan pesan yang menyesatkan ("berkas tidak
+    // bisa dibaca"). Selisih ukurannya ±60 KB dan hanya diunduh saat halaman ini
+    // dipakai — harga yang murah untuk perangkat yang tetap bisa bekerja.
+    pdfjsPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((pdfjs) => {
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       return pdfjs;
     });
@@ -762,7 +789,7 @@ export async function extractFromFiles(
       } catch (e) {
         // Satu berkas rusak/tidak didukung tidak boleh membuang hasil berkas
         // lain yang sudah terbaca. Alasannya dibawa keluar apa adanya.
-        failures.push({ file: file.name, reason: e instanceof Error ? e.message : String(e) });
+        failures.push({ file: file.name, reason: describeError(e) });
         continue;
       }
 

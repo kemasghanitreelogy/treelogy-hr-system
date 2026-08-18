@@ -17,7 +17,9 @@ const WITH_RESOLVERS_POLYFILL = `if(typeof Promise.withResolvers!=="function"){P
 
 const ASSETS = [
   {
-    from: "node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
+    // Worker dari build "legacy" agar sepadan dengan pustaka yang di-import
+    // halaman (lihat browser-ocr.ts): versi worker dan versi pustaka WAJIB sama.
+    from: "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
     to: "public/pdf.worker.min.mjs",
     prepend: WITH_RESOLVERS_POLYFILL,
   },

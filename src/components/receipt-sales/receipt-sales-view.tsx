@@ -9,7 +9,7 @@ import type { LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
 import { extractZip } from "@/lib/receipt/local-extract";
 import {
-  ACCEPTED_TYPES, extractFromFiles, isSupportedLabelFile,
+  ACCEPTED_TYPES, describeError, extractFromFiles, isSupportedLabelFile,
   type OcrProgress, type PageImageStore,
 } from "@/lib/receipt/browser-ocr";
 import { exportReceiptCsv, exportReceiptXlsx, type ReceiptExportRow } from "@/lib/receipt/receipt-xlsx";
@@ -348,7 +348,7 @@ export function ReceiptSalesView() {
     } catch (e) {
       // Sebabnya ikut ditampilkan: tanpa itu, kegagalan di perangkat orang lain
       // tidak bisa didiagnosis dari jarak jauh.
-      const sebab = e instanceof Error ? e.message : String(e);
+      const sebab = describeError(e);
       toast.error(`${t.failed} (${sebab})`);
     } finally {
       setBusy(false);
