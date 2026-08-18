@@ -15,8 +15,18 @@ export interface LabelField {
   flag: string | null;
 }
 
+/** Asal sebuah halaman saat beberapa berkas diproses sekaligus. */
+export interface PageOrigin {
+  /** Nama berkas yang diunggah. */
+  file: string;
+  /** Nomor halaman di dalam berkas itu (bukan nomor urut global). */
+  pageInFile: number;
+}
+
 export interface PageVisual {
+  /** Nomor urut global lintas berkas — kunci semua state & pencocokan. */
   page: number;
+  origin: PageOrigin;
   barcodes: string[];
   tracking: string | null;
   /** Barcode terbaca ≥2× dengan nilai sama → tidak mungkin salah baca. */
@@ -26,6 +36,7 @@ export interface PageVisual {
 
 export interface LabelRecord {
   page: number;
+  origin: PageOrigin;
   fields: Record<string, LabelField>;
   barcodes: string[];
   thumbnail: string;
@@ -123,6 +134,7 @@ export function reconcile<T extends { page: number }>(
     const phoneLast4 = String(row.recipient_phone_last4 ?? "").replace(/\D/g, "").slice(-4);
     return {
       page: vis.page,
+      origin: vis.origin,
       fields,
       barcodes: vis.barcodes,
       thumbnail: vis.thumbnail,
@@ -147,4 +159,36 @@ export function normalizeShipDate(raw: string | null | undefined): string {
     }
   }
   return "";
+}
+
+/**
+ * Tandai nomor resi yang muncul lebih dari sekali dalam satu batch.
+ *
+ * Mengunggah banyak berkas membuat label yang sama gampang ikut dua kali (mis.
+ * satu PDF dan foto ulangannya). Duplikatnya tidak dibuang — halamannya tetap
+ * nyata dan mungkin dua kiriman berbeda yang barcodenya salah cetak — tetapi
+ * ditandai supaya orang yang memeriksa melihatnya sebelum mengirim ke Jubelio.
+ */
+export function flagDuplicateTracking(records: LabelRecord[]): LabelRecord[] {
+  const seen = new Map<string, number[]>();
+  for (const r of records) {
+    const awb = (r.fields.tracking_number?.value ?? "").trim().toUpperCase();
+    if (!awb) continue;
+    seen.set(awb, [...(seen.get(awb) ?? []), r.page]);
+  }
+  for (const r of records) {
+    const awb = (r.fields.tracking_number?.value ?? "").trim().toUpperCase();
+    const pages = awb ? (seen.get(awb) ?? []) : [];
+    if (pages.length < 2) continue;
+    const others = pages.filter((p) => p !== r.page);
+    // Tingkat keyakinan pembacaan barcode-nya TIDAK diturunkan — barcodenya
+    // memang terbaca pasti; yang meragukan adalah adanya kembaran. Cukup
+    // pasang penanda dan paksa kartunya masuk daftar periksa.
+    r.fields.tracking_number = {
+      ...r.fields.tracking_number,
+      flag: `resi kembar dengan halaman ${others.join(", ")}`,
+    };
+    r.needsReview = true;
+  }
+  return records;
 }

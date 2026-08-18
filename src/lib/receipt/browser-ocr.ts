@@ -19,8 +19,15 @@ import { parseLabelFields, type ParsedRow } from "./local-extract";
 
 export interface OcrProgress {
   stage: "compress" | "engine" | "pages" | "match";
+  /** Halaman ke berapa di dalam berkas yang sedang dibaca. */
   page?: number;
+  /** Jumlah halaman berkas yang sedang dibaca. */
   total?: number;
+  /** Nama berkas yang sedang dibaca (saat banyak berkas sekaligus). */
+  file?: string;
+  /** Berkas ke berapa dari seluruh antrean (mulai 1). */
+  fileIndex?: number;
+  fileCount?: number;
 }
 
 // Binary wasm zxing di-host sendiri dari /public (bawaannya menarik dari CDN
@@ -157,6 +164,7 @@ async function loadImageCanvas(blob: Blob): Promise<HTMLCanvasElement> {
 async function processCanvas(
   canvas: HTMLCanvasElement,
   n: number,
+  origin: PageVisual["origin"],
   worker: Worker,
   visuals: PageVisual[],
   rows: ParsedRow[],
@@ -177,6 +185,7 @@ async function processCanvas(
 
   visuals.push({
     page: n,
+    origin,
     barcodes: [...counts.keys()],
     tracking,
     trackingConfirmed: best >= 2,
@@ -192,63 +201,101 @@ export function isSupportedLabelFile(file: File): boolean {
   return /\.(pdf|png|jpe?g|webp)$/i.test(file.name) || /^(application\/pdf|image\/)/i.test(file.type);
 }
 
-export async function extractFromFile(
+/**
+ * Baca satu berkas memakai worker OCR yang sudah hidup. `startPage` membuat
+ * penomoran halaman berlanjut lintas berkas, sehingga satu batch tidak pernah
+ * punya dua halaman bernomor sama (nomor itulah kunci semua state & pencocokan).
+ */
+async function extractOneFile(
   file: File,
+  worker: Worker,
+  startPage: number,
+  visuals: PageVisual[],
+  rows: ParsedRow[],
   onProgress?: (p: OcrProgress) => void,
-): Promise<{ visuals: PageVisual[]; rows: ParsedRow[] }> {
+  fileIndex?: number,
+  fileCount?: number,
+): Promise<number> {
   const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
-  const visuals: PageVisual[] = [];
-  const rows: ParsedRow[] = [];
+  const meta = { file: file.name, fileIndex, fileCount };
 
-  // Foto label dikecilkan dulu dengan algoritma kompresi yang sama dengan
-  // pengunggahan berkas lain (WebP nyaris tanpa kehilangan kualitas, di Web
-  // Worker). Batas resolusinya sengaja dinaikkan ke 4400 px: itu ukuran yang
-  // dipakai pipeline untuk mendekode barcode, jadi mengecilkan berkas tidak
-  // pernah menghapus detail yang dibutuhkan.
-  let source: Blob = file;
   if (isImage) {
-    onProgress?.({ stage: "compress" });
-    source = await compressImageBlob(file, {
+    // Foto label dikecilkan dulu dengan algoritma kompresi yang sama dengan
+    // pengunggahan berkas lain (WebP nyaris tanpa kehilangan kualitas, di Web
+    // Worker). Batas resolusinya sengaja dinaikkan ke 4400 px: itu ukuran yang
+    // dipakai pipeline untuk mendekode barcode, jadi mengecilkan berkas tidak
+    // pernah menghapus detail yang dibutuhkan.
+    onProgress?.({ stage: "compress", ...meta });
+    const blob = await compressImageBlob(file, {
       recompressAboveMB: 2,
       targetMaxMB: 5,
       maxDimension: 4400,
       quality: 0.95,
     });
+    onProgress?.({ stage: "pages", page: 1, total: 1, ...meta });
+    await processCanvas(await loadImageCanvas(blob), startPage, { file: file.name, pageInFile: 1 }, worker, visuals, rows);
+    return 1;
   }
 
-  onProgress?.({ stage: "engine" });
+  const pdfjs = await getPdfjs();
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjs.getDocument({ data: buf }).promise;
+  const total: number = pdf.numPages;
+  const scale = 400 / 72; // ≈400 dpi — cukup tajam untuk Code128 yang tipis.
+  try {
+    for (let n = 1; n <= total; n++) {
+      onProgress?.({ stage: "pages", page: n, total, ...meta });
+      const page = await pdf.getPage(n);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const ctx = canvas.getContext("2d")!;
+      // pdfjs v6 butuh properti `canvas` di samping canvasContext + viewport.
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      page.cleanup();
+      await processCanvas(canvas, startPage + n - 1, { file: file.name, pageInFile: n }, worker, visuals, rows);
+    }
+  } finally {
+    try {
+      if (typeof pdf.destroy === "function") await pdf.destroy();
+    } catch {
+      /* abaikan */
+    }
+  }
+  return total;
+}
+
+/**
+ * Baca satu atau banyak berkas label sekaligus.
+ *
+ * Mesin OCR dimuat SEKALI untuk seluruh antrean — memuatnya per berkas adalah
+ * bagian paling lambat dari proses, dan mengunggah 10 berkas kecil tidak boleh
+ * berarti menunggu pemuatan mesin 10 kali. Berkas diproses berurutan, bukan
+ * paralel: render 400 dpi + OCR sudah menghabiskan memori dan seluruh CPU satu
+ * halaman, jadi memparalelkannya justru memperlambat sekaligus berisiko
+ * kehabisan memori di ponsel.
+ */
+export async function extractFromFiles(
+  files: File[],
+  onProgress?: (p: OcrProgress) => void,
+): Promise<{ visuals: PageVisual[]; rows: ParsedRow[] }> {
+  const visuals: PageVisual[] = [];
+  const rows: ParsedRow[] = [];
+  if (!files.length) return { visuals, rows };
+
+  onProgress?.({ stage: "engine", fileCount: files.length });
   // "ind+eng": label berbahasa Indonesia dengan istilah Inggris. Data bahasanya
   // diunduh sekali dari CDN lalu di-cache browser.
   const worker = await createWorker("ind+eng");
 
   try {
-    if (isImage) {
-      onProgress?.({ stage: "pages", page: 1, total: 1 });
-      await processCanvas(await loadImageCanvas(source), 1, worker, visuals, rows);
-    } else {
-      const pdfjs = await getPdfjs();
-      const buf = new Uint8Array(await file.arrayBuffer());
-      const pdf = await pdfjs.getDocument({ data: buf }).promise;
-      const total: number = pdf.numPages;
-      const scale = 400 / 72; // ≈400 dpi — cukup tajam untuk Code128 yang tipis.
-      for (let n = 1; n <= total; n++) {
-        onProgress?.({ stage: "pages", page: n, total });
-        const page = await pdf.getPage(n);
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const ctx = canvas.getContext("2d")!;
-        // pdfjs v6 butuh properti `canvas` di samping canvasContext + viewport.
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-        page.cleanup();
-        await processCanvas(canvas, n, worker, visuals, rows);
-      }
-      try {
-        if (typeof pdf.destroy === "function") await pdf.destroy();
-      } catch {
-        /* abaikan */
-      }
+    let nextPage = 1;
+    for (let i = 0; i < files.length; i++) {
+      const read = await extractOneFile(
+        files[i], worker, nextPage, visuals, rows, onProgress, i + 1, files.length,
+      );
+      nextPage += read;
     }
   } finally {
     try {

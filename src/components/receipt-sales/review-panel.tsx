@@ -59,6 +59,7 @@ export const FIELD_LABEL: Record<Locale, Record<string, string>> = {
 const STR: Record<Locale, Record<string, string>> = {
   id: {
     page: "Halaman",
+    fromFile: "dari",
     barcode: "barcode",
     shopify: "Shopify",
     manual: "Manual / WA",
@@ -72,6 +73,7 @@ const STR: Record<Locale, Record<string, string>> = {
   },
   en: {
     page: "Page",
+    fromFile: "from",
     barcode: "barcode",
     shopify: "Shopify",
     manual: "Manual / WA",
@@ -212,6 +214,7 @@ export function ReviewPanel({
   const t = STR[locale];
   const [zoom, setZoom] = useState<LabelRecord | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const multiFile = new Set(records.map((r) => r.origin.file)).size > 1;
 
   return (
     <>
@@ -231,10 +234,17 @@ export function ReviewPanel({
               aria-label={`${t.page} ${r.page}`}
             >
               <div className="flex items-center justify-between gap-2 border-b border-line bg-cream/50 px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-ink">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 text-xs font-semibold text-ink">
                     {t.page} {r.page}
                   </span>
+                  {/* Asal halaman hanya berguna saat satu batch berisi beberapa
+                      berkas — kalau cuma satu, keterangannya jadi kebisingan. */}
+                  {multiFile && (
+                    <span className="min-w-0 truncate text-[11px] text-faint" title={r.origin.file}>
+                      {t.fromFile} {r.origin.file} · {t.page.toLowerCase()} {r.origin.pageInFile}
+                    </span>
+                  )}
                   {flagged && (
                     <Badge tone="gold">
                       <AlertTriangle className="h-3 w-3" /> {t.needsReview}
@@ -323,7 +333,7 @@ export function ReviewPanel({
       {zoom && (
         <Lightbox
           src={zoom.thumbnail}
-          alt={`${t.page} ${zoom.page}`}
+          alt={`${zoom.origin.file} · ${t.page} ${zoom.origin.pageInFile}`}
           onClose={() => setZoom(null)}
         />
       )}

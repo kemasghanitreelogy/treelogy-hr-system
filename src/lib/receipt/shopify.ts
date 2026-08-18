@@ -286,7 +286,20 @@ export async function matchAll(inputs: MatchInput[]): Promise<Map<number, MatchR
     return out;
   }
 
-  const shipDate = inputs.find((i) => i.shipDate)?.shipDate || new Date().toISOString().slice(0, 10);
+  // Satu batch bisa memuat beberapa berkas dengan tanggal cetak berbeda; pool
+  // dibangun di sekitar tanggal yang PALING SERING muncul, bukan yang kebetulan
+  // terbaca pertama (satu label dengan tanggal salah-baca tidak boleh menggeser
+  // jendela pencarian seluruh batch).
+  const tally = new Map<string, number>();
+  for (const i of inputs) if (i.shipDate) tally.set(i.shipDate, (tally.get(i.shipDate) ?? 0) + 1);
+  let shipDate = new Date().toISOString().slice(0, 10);
+  let bestCount = 0;
+  for (const [date, count] of tally) {
+    if (count > bestCount) {
+      bestCount = count;
+      shipDate = date;
+    }
+  }
   let pool: PoolOrder[];
   try {
     pool = await fetchPool(store, token, shipDate);

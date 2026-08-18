@@ -2,13 +2,13 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch,
+  CheckCircle2, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
   ScanBarcode, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
-import { normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
+import { flagDuplicateTracking, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
 import { extractZip } from "@/lib/receipt/local-extract";
-import { ACCEPTED_TYPES, extractFromFile, isSupportedLabelFile, type OcrProgress } from "@/lib/receipt/browser-ocr";
+import { ACCEPTED_TYPES, extractFromFiles, isSupportedLabelFile, type OcrProgress } from "@/lib/receipt/browser-ocr";
 import { exportReceiptCsv, exportReceiptXlsx, type ReceiptExportRow } from "@/lib/receipt/receipt-xlsx";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -34,10 +34,16 @@ interface MatchResult {
 const STR: Record<Locale, Record<string, string>> = {
   id: {
     drop: "Letakkan PDF atau foto label di sini",
-    browse: "atau ketuk untuk memilih berkas",
+    browse: "atau ketuk untuk memilih berkas — boleh beberapa sekaligus",
     hint: "PDF banyak halaman atau foto (JPG/PNG) label pengiriman",
     privacy: "Berkas dibaca langsung di perangkat ini — tidak diunggah ke mana pun.",
     remove: "Hapus berkas",
+    removeAll: "Kosongkan daftar",
+    addMore: "Tambah berkas",
+    files: "berkas",
+    fileCounter: "Berkas",
+    skipped: "Ada berkas yang dilewati — hanya PDF/JPG/PNG/WebP yang bisa dibaca.",
+    duplicate: "Berkas itu sudah ada di daftar.",
     run: "Baca & cocokkan",
     running: "Memproses…",
     stageCompress: "Menyiapkan gambar…",
@@ -69,11 +75,17 @@ const STR: Record<Locale, Record<string, string>> = {
     reviewLead: "Isian bertanda kuning perlu dilihat mata. Perubahan Anda ikut terbawa ke unduhan.",
   },
   en: {
-    drop: "Drop a label PDF or photo here",
-    browse: "or tap to choose a file",
+    drop: "Drop label PDFs or photos here",
+    browse: "or tap to choose files — several at once is fine",
     hint: "Multi-page PDF or a photo (JPG/PNG) of shipping labels",
     privacy: "Files are read on this device — nothing is uploaded anywhere.",
     remove: "Remove file",
+    removeAll: "Clear the list",
+    addMore: "Add files",
+    files: "files",
+    fileCounter: "File",
+    skipped: "Some files were skipped — only PDF/JPG/PNG/WebP can be read.",
+    duplicate: "That file is already in the list.",
     run: "Read & match",
     running: "Processing…",
     stageCompress: "Preparing the image…",
@@ -108,6 +120,8 @@ const STR: Record<Locale, Record<string, string>> = {
 
 interface RunResult {
   records: LabelRecord[];
+  /** Jumlah berkas yang menghasilkan halaman di batch ini. */
+  fileCount: number;
   barcodeConfirmed: number;
   phoneMatched: number;
   reviewCount: number;
@@ -128,7 +142,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
   const t = STR[locale];
   const toast = useToast();
 
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<OcrProgress | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -137,30 +151,53 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const pickFile = useCallback(
-    (f: File | null) => {
-      if (!f) return;
-      if (!isSupportedLabelFile(f)) {
+  /** Tambahkan berkas ke antrean — menjatuhkan berkas baru MENAMBAH, tidak
+   *  menimpa, supaya batch bisa dikumpulkan sedikit demi sedikit. */
+  const addFiles = useCallback(
+    (picked: FileList | File[] | null) => {
+      const list = Array.from(picked ?? []);
+      if (!list.length) return;
+
+      const ok = list.filter(isSupportedLabelFile);
+      if (!ok.length) {
         toast.error(t.unsupported);
         return;
       }
-      setFile(f);
+      if (ok.length < list.length) toast.error(t.skipped);
+
+      setFiles((cur) => {
+        // Nama + ukuran + waktu ubah = tanda pengenal yang cukup; memilih
+        // berkas yang sama dua kali akan menghasilkan halaman kembar yang
+        // membingungkan saat dicocokkan ke order.
+        const seen = new Set(cur.map((f) => `${f.name}|${f.size}|${f.lastModified}`));
+        const fresh = ok.filter((f) => !seen.has(`${f.name}|${f.size}|${f.lastModified}`));
+        if (!fresh.length) {
+          toast.error(t.duplicate);
+          return cur;
+        }
+        return [...cur, ...fresh];
+      });
       setResult(null);
       setEdits({});
       setVerified({});
     },
-    [t.unsupported, toast],
+    [t.duplicate, t.skipped, t.unsupported, toast],
   );
 
+  const removeFile = useCallback((index: number) => {
+    setFiles((cur) => cur.filter((_, i) => i !== index));
+    setResult(null);
+  }, []);
+
   const run = useCallback(async () => {
-    if (!file) return;
+    if (!files.length) return;
     setBusy(true);
     setResult(null);
     setProgress(null);
     const started = Date.now();
     try {
       // 1) OCR sepenuhnya di browser — berkasnya tidak pernah meninggalkan perangkat.
-      const { visuals, rows } = await extractFromFile(file, setProgress);
+      const { visuals, rows } = await extractFromFiles(files, setProgress);
       const records = reconcile(rows, visuals);
 
       // 2) Cocokkan penerima ke order Shopify (permintaan kecil & cepat).
@@ -222,10 +259,16 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
         r.needsReview = Object.values(r.fields).some((f) => f.confidence === "low");
       }
 
+      // 4) Satu batch bisa memuat label yang sama dua kali (mis. PDF-nya plus
+      //    fotonya). Ditandai setelah needsReview dihitung ulang, kalau tidak
+      //    penandanya langsung tertimpa.
+      flagDuplicateTracking(records);
+
       setEdits(initialEdits(records));
       setVerified({});
       setResult({
         records,
+        fileCount: new Set(records.map((r) => r.origin.file)).size,
         barcodeConfirmed: records.filter((r) => r.fields.tracking_number?.confidence === "certain").length,
         phoneMatched: records.filter((r) => r.matchStatus === "shopify").length,
         reviewCount: records.filter((r) => r.needsReview).length,
@@ -237,7 +280,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
       setBusy(false);
       setProgress(null);
     }
-  }, [file, locale, t.connection, t.failed, toast]);
+  }, [files, locale, t.connection, t.failed, toast]);
 
   const onEdit = useCallback((page: number, key: string, value: string) => {
     setEdits((e) => ({ ...e, [page]: { ...e[page], [key]: value } }));
@@ -254,6 +297,8 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
       const e = edits[r.page] ?? {};
       return {
         page: r.page,
+        sourceFile: r.origin.file,
+        pageInFile: r.origin.pageInFile,
         courier: e.courier ?? "",
         awb: e.tracking_number ?? "",
         phone: e.phone ?? "",
@@ -305,6 +350,8 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
     }
   }
 
+  const totalBytes = useMemo(() => files.reduce((n, f) => n + f.size, 0), [files]);
+
   const stageLabel = !progress
     ? t.running
     : progress.stage === "compress"
@@ -314,6 +361,21 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
         : progress.stage === "match"
           ? t.stageMatch
           : `${t.stagePages} ${progress.page}/${progress.total}`;
+
+  /**
+   * Kemajuan keseluruhan 0–1. Jumlah halaman seluruh antrean baru diketahui
+   * setelah tiap PDF dibuka, jadi bilah ini menghitung "berkas keberapa" plus
+   * posisi halaman di dalamnya — cukup jujur dan tidak pernah mundur.
+   */
+  const overall = (() => {
+    if (!progress) return 0;
+    const count = progress.fileCount ?? files.length ?? 1;
+    const done = Math.max(0, (progress.fileIndex ?? 1) - 1);
+    const within =
+      progress.stage === "pages" && progress.total ? (progress.page ?? 0) / progress.total : 0;
+    if (progress.stage === "match") return 1;
+    return Math.min(1, (done + within) / Math.max(1, count));
+  })();
 
   return (
     <div className="space-y-4">
@@ -338,7 +400,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
           onDrop={(e) => {
             e.preventDefault();
             setDrag(false);
-            pickFile(e.dataTransfer.files?.[0] ?? null);
+            addFiles(e.dataTransfer.files);
           }}
           className={cn(
             "flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors",
@@ -356,36 +418,85 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
           <input
             ref={inputRef}
             type="file"
+            multiple
             accept={ACCEPTED_TYPES}
             className="hidden"
             onChange={(e) => {
-              pickFile(e.target.files?.[0] ?? null);
+              addFiles(e.target.files);
+              // Dikosongkan supaya memilih berkas yang SAMA lagi setelah
+              // dihapus dari daftar tetap memicu onChange.
               e.target.value = "";
             }}
           />
         </div>
 
-        {file && (
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2">
-            <FileText className="h-4 w-4 shrink-0 text-forest-600" />
-            <span className="min-w-0 flex-1 truncate text-sm text-ink">{file.name}</span>
-            <span className="shrink-0 text-xs tabular-nums text-faint">
-              {(file.size / 1024 / 1024).toFixed(2)} MB
-            </span>
-            {!busy && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFile(null);
-                  setResult(null);
-                }}
-                aria-label={t.remove}
-                title={t.remove}
-                className="shrink-0 cursor-pointer rounded-lg p-2 text-faint transition-colors hover:bg-clay-soft hover:text-clay"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
+        {files.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-muted">
+                <span className="tabular-nums text-ink">{files.length}</span> {t.files} ·{" "}
+                <span className="tabular-nums">{(totalBytes / 1024 / 1024).toFixed(2)} MB</span>
+              </p>
+              {!busy && (
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => inputRef.current?.click()}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium text-forest-700 transition-colors hover:bg-forest-50"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> {t.addMore}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiles([]);
+                      setResult(null);
+                    }}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg px-2 py-2 text-xs font-medium text-muted transition-colors hover:bg-clay-soft hover:text-clay"
+                  >
+                    <X className="h-3.5 w-3.5" /> {t.removeAll}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Daftar dibatasi tingginya: 20 berkas tidak boleh mendorong
+                tombol prosesnya keluar layar ponsel. */}
+            <ul className="max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-line bg-panel p-2">
+              {files.map((f, i) => {
+                const sedangDibaca = busy && progress?.file === f.name;
+                return (
+                  <li
+                    key={`${f.name}-${f.size}-${f.lastModified}`}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors",
+                      sedangDibaca && "bg-forest-50",
+                    )}
+                  >
+                    {sedangDibaca ? (
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-forest-600" />
+                    ) : (
+                      <FileText className="h-4 w-4 shrink-0 text-forest-600" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{f.name}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-faint">
+                      {(f.size / 1024 / 1024).toFixed(2)} MB
+                    </span>
+                    {!busy && (
+                      <button
+                        type="button"
+                        onClick={() => removeFile(i)}
+                        aria-label={`${t.remove}: ${f.name}`}
+                        title={t.remove}
+                        className="shrink-0 cursor-pointer rounded-lg p-2 text-faint transition-colors hover:bg-clay-soft hover:text-clay"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
 
@@ -394,7 +505,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
             <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-forest-600" />
             {t.privacy}
           </p>
-          <Button size="lg" onClick={run} disabled={!file || busy} className="w-full sm:w-auto">
+          <Button size="lg" onClick={run} disabled={!files.length || busy} className="w-full sm:w-auto">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageSearch className="h-4 w-4" />}
             {busy ? stageLabel : t.run}
           </Button>
@@ -402,18 +513,24 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
 
         {busy && (
           <div className="mt-3 space-y-1.5" aria-live="polite">
-            <div className="flex items-center justify-between text-xs text-muted">
-              <span>{stageLabel}</span>
+            <div className="flex items-center justify-between gap-2 text-xs text-muted">
+              <span className="min-w-0 truncate">
+                {progress?.file && files.length > 1 && (
+                  <span className="text-faint">
+                    {t.fileCounter} {progress.fileIndex}/{progress.fileCount} ·{" "}
+                  </span>
+                )}
+                {stageLabel}
+              </span>
               {progress?.total ? (
-                <span className="tabular-nums">
+                <span className="shrink-0 tabular-nums">
                   {progress.page}/{progress.total}
                 </span>
               ) : null}
             </div>
             <Progress
-              value={progress?.total ? (progress.page ?? 0) : 0}
-              max={progress?.total || 1}
-              className={cn(!progress?.total && "animate-pulse")}
+              value={overall * 100}
+              className={cn(overall === 0 && "animate-pulse")}
             />
           </div>
         )}
@@ -477,7 +594,15 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
 
           <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-ink">{t.reviewTitle}</h2>
+              <h2 className="text-sm font-semibold text-ink">
+                {t.reviewTitle}
+                {result.fileCount > 1 && (
+                  <span className="ml-1.5 font-normal text-faint">
+                    · {result.records.length} {locale === "en" ? "pages from" : "halaman dari"}{" "}
+                    {result.fileCount} {t.files}
+                  </span>
+                )}
+              </h2>
               <p className="mt-0.5 text-xs text-muted">{t.reviewLead}</p>
             </div>
             <div className="flex shrink-0 gap-2">

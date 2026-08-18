@@ -5,6 +5,9 @@ import { witaToday } from "../utils";
 
 export interface ReceiptExportRow {
   page: number;
+  /** Nama berkas asal — penting saat satu rekap berasal dari banyak unggahan. */
+  sourceFile: string;
+  pageInFile: number;
   courier: string;
   awb: string;
   phone: string;
@@ -33,7 +36,7 @@ const STR: Record<Locale, Record<string, string>> = {
   id: {
     sheet: "Resi", title: "REKAP RESI — KURIR · AWB · NO. HP",
     generated: "Dibuat", by: "Treelogy HR",
-    page: "Hal", courier: "Kurir", awb: "AWB / Resi", phone: "No. HP",
+    page: "No", sourceFile: "Berkas", pageInFile: "Hal", courier: "Kurir", awb: "AWB / Resi", phone: "No. HP",
     name: "Penerima", address: "Alamat", orderCode: "Kode Order", service: "Layanan",
     cost: "Biaya", weight: "Berat", pay: "Bayar", item: "Barang", shipDate: "Tgl Kirim",
     source: "Sumber HP", order: "Order Shopify", verified: "Diperiksa",
@@ -42,7 +45,7 @@ const STR: Record<Locale, Record<string, string>> = {
   en: {
     sheet: "Labels", title: "SHIPPING LABEL REPORT — COURIER · AWB · PHONE",
     generated: "Generated", by: "Treelogy HR",
-    page: "Pg", courier: "Courier", awb: "AWB", phone: "Phone",
+    page: "No", sourceFile: "File", pageInFile: "Pg", courier: "Courier", awb: "AWB", phone: "Phone",
     name: "Recipient", address: "Address", orderCode: "Order Code", service: "Service",
     cost: "Cost", weight: "Weight", pay: "Payment", item: "Item", shipDate: "Ship Date",
     source: "Phone Source", order: "Shopify Order", verified: "Verified",
@@ -83,6 +86,8 @@ export async function exportReceiptXlsx(rows: ReceiptExportRow[], locale: Locale
 
   const cols: { label: string; width: number; key: keyof ReceiptExportRow }[] = [
     { label: t.page, width: 6, key: "page" },
+    { label: t.sourceFile, width: 26, key: "sourceFile" },
+    { label: t.pageInFile, width: 6, key: "pageInFile" },
     { label: t.courier, width: 14, key: "courier" },
     { label: t.awb, width: 20, key: "awb" },
     { label: t.phone, width: 16, key: "phone" },
@@ -168,6 +173,8 @@ export function exportReceiptCsv(rows: ReceiptExportRow[], locale: Locale): numb
   const t = STR[locale];
   const cols: [string, (r: ReceiptExportRow) => string | number][] = [
     [t.page, (r) => r.page],
+    [t.sourceFile, (r) => r.sourceFile],
+    [t.pageInFile, (r) => r.pageInFile],
     [t.courier, (r) => r.courier],
     [t.awb, (r) => r.awb],
     [t.phone, (r) => r.phone],
