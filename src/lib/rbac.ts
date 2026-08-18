@@ -229,6 +229,23 @@ export const roles: Role[] = [
     permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve"],
   },
   {
+    id: "role-receipt",
+    name: "Tim Receipt Sales",
+    description: "Hak karyawan biasa, plus membaca label resi & mencocokkannya ke order Shopify.",
+    color: "#4a7ba6",
+    // Peran turunan, bukan menambah receipt.view ke "Karyawan" — kalau tidak,
+    // SEMUA karyawan ikut melihat nomor telepon pelanggan. receipt.sync sengaja
+    // tidak ikut: menulis ke Jubelio mengubah data pesanan sungguhan.
+    permissionIds: [...EMPLOYEE_PERMS, "receipt.view"],
+  },
+  {
+    id: "role-manager-receipt",
+    name: "Manager + Receipt Sales",
+    description: "Hak manajer, plus membaca label resi & mencocokkannya ke order Shopify.",
+    color: "#4a7ba6",
+    permissionIds: [...MANAGER_PERMS, "receipt.view"],
+  },
+  {
     id: "role-finance-lead",
     name: "Finance (Kepala)",
     description: "Hak Manager + proses pengajuan pembayaran + persetujuan akhir perjalanan dinas.",
