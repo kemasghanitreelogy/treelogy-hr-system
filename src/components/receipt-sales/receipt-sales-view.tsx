@@ -78,6 +78,10 @@ const STR: Record<Locale, Record<string, string>> = {
     step3: "Tidak ada yang diunggah",
     step3s: "Berkas tetap di perangkat; hanya potongan teks kecil dikirim ke server.",
     reviewTitle: "Periksa hasil",
+    filterAll: "Semua",
+    filterReview: "Perlu diperiksa",
+    allClear: "Semua halaman sudah diperiksa.",
+    allClearHint: "Tidak ada lagi yang menunggu diperiksa — hasilnya siap diunduh.",
     reviewLead: "Isian bertanda kuning perlu dilihat mata. Perubahan Anda ikut terbawa ke unduhan.",
   },
   en: {
@@ -123,6 +127,10 @@ const STR: Record<Locale, Record<string, string>> = {
     step3: "Nothing is uploaded",
     step3s: "The file stays on your device; only a few text fields go to the server.",
     reviewTitle: "Review the results",
+    filterAll: "All",
+    filterReview: "Needs a look",
+    allClear: "Every page has been reviewed.",
+    allClearHint: "Nothing is waiting on you — the results are ready to download.",
     reviewLead: "Amber fields want a human look. Your edits carry through to the download.",
   },
 };
@@ -162,6 +170,8 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
   const [edits, setEdits] = useState<Edits>({});
   const [verified, setVerified] = useState<Record<number, boolean>>({});
   const [drag, setDrag] = useState(false);
+  /** "review" hanya menampilkan kartu yang masih menunggu diperiksa. */
+  const [filter, setFilter] = useState<"all" | "review">("all");
   const inputRef = useRef<HTMLInputElement>(null);
   /** Dokumen PDF tetap terbuka selama hasilnya ditampilkan, supaya pratinjau
    *  bisa dirender saat kartunya dilihat. Dilepas saat batch diganti/ditutup. */
@@ -312,6 +322,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
 
       setEdits(initialEdits(records));
       setVerified({});
+      setFilter("all");
       setResult({
         records,
         fileCount: new Set(records.map((r) => r.origin.file)).size,
@@ -338,33 +349,33 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
     setVerified((v) => ({ ...v, [page]: value }));
   }, []);
 
-  /** Baris ekspor selalu mengikuti hasil edit, bukan nilai OCR asli. */
+  /** Baris ekspor selalu mengikuti hasil edit, bukan nilai hasil baca awal. */
   const exportRows = useMemo<ReceiptExportRow[]>(() => {
     if (!result) return [];
     return result.records.map((r) => {
       const e = edits[r.page] ?? {};
       return {
-        page: r.page,
-        sourceFile: r.origin.file,
-        pageInFile: r.origin.pageInFile,
-        courier: e.courier ?? "",
-        awb: e.tracking_number ?? "",
-        phone: e.phone ?? "",
-        recipientName: e.recipient_name ?? "",
-        recipientAddress: e.recipient_address ?? "",
-        orderCode: e.order_code ?? "",
-        serviceCode: e.service_code ?? "",
-        shippingCost: e.shipping_cost ?? "",
-        weight: e.weight ?? "",
-        paymentMethod: e.payment_method ?? "",
-        item: e.item ?? "",
-        shipDate: e.ship_date ?? "",
-        source: r.matchStatus === "shopify" ? "Shopify" : "Manual / WA",
-        order: r.matchedOrder ?? "",
-        verified: !!verified[r.page],
+        awb: (e.tracking_number ?? "").trim(),
+        recipientName: (e.recipient_name ?? "").trim(),
+        phone: (e.phone ?? "").trim(),
       };
     });
-  }, [result, edits, verified]);
+  }, [result, edits]);
+
+  /**
+   * Kartu yang masih menunggu diperiksa: ditandai perlu dicek DAN belum
+   * dicentang. Mencentang sebuah kartu membuatnya langsung keluar dari daftar
+   * ini, sehingga sisa pekerjaannya menyusut sambil dikerjakan.
+   */
+  const pendingPages = useMemo(() => {
+    if (!result) return [];
+    return result.records.filter((r) => r.needsReview && !verified[r.page]);
+  }, [result, verified]);
+
+  const shownRecords = useMemo(() => {
+    if (!result) return [];
+    return filter === "review" ? pendingPages : result.records;
+  }, [result, filter, pendingPages]);
 
   /** Hanya baris cocok-Shopify yang punya legacyId + AWB yang bisa disinkron. */
   const jubelioRows = useMemo<JubelioRow[]>(() => {
@@ -669,7 +680,28 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
                 )}
               </p>
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {/* Dua keadaan saja: lihat semuanya, atau kerjakan yang tersisa. */}
+              <div className="inline-flex rounded-xl bg-sand p-1" role="tablist" aria-label={t.reviewTitle}>
+                {(["all", "review"] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === opt}
+                    onClick={() => setFilter(opt)}
+                    className={cn(
+                      "cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                      filter === opt ? "bg-panel text-ink shadow-sm" : "text-muted hover:text-ink",
+                    )}
+                  >
+                    {opt === "all" ? t.filterAll : t.filterReview}
+                    <span className="ml-1 tabular-nums opacity-70">
+                      {opt === "all" ? result.records.length : pendingPages.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
               <Button variant="outline" onClick={() => unduh("csv")}>
                 <FileDown className="h-4 w-4" /> {t.csv}
               </Button>
@@ -679,14 +711,22 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
             </div>
           </section>
 
+          {shownRecords.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-forest-200 bg-forest-50/60 px-5 py-10 text-center">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-forest-600" />
+              <p className="mt-2 text-sm font-semibold text-ink">{t.allClear}</p>
+              <p className="mt-1 text-xs text-muted">{t.allClearHint}</p>
+            </div>
+          ) : (
           <ReviewPanel
-            records={result.records}
+            records={shownRecords}
             images={images}
             edits={edits}
             verified={verified}
             onEdit={onEdit}
             onVerify={onVerify}
           />
+          )}
 
           <JubelioPanel rows={jubelioRows} canSync={canSync} />
 
