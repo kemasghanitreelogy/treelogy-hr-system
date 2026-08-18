@@ -4,7 +4,7 @@
  * server bila suatu saat diperlukan. Rendering/OCR-nya ada di `browser-ocr.ts`.
  */
 
-export type FieldSource = "barcode" | "shopify" | "ocr" | "none";
+export type FieldSource = "barcode" | "pdf" | "shopify" | "ocr" | "none";
 export type FieldConfidence = "certain" | "high" | "low";
 
 export interface LabelField {
@@ -23,20 +23,30 @@ export interface PageOrigin {
   pageInFile: number;
 }
 
+/** Bagaimana teks sebuah halaman diperoleh. */
+export type PageTextMode = "text" | "ocr";
+
 export interface PageVisual {
   /** Nomor urut global lintas berkas — kunci semua state & pencocokan. */
   page: number;
   origin: PageOrigin;
   barcodes: string[];
   tracking: string | null;
-  /** Barcode terbaca ≥2× dengan nilai sama → tidak mungkin salah baca. */
+  /** Barcode terbaca ≥2× dengan nilai sama, atau sekali tapi cocok dengan
+   *  nomor di lapisan teks PDF → tidak mungkin salah baca. */
   trackingConfirmed: boolean;
+  /** Nomor resi yang tertulis di lapisan teks PDF (null kalau halaman gambar). */
+  textTracking: string | null;
+  /** "text" = dibaca dari lapisan teks PDF (eksak); "ocr" = hasil pembacaan gambar. */
+  textMode: PageTextMode;
   thumbnail: string;
 }
 
 export interface LabelRecord {
   page: number;
   origin: PageOrigin;
+  /** Dari mana teks halaman ini berasal — ditampilkan di kartu review. */
+  textMode: PageTextMode;
   fields: Record<string, LabelField>;
   barcodes: string[];
   thumbnail: string;
@@ -113,28 +123,47 @@ export function reconcile<T extends { page: number }>(
     for (const key of FIELD_KEYS) {
       const ocrVal = (row[key] as string | null | undefined) ?? null;
       if (key === "tracking_number") {
-        if (vis.tracking) {
-          const match = ocrVal && ocrVal.replace(/\s/g, "") === vis.tracking;
-          fields[key] = vis.trackingConfirmed
-            ? mkField(vis.tracking, "barcode", "certain", match || !ocrVal ? null : `OCR membaca ${ocrVal}`)
-            : mkField(vis.tracking, "barcode", "high", "barcode hanya terbaca sekali");
+        // Urutan kepercayaan: barcode terkonfirmasi → teks digital PDF →
+        // barcode sekali baca → hasil OCR. Dua yang pertama eksak; dua
+        // terakhir masih bisa salah dan karena itu ditandai.
+        const pdfAwb = vis.textTracking;
+        if (vis.tracking && vis.trackingConfirmed) {
+          const bantah = pdfAwb && pdfAwb !== vis.tracking ? `teks PDF menulis ${pdfAwb}` : null;
+          fields[key] = mkField(vis.tracking, "barcode", "certain", bantah);
+        } else if (pdfAwb) {
+          // Halaman PDF digital: nomornya huruf demi huruf seperti yang dicetak
+          // kurir — bukan hasil tebakan, jadi sama terpercayanya dengan barcode.
+          const bantah = vis.tracking && vis.tracking !== pdfAwb ? `barcode terbaca ${vis.tracking}` : null;
+          fields[key] = mkField(pdfAwb, "pdf", "certain", bantah);
+        } else if (vis.tracking) {
+          fields[key] = mkField(vis.tracking, "barcode", "high", "barcode hanya terbaca sekali");
         } else {
           fields[key] = mkField(ocrVal, ocrVal ? "ocr" : "none", "low", "tanpa barcode — periksa manual");
         }
         continue;
       }
       const flag = validate(key, ocrVal);
-      fields[key] = mkField(ocrVal, ocrVal ? "ocr" : "none", flag ? "low" : "high", flag);
+      const src: FieldSource = ocrVal ? (vis.textMode === "text" ? "pdf" : "ocr") : "none";
+      // Isian dari lapisan teks PDF tidak pernah salah baca, jadi tidak perlu
+      // diperiksa mata seperti hasil OCR.
+      const conf: FieldConfidence = flag ? "low" : vis.textMode === "text" ? "certain" : "high";
+      fields[key] = mkField(ocrVal, src, conf, flag);
     }
 
     const courierRaw = (row.courier as string | null) ?? null;
-    fields["courier"] = mkField(normalizeCourier(courierRaw), courierRaw ? "ocr" : "none", "high", null);
+    fields["courier"] = mkField(
+      normalizeCourier(courierRaw),
+      courierRaw ? (vis.textMode === "text" ? "pdf" : "ocr") : "none",
+      "high",
+      null,
+    );
     fields["phone"] = mkField(null, "none", "low", "belum dicocokkan");
 
     const phoneLast4 = String(row.recipient_phone_last4 ?? "").replace(/\D/g, "").slice(-4);
     return {
       page: vis.page,
       origin: vis.origin,
+      textMode: vis.textMode,
       fields,
       barcodes: vis.barcodes,
       thumbnail: vis.thumbnail,

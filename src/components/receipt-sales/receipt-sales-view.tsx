@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
-  ScanBarcode, ShieldCheck, Smartphone, Upload, X,
+  ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
@@ -49,6 +49,9 @@ const STR: Record<Locale, Record<string, string>> = {
     stageCompress: "Menyiapkan gambar…",
     stageEngine: "Memuat mesin OCR…",
     stagePages: "Membaca label",
+    stageOcr: "Mengubah gambar jadi teks",
+    modeText: "halaman teks langsung",
+    modeOcr: "halaman gambar (OCR)",
     stageMatch: "Mencocokkan order Shopify…",
     pages: "Halaman",
     awbOk: "AWB terkonfirmasi",
@@ -91,6 +94,9 @@ const STR: Record<Locale, Record<string, string>> = {
     stageCompress: "Preparing the image…",
     stageEngine: "Loading the OCR engine…",
     stagePages: "Reading labels",
+    stageOcr: "Converting images to text",
+    modeText: "pages read as text",
+    modeOcr: "image pages (OCR)",
     stageMatch: "Matching Shopify orders…",
     pages: "Pages",
     awbOk: "AWB confirmed",
@@ -122,6 +128,10 @@ interface RunResult {
   records: LabelRecord[];
   /** Jumlah berkas yang menghasilkan halaman di batch ini. */
   fileCount: number;
+  /** Halaman yang teksnya bisa dibaca langsung dari PDF. */
+  textPages: number;
+  /** Halaman gambar yang harus di-OCR dulu. */
+  ocrPages: number;
   barcodeConfirmed: number;
   phoneMatched: number;
   reviewCount: number;
@@ -197,7 +207,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
     const started = Date.now();
     try {
       // 1) OCR sepenuhnya di browser — berkasnya tidak pernah meninggalkan perangkat.
-      const { visuals, rows } = await extractFromFiles(files, setProgress);
+      const { visuals, rows, textPages, ocrPages } = await extractFromFiles(files, setProgress);
       const records = reconcile(rows, visuals);
 
       // 2) Cocokkan penerima ke order Shopify (permintaan kecil & cepat).
@@ -269,6 +279,8 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
       setResult({
         records,
         fileCount: new Set(records.map((r) => r.origin.file)).size,
+        textPages,
+        ocrPages,
         barcodeConfirmed: records.filter((r) => r.fields.tracking_number?.confidence === "certain").length,
         phoneMatched: records.filter((r) => r.matchStatus === "shopify").length,
         reviewCount: records.filter((r) => r.needsReview).length,
@@ -360,7 +372,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
         ? t.stageEngine
         : progress.stage === "match"
           ? t.stageMatch
-          : `${t.stagePages} ${progress.page}/${progress.total}`;
+          : `${progress.fast === false ? t.stageOcr : t.stagePages} ${progress.page}/${progress.total}`;
 
   /**
    * Kemajuan keseluruhan 0–1. Jumlah halaman seluruh antrean baru diketahui
@@ -604,6 +616,22 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
                 )}
               </h2>
               <p className="mt-0.5 text-xs text-muted">{t.reviewLead}</p>
+              {/* Cara tiap halaman dibaca menentukan seberapa perlu diperiksa:
+                  teks PDF tidak bisa salah baca, hasil OCR bisa. */}
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-faint">
+                {result.textPages > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <FileText className="h-3 w-3 text-forest-600" />
+                    {result.textPages} {t.modeText}
+                  </span>
+                )}
+                {result.ocrPages > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <ScanText className="h-3 w-3 text-[#8a6512]" />
+                    {result.ocrPages} {t.modeOcr}
+                  </span>
+                )}
+              </p>
             </div>
             <div className="flex shrink-0 gap-2">
               <Button variant="outline" onClick={() => unduh("csv")}>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Check, ChevronDown, ChevronUp, ScanBarcode, ShoppingBag, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, FileText, ScanBarcode, ShoppingBag, X } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,7 @@ const STR: Record<Locale, Record<string, string>> = {
     page: "Halaman",
     fromFile: "dari",
     barcode: "barcode",
+    fromPdf: "teks PDF",
     shopify: "Shopify",
     manual: "Manual / WA",
     verified: "Sudah diperiksa",
@@ -75,6 +76,7 @@ const STR: Record<Locale, Record<string, string>> = {
     page: "Page",
     fromFile: "from",
     barcode: "barcode",
+    fromPdf: "PDF text",
     shopify: "Shopify",
     manual: "Manual / WA",
     verified: "Verified",
@@ -168,6 +170,11 @@ function FieldRow({
         {certain && f?.source === "barcode" && (
           <span className="inline-flex items-center gap-1 rounded-full bg-forest-100 px-1.5 py-0.5 text-[10px] font-semibold text-forest-700">
             <ScanBarcode className="h-3 w-3" /> {t.barcode} ✓
+          </span>
+        )}
+        {certain && f?.source === "pdf" && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-sky-soft px-1.5 py-0.5 text-[10px] font-semibold text-[#2c5775]">
+            <FileText className="h-3 w-3" /> {t.fromPdf} ✓
           </span>
         )}
         {certain && f?.source === "shopify" && (
