@@ -66,6 +66,8 @@ const STR: Record<Locale, Record<string, string>> = {
     nothingToExport: "Belum ada data untuk diunduh.",
     unsupported: "Pilih berkas PDF atau gambar (JPG/PNG/WebP).",
     failed: "Gagal membaca berkas. Pastikan berkasnya label pengiriman yang jelas.",
+    failedFile: "Gagal membaca",
+    noPages: "Tidak ada halaman yang bisa dibaca dari berkas itu.",
     connection: "Koneksi bermasalah. Coba lagi.",
     emptyTitle: "Belum ada label yang dibaca",
     emptyBody:
@@ -115,6 +117,8 @@ const STR: Record<Locale, Record<string, string>> = {
     nothingToExport: "Nothing to download yet.",
     unsupported: "Choose a PDF or an image (JPG/PNG/WebP).",
     failed: "Couldn't read that file. Make sure it's a clear shipping label.",
+    failedFile: "Couldn't read",
+    noPages: "No readable pages in that file.",
     connection: "Connection problem. Try again.",
     emptyTitle: "No labels read yet",
     emptyBody:
@@ -246,13 +250,22 @@ export function ReceiptSalesView() {
         }).catch(() => null);
       };
 
-      const { visuals, rows, textPages, ocrPages, images: store } = await extractFromFiles(
+      const { visuals, rows, failures, textPages, ocrPages, images: store } = await extractFromFiles(
         files,
         setProgress,
         (row) => warm(normalizeShipDate(row.ship_date) || new Date().toISOString().slice(0, 10)),
       );
       imagesRef.current = store;
       setImages(store);
+
+      // Kegagalan per berkas dilaporkan lengkap dengan sebabnya — pesan umum
+      // "berkasnya tidak jelas" pernah menyembunyikan kegagalan yang sebenarnya
+      // berasal dari browser lama, dan tidak ada yang bisa menindaklanjutinya.
+      for (const f of failures) toast.error(`${t.failedFile} ${f.file} — ${f.reason}`);
+      if (!visuals.length) {
+        toast.error(t.noPages);
+        return;
+      }
       const records = reconcile(rows, visuals);
 
       // 2) Cocokkan penerima ke order Shopify (permintaan kecil & cepat).
@@ -332,8 +345,11 @@ export function ReceiptSalesView() {
         reviewCount: records.filter((r) => r.needsReview).length,
         elapsedMs: Date.now() - started,
       });
-    } catch {
-      toast.error(t.failed);
+    } catch (e) {
+      // Sebabnya ikut ditampilkan: tanpa itu, kegagalan di perangkat orang lain
+      // tidak bisa didiagnosis dari jarak jauh.
+      const sebab = e instanceof Error ? e.message : String(e);
+      toast.error(`${t.failed} (${sebab})`);
     } finally {
       setBusy(false);
       setProgress(null);
