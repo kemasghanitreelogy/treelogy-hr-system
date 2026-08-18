@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Check, ChevronDown, ChevronUp, FileText, ScanBarcode, ShoppingBag, X } from "lucide-react";
+import {
+  AlertTriangle, Check, ChevronDown, ChevronUp, FileText, Image as ImageIcon,
+  ScanBarcode, ShoppingBag, X,
+} from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
+import type { PageImageStore } from "@/lib/receipt/browser-ocr";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { lockBodyScroll } from "@/lib/scroll-lock";
@@ -127,6 +131,75 @@ function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: ()
   );
 }
 
+/**
+ * Pratinjau label yang baru dirender saat kartunya mendekati layar.
+ *
+ * Dengan ratusan halaman, merender semua pratinjau di depan menghabiskan detik
+ * demi detik untuk gambar yang sebagian besar tidak pernah dilihat. Halaman
+ * PDF-nya masih terbuka, jadi gambarnya bisa dibuat tepat pada saat dibutuhkan.
+ */
+function LazyThumb({
+  page,
+  images,
+  alt,
+  onOpen,
+}: {
+  page: number;
+  images: PageImageStore | null;
+  alt: string;
+  onOpen: (src: string) => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !images || src) return;
+    let alive = true;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        images.get(page).then((url) => {
+          if (alive && url) setSrc(url);
+        });
+      },
+      // Mulai merender sedikit sebelum kartunya terlihat, supaya gambarnya
+      // sudah siap saat sampai di mata.
+      { rootMargin: "300px" },
+    );
+    io.observe(el);
+    return () => {
+      alive = false;
+      io.disconnect();
+    };
+  }, [images, page, src]);
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => src && onOpen(src)}
+      aria-label={alt}
+      disabled={!src}
+      className="group relative h-28 w-20 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-line bg-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400 disabled:cursor-default sm:h-36 sm:w-24"
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          className="h-full w-full object-cover object-top transition-transform duration-200 group-hover:scale-105"
+        />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center">
+          <ImageIcon className="h-5 w-5 text-faint" />
+        </span>
+      )}
+    </button>
+  );
+}
+
 function SourceBadge({ record, locale }: { record: LabelRecord; locale: Locale }) {
   const t = STR[locale];
   return record.matchStatus === "shopify" ? (
@@ -206,12 +279,15 @@ function FieldRow({
 
 export function ReviewPanel({
   records,
+  images,
   edits,
   verified,
   onEdit,
   onVerify,
 }: {
   records: LabelRecord[];
+  /** Sumber pratinjau; null saat batch sudah dilepas. */
+  images: PageImageStore | null;
   edits: Edits;
   verified: Record<number, boolean>;
   onEdit: (page: number, key: string, value: string) => void;
@@ -219,7 +295,7 @@ export function ReviewPanel({
 }) {
   const locale = useLocale();
   const t = STR[locale];
-  const [zoom, setZoom] = useState<LabelRecord | null>(null);
+  const [zoom, setZoom] = useState<{ src: string; record: LabelRecord } | null>(null);
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const multiFile = new Set(records.map((r) => r.origin.file)).size > 1;
 
@@ -262,19 +338,12 @@ export function ReviewPanel({
               </div>
 
               <div className="flex gap-3 p-3">
-                <button
-                  type="button"
-                  onClick={() => setZoom(r)}
-                  aria-label={`${t.zoom} — ${t.page} ${r.page}`}
-                  className="group relative h-28 w-20 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-line bg-sand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-400 sm:h-36 sm:w-24"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={r.thumbnail}
-                    alt={`${t.page} ${r.page}`}
-                    className="h-full w-full object-cover object-top transition-transform duration-200 group-hover:scale-105"
-                  />
-                </button>
+                <LazyThumb
+                  page={r.page}
+                  images={images}
+                  alt={`${t.zoom} — ${t.page} ${r.page}`}
+                  onOpen={(src) => setZoom({ src, record: r })}
+                />
 
                 <div className="min-w-0 flex-1 space-y-2.5">
                   {PRIMARY_FIELDS.map((key) => (
@@ -339,8 +408,8 @@ export function ReviewPanel({
 
       {zoom && (
         <Lightbox
-          src={zoom.thumbnail}
-          alt={`${zoom.origin.file} · ${t.page} ${zoom.origin.pageInFile}`}
+          src={zoom.src}
+          alt={`${zoom.record.origin.file} · ${t.page} ${zoom.record.origin.pageInFile}`}
           onClose={() => setZoom(null)}
         />
       )}

@@ -57,8 +57,19 @@ const API_VERSION = "2026-07";
 /** Jendela pencarian order relatif tanggal kirim di label (hari). */
 const WINDOW_BEFORE_DAYS = 30;
 const WINDOW_AFTER_DAYS = 10;
-/** Maksimum halaman × 100 order. */
-const MAX_POOL_PAGES = 8;
+/**
+ * Jendela dipecah jadi beberapa potongan yang diambil BERSAMAAN.
+ *
+ * Paginasi Shopify berbasis kursor: halaman ke-2 baru bisa diminta setelah
+ * halaman ke-1 tiba. Satu jendela 40 hari di toko ini berisi ±1.800 order —
+ * kalau ditarik berurutan, itu 18 kali bolak-balik yang saling menunggu.
+ * Dengan memecah jendelanya menurut tanggal, tiap potongan punya rantai
+ * kursornya sendiri dan semuanya berjalan serentak: kedalaman menunggu turun
+ * jadi ±3 permintaan, sementara cakupannya justru naik.
+ */
+const POOL_SHARDS = 8;
+/** Maksimum halaman × 100 order per potongan. */
+const MAX_PAGES_PER_SHARD = 3;
 
 const digits = (s: string | null) => (s || "").replace(/\D/g, "");
 const nameTokens = (s: string) =>
@@ -110,19 +121,22 @@ const POOL_QUERY = `query Pool($q: String!, $c: String) {
 }`;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-async function fetchPool(store: string, token: string, shipDate: string): Promise<PoolOrder[]> {
-  const base = +new Date(shipDate);
-  const from = new Date(base - WINDOW_BEFORE_DAYS * 86400000).toISOString().slice(0, 10);
-  const to = new Date(base + WINDOW_AFTER_DAYS * 86400000).toISOString().slice(0, 10);
+
+/** Satu potongan jendela tanggal, ditarik sampai habis atau sampai batas halaman. */
+async function fetchShard(
+  store: string,
+  token: string,
+  from: string,
+  to: string,
+): Promise<PoolOrder[]> {
   const q = `created_at:>=${from} created_at:<=${to}`;
-  const pool: PoolOrder[] = [];
+  const out: PoolOrder[] = [];
   let cursor: string | null = null;
   let pages = 0;
   do {
     // Satu halaman bisa ditolak dengan THROTTLED kalau kuota kalkulasi Shopify
-    // sedang habis (pool 800 order = 8 permintaan berat berturut-turut). Itu
-    // keadaan sementara, bukan kegagalan — tunggu sebentar lalu ulangi halaman
-    // yang sama, jangan buang seluruh pool yang sudah terkumpul.
+    // sedang habis. Itu keadaan sementara, bukan kegagalan — tunggu sebentar
+    // lalu ulangi halaman yang sama, jangan buang yang sudah terkumpul.
     let json: any = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       const res: Response = await fetch(`https://${store}/admin/api/${API_VERSION}/graphql.json`, {
@@ -135,13 +149,14 @@ async function fetchPool(store: string, token: string, shipDate: string): Promis
         res.status === 429 ||
         (json?.errors ?? []).some((e: any) => e?.extensions?.code === "THROTTLED");
       if (!throttled) break;
-      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }
     if (!json || json.errors) throw new Error("shopify_error");
+
     const conn = json.data?.orders;
     for (const e of conn?.edges ?? []) {
       const a = e.node.shippingAddress ?? {};
-      pool.push({
+      out.push({
         orderName: e.node.name,
         legacyId: String(e.node.legacyResourceId ?? ""),
         createdAt: e.node.createdAt,
@@ -154,13 +169,87 @@ async function fetchPool(store: string, token: string, shipDate: string): Promis
     }
     cursor = conn?.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
     pages++;
-    // Batas 8×100 menjaga satu permintaan tetap cepat. Pool diambil dari yang
-    // TERBARU dulu, jadi kalau batas ini tercapai yang terpotong adalah ujung
-    // paling lama dari jendela — order yang baru dikirim (kasus normal) selalu
-    // ikut. Toko dengan volume sangat tinggi yang memproses label lama sebaiknya
-    // memperkecil jendela di bawah, bukan memperbesar pool.
-  } while (cursor && pages < MAX_POOL_PAGES);
+  } while (cursor && pages < MAX_PAGES_PER_SHARD);
+  return out;
+}
+
+const DAY = 86400000;
+const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+async function buildPool(store: string, token: string, shipDate: string): Promise<PoolOrder[]> {
+  const base = +new Date(shipDate);
+  const start = base - WINDOW_BEFORE_DAYS * DAY;
+  const end = base + WINDOW_AFTER_DAYS * DAY;
+  const span = Math.max(1, Math.ceil((end - start) / DAY));
+  const perShard = Math.ceil(span / POOL_SHARDS);
+
+  const ranges: [string, string][] = [];
+  for (let d = 0; d < span; d += perShard) {
+    const from = start + d * DAY;
+    const to = Math.min(end, start + (d + perShard - 1) * DAY);
+    ranges.push([iso(from), iso(to)]);
+  }
+
+  const shards = await Promise.all(ranges.map(([from, to]) => fetchShard(store, token, from, to)));
+  // Potongan tanggal tidak tumpang tindih, tetapi satu order tetap bisa muncul
+  // dua kali di batas hari (zona waktu) — disatukan menurut id ordernya.
+  const seen = new Set<string>();
+  const pool: PoolOrder[] = [];
+  for (const shard of shards) {
+    for (const o of shard) {
+      const key = o.legacyId || o.orderName;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pool.push(o);
+    }
+  }
   return pool;
+}
+
+/**
+ * Simpanan pool di memori instance.
+ *
+ * Satu batch label biasanya diproses beberapa kali berturut-turut (unggah
+ * susulan, ulang setelah perbaikan), dan semuanya memakai jendela tanggal yang
+ * sama. Menyimpan hasilnya sebentar membuat pengambilan kedua dan seterusnya
+ * tidak menyentuh jaringan sama sekali. Yang disimpan adalah PROMISE-nya, bukan
+ * hasilnya: dua permintaan yang datang bersamaan ikut menunggu pengambilan yang
+ * sama, bukan menembak Shopify dua kali.
+ */
+const POOL_TTL_MS = 3 * 60 * 1000;
+const POOL_CACHE_MAX = 4;
+const poolCache = new Map<string, { at: number; pool: Promise<PoolOrder[]> }>();
+
+function fetchPool(store: string, token: string, shipDate: string): Promise<PoolOrder[]> {
+  const key = `${store}|${shipDate}`;
+  const hit = poolCache.get(key);
+  if (hit && Date.now() - hit.at < POOL_TTL_MS) return hit.pool;
+
+  const pool = buildPool(store, token, shipDate);
+  // Pengambilan yang gagal tidak boleh ikut tersimpan — kalau tidak, satu
+  // gangguan jaringan akan terus dijawab dari cache selama TTL berjalan.
+  pool.catch(() => poolCache.delete(key));
+  poolCache.set(key, { at: Date.now(), pool });
+
+  for (const [k, v] of poolCache) {
+    if (poolCache.size <= POOL_CACHE_MAX) break;
+    if (k !== key) poolCache.delete(k);
+    else void v;
+  }
+  return pool;
+}
+
+/** Siapkan pool lebih awal (dipanggil saat pembacaan label baru dimulai), agar
+ *  ongkos jaringannya habis di belakang layar sebelum hasilnya dibutuhkan. */
+export async function warmPool(shipDate: string): Promise<number> {
+  const store = process.env.STORE_NAME;
+  const token = process.env.ADMIN_API_KEY;
+  if (!store || !token) return 0;
+  try {
+    return (await fetchPool(store, token, shipDate || new Date().toISOString().slice(0, 10))).length;
+  } catch {
+    return 0;
+  }
 }
 
 function emptyResult(flag: string, candidateCount = 0): MatchResult {
@@ -170,13 +259,93 @@ function emptyResult(flag: string, candidateCount = 0): MatchResult {
   };
 }
 
-function matchAgainstPool(inp: MatchInput, pool: PoolOrder[]): MatchResult {
+/**
+ * Indeks terbalik atas pool.
+ *
+ * Tanpa ini, tiap label harus diadu dengan SETIAP order di pool: 150 label ×
+ * 1.100 order = 165.000 pembandingan, masing-masing menghitung jarak edit —
+ * beberapa detik CPU hanya untuk mencocokkan. Dengan indeks, tiap label hanya
+ * mengambil order yang setidaknya berbagi satu kunci dengannya (ekor nomor HP,
+ * kodepos, atau token nama), biasanya belasan saja.
+ */
+interface PoolIndex {
+  pool: PoolOrder[];
+  byPhone: Map<string, PoolOrder[]>;
+  byZip: Map<string, PoolOrder[]>;
+  byToken: Map<string, PoolOrder[]>;
+}
+
+function push(map: Map<string, PoolOrder[]>, key: string, o: PoolOrder) {
+  const cur = map.get(key);
+  if (cur) cur.push(o);
+  else map.set(key, [o]);
+}
+
+/** Panjang ekor nomor yang mungkin terbaca di label (masker "****1234"). */
+const TAIL_LENGTHS = [3, 4];
+const phoneKey = (len: number, tail: string) => `${len}:${tail}`;
+
+function buildIndex(pool: PoolOrder[]): PoolIndex {
+  const byPhone = new Map<string, PoolOrder[]>();
+  const byZip = new Map<string, PoolOrder[]>();
+  const byToken = new Map<string, PoolOrder[]>();
+  for (const o of pool) {
+    const p = digits(o.phone);
+    // Kuncinya EKOR nomor — persis yang dibandingkan phoneTail(). Label bisa
+    // menampilkan 3 atau 4 digit, jadi keduanya diindeks; kalau hanya satu
+    // panjang yang diindeks, label dengan panjang lain tidak akan pernah ketemu.
+    for (const len of TAIL_LENGTHS) if (p.length >= len) push(byPhone, phoneKey(len, p.slice(-len)), o);
+    if (o.zip) push(byZip, o.zip, o);
+    for (const t of nameTokens(o.shipName)) push(byToken, t, o);
+  }
+  return { pool, byPhone, byZip, byToken };
+}
+
+/**
+ * Semua deret digit yang berjarak edit ≤1 dari `s` pada panjang yang sama.
+ *
+ * Karena yang dibandingkan selalu potongan sepanjang `s`, jarak edit 1 pada
+ * panjang yang sama berarti tepat satu digit berbeda — cukup 9 kemungkinan per
+ * posisi. Membangkitkan kuncinya (puluhan) jauh lebih murah daripada menyapu
+ * seluruh pool, dan hasilnya identik dengan perbandingan satu per satu.
+ */
+function digitNeighbors(s: string): string[] {
+  const out = [s];
+  for (let i = 0; i < s.length; i++) {
+    for (let d = 0; d <= 9; d++) {
+      const c = String(d);
+      if (c === s[i]) continue;
+      out.push(s.slice(0, i) + c + s.slice(i + 1));
+    }
+  }
+  return out;
+}
+
+/** Kandidat = order yang berbagi minimal satu kunci dengan label ini. */
+function candidatesFor(inp: MatchInput, idx: PoolIndex, inTokens: Set<string>): PoolOrder[] {
+  const seen = new Set<PoolOrder>();
+  const take = (list?: PoolOrder[]) => {
+    if (list) for (const o of list) seen.add(o);
+  };
+
+  if (inp.phoneLast4.length >= 3) {
+    const len = inp.phoneLast4.length;
+    for (const k of digitNeighbors(inp.phoneLast4)) take(idx.byPhone.get(phoneKey(len, k)));
+  }
+  if (inp.zip) for (const k of digitNeighbors(inp.zip)) take(idx.byZip.get(k));
+  for (const t of inTokens) take(idx.byToken.get(t));
+
+  return [...seen];
+}
+
+function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
+  const pool = idx.pool;
   const inTokens = nameTokens(inp.name);
   let best: PoolOrder | null = null;
   let bestScore = -Infinity;
   let bestReasons: string[] = [];
 
-  for (const o of pool) {
+  for (const o of candidatesFor(inp, idx, inTokens)) {
     let score = 0;
     const reasons: string[] = [];
 
@@ -246,9 +415,8 @@ function matchAgainstPool(inp: MatchInput, pool: PoolOrder[]): MatchResult {
   } else if (hasName && hasZip) {
     // Nama + kodepos tanpa konfirmasi HP. Aman hanya kalau nama itu unik di area
     // tersebut — kalau tidak, dua tetangga bernama mirip bisa tertukar.
-    const dupes = pool.filter((o) => {
-      const shared = [...inTokens].filter((t) => nameTokens(o.shipName).has(t)).length;
-      return shared >= 1 && !!inp.zip && o.zip === inp.zip;
+    const dupes = (inp.zip ? (idx.byZip.get(inp.zip) ?? []) : []).filter((o) => {
+      return [...inTokens].some((t) => nameTokens(o.shipName).has(t));
     }).length;
     if (dupes <= 1) {
       confidence = "certain";
@@ -308,6 +476,8 @@ export async function matchAll(inputs: MatchInput[]): Promise<Map<number, MatchR
     return out;
   }
 
-  for (const inp of inputs) out.set(inp.page, matchAgainstPool(inp, pool));
+  // Indeks dibangun sekali untuk seluruh batch, lalu dipakai ulang tiap label.
+  const idx = buildIndex(pool);
+  for (const inp of inputs) out.set(inp.page, matchAgainstPool(inp, idx));
   return out;
 }

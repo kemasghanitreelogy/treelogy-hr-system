@@ -39,7 +39,6 @@ export interface PageVisual {
   textTracking: string | null;
   /** "text" = dibaca dari lapisan teks PDF (eksak); "ocr" = hasil pembacaan gambar. */
   textMode: PageTextMode;
-  thumbnail: string;
 }
 
 export interface LabelRecord {
@@ -49,7 +48,6 @@ export interface LabelRecord {
   textMode: PageTextMode;
   fields: Record<string, LabelField>;
   barcodes: string[];
-  thumbnail: string;
   needsReview: boolean;
   phoneLast4?: string;
   matchedOrder?: string | null;
@@ -166,7 +164,6 @@ export function reconcile<T extends { page: number }>(
       textMode: vis.textMode,
       fields,
       barcodes: vis.barcodes,
-      thumbnail: vis.thumbnail,
       needsReview: Object.values(fields).some((f) => f.confidence === "low"),
       phoneLast4,
       matchedOrder: null,

@@ -272,6 +272,33 @@ async function renderPageToWidth(page: any, targetW: number): Promise<HTMLCanvas
   return renderPage(page, (targetW / base.width) * 72);
 }
 
+/**
+ * Render HANYA sepotong halaman pada resolusi penuh.
+ *
+ * Untuk memeriksa barcode kita tidak butuh seluruh label — hanya sudut tempat
+ * barcodenya dicetak. Merender seperempat halaman berarti seperempat piksel,
+ * dan render beresolusi barcode adalah operasi termahal di seluruh proses.
+ */
+async function renderRegion(
+  page: any, dpi: number, rx: number, ry: number, rw: number, rh: number,
+): Promise<HTMLCanvasElement> {
+  const viewport = page.getViewport({ scale: dpi / 72 });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width * rw);
+  canvas.height = Math.ceil(viewport.height * rh);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({
+    canvasContext: ctx,
+    viewport,
+    canvas,
+    // Geser isi halaman supaya sudut yang diinginkan jatuh di titik 0,0 kanvas.
+    transform: [1, 0, 0, 1, -viewport.width * rx, -viewport.height * ry],
+  }).promise;
+  return canvas;
+}
+
 async function renderPage(page: any, dpi: number): Promise<HTMLCanvasElement> {
   const viewport = page.getViewport({ scale: dpi / 72 });
   const canvas = document.createElement("canvas");
@@ -310,6 +337,95 @@ async function mapLimit<T, R>(
   });
   await Promise.all(lanes);
   return out;
+}
+
+/* ══════════════════════ pratinjau yang dirender saat dibutuhkan ══════════════════════ */
+
+/** Berapa pratinjau disimpan di memori sekaligus. Satu pratinjau ±40 KB, dan
+ *  yang terlihat di layar tidak pernah lebih dari belasan. */
+const THUMB_CACHE_MAX = 80;
+
+export interface PageImageStore {
+  /** Pratinjau halaman (data URL), dirender saat pertama kali diminta. */
+  get(page: number): Promise<string | null>;
+  /** Lepaskan dokumen PDF yang masih dibuka. Wajib dipanggil saat batch diganti. */
+  dispose(): Promise<void>;
+}
+
+/**
+ * Merender pratinjau untuk SEMUA halaman di depan adalah pemborosan terbesar
+ * yang tersisa: 150 halaman × ±30 ms hanya untuk gambar kecil yang mungkin tidak
+ * pernah dilihat, sebab layar hanya memuat belasan kartu sekaligus. Jadi dokumen
+ * PDF-nya dibiarkan terbuka dan pratinjaunya dibuat saat kartunya benar-benar
+ * masuk layar.
+ */
+class LazyPageImages implements PageImageStore {
+  private docs = new Map<string, any>();
+  private refs = new Map<number, { file: string; pageInFile: number }>();
+  private cache = new Map<number, string>();
+  private inflight = new Map<number, Promise<string | null>>();
+
+  keepDoc(file: string, doc: any) {
+    this.docs.set(file, doc);
+  }
+
+  /** Halaman yang pratinjaunya nanti dirender dari dokumen yang masih terbuka. */
+  defer(page: number, file: string, pageInFile: number) {
+    this.refs.set(page, { file, pageInFile });
+  }
+
+  /** Halaman yang gambarnya sudah terlanjur ada (jalur OCR & foto). */
+  put(page: number, dataUrl: string) {
+    this.cache.set(page, dataUrl);
+  }
+
+  async get(page: number): Promise<string | null> {
+    const hit = this.cache.get(page);
+    if (hit) return hit;
+    const pending = this.inflight.get(page);
+    if (pending) return pending;
+
+    const ref = this.refs.get(page);
+    const doc = ref ? this.docs.get(ref.file) : null;
+    if (!ref || !doc) return null;
+
+    const job = (async () => {
+      try {
+        const pdfPage = await doc.getPage(ref.pageInFile);
+        const canvas = await renderPageToWidth(pdfPage, THUMB_W);
+        const url = thumbnailOf(canvas);
+        pdfPage.cleanup();
+        this.cache.set(page, url);
+        // Buang yang paling lama kalau simpanan penuh (Map menjaga urutan masuk).
+        while (this.cache.size > THUMB_CACHE_MAX) {
+          const oldest = this.cache.keys().next().value;
+          if (oldest === undefined) break;
+          this.cache.delete(oldest);
+        }
+        return url;
+      } catch {
+        return null;
+      } finally {
+        this.inflight.delete(page);
+      }
+    })();
+    this.inflight.set(page, job);
+    return job;
+  }
+
+  async dispose() {
+    this.cache.clear();
+    this.refs.clear();
+    this.inflight.clear();
+    for (const doc of this.docs.values()) {
+      try {
+        if (typeof doc.destroy === "function") await doc.destroy();
+      } catch {
+        /* abaikan */
+      }
+    }
+    this.docs.clear();
+  }
 }
 
 /* ══════════════════════ pemrosesan berkas ══════════════════════ */
@@ -352,7 +468,6 @@ function visualOf(
   barcodes: string[],
   textTracking: string | null,
   textMode: PageVisual["textMode"],
-  thumbnail: string,
 ): PageVisual {
   const counts = new Map<string, number>();
   for (const b of barcodes) counts.set(b, (counts.get(b) || 0) + 1);
@@ -374,7 +489,6 @@ function visualOf(
     trackingConfirmed: best >= 2 || (!!tracking && tracking === textTracking),
     textTracking,
     textMode,
-    thumbnail,
   };
 }
 
@@ -386,10 +500,16 @@ interface FileResult {
   ocrPages: number;
 }
 
+/** Sudut halaman tempat barcode dicetak (label A6 J&T/Lion): cukup untuk uji
+ *  petik tanpa merender seluruh halaman. */
+const BARCODE_CORNER: [number, number, number, number] = [0, 0, 0.8, 0.45];
+
 async function extractPdf(
   file: File,
   startPage: number,
+  images: LazyPageImages,
   onProgress: ((p: OcrProgress) => void) | undefined,
+  onFirstRow: ((row: ParsedRow) => void) | undefined,
   meta: { file: string; fileIndex?: number; fileCount?: number },
 ): Promise<FileResult> {
   const pdfjs = await getPdfjs();
@@ -405,13 +525,12 @@ async function extractPdf(
   let spotChecked = 0;
 
   /**
-   * Proses satu halaman.
-   *
-   * `verifyBarcode` menentukan apakah halaman ini dirender pada resolusi
-   * barcode — bagian termahal dari seluruh proses (±300 ms/halaman).
+   * Proses satu halaman. `verifyBarcode` menentukan apakah halaman ini dirender
+   * pada resolusi barcode — bagian termahal dari seluruh proses.
    */
   const handlePage = async (n: number, verifyBarcode: boolean) => {
     const page = await pdf.getPage(n);
+    const globalPage = startPage + n - 1;
     const origin = { file: file.name, pageInFile: n };
 
     // Keputusan diambil PER HALAMAN, bukan per berkas: satu PDF bisa memuat
@@ -424,45 +543,52 @@ async function extractPdf(
     let text: string;
     let textTracking: string | null = null;
     let barcodes: string[] = [];
-    let canvas: HTMLCanvasElement;
 
     if (useText) {
       textPages++;
       text = lines.join("\n");
       textTracking = toAwb(text) || null;
 
-      // Halaman tanpa nomor resi di teksnya tidak punya sumber eksak lain,
-      // jadi barcodenya selalu dibaca berapa pun hasil uji petiknya.
+      // Halaman tanpa nomor resi di teksnya tidak punya sumber eksak lain, jadi
+      // barcodenya selalu dibaca berapa pun hasil uji petiknya.
       if (verifyBarcode || !textTracking) {
-        canvas = await renderPage(page, BARCODE_DPI);
-        barcodes = await decodePage(canvas, (found) =>
-          textTracking ? found.includes(textTracking) : found.length >= 2 && new Set(found).size === 1,
-        );
+        const [rx, ry, rw, rh] = BARCODE_CORNER;
+        const corner = await renderRegion(page, BARCODE_DPI, rx, ry, rw, rh);
+        barcodes = await decodeCanvas(corner);
+        if (!barcodes.length) {
+          // Sudut biasa gagal → tata letak label ini berbeda; baru rendernya
+          // diperluas ke seluruh halaman.
+          const full = await renderPage(page, BARCODE_DPI);
+          barcodes = await decodePage(full, (found) =>
+            textTracking ? found.includes(textTracking) : found.length >= 2 && new Set(found).size === 1,
+          );
+        }
         if (textTracking) {
           spotChecked++;
           if (barcodes.includes(textTracking)) spotAgree++;
         }
-      } else {
-        // Cukup render kecil untuk pratinjau — tidak ada lagi yang perlu dibaca
-        // dari gambarnya.
-        canvas = await renderPageToWidth(page, THUMB_W);
       }
+      // Pratinjaunya dirender nanti, hanya kalau kartunya benar-benar dilihat.
+      images.defer(globalPage, file.name, n);
     } else {
       // Halaman gambar: tidak ada teks untuk dibaca, jadi gambarnya diubah dulu
-      // menjadi teks lewat OCR. Pemuatan mesinnya makan beberapa detik dan
-      // hanya terjadi sekali — beri tahu pengguna daripada terlihat menggantung.
+      // menjadi teks lewat OCR. Pemuatan mesinnya makan beberapa detik dan hanya
+      // terjadi sekali — beri tahu pengguna daripada terlihat menggantung.
       if (!isOcrEngineStarted()) onProgress?.({ stage: "engine", ...meta });
       ocrPages++;
-      canvas = await renderPage(page, BARCODE_DPI);
+      const canvas = await renderPage(page, BARCODE_DPI);
       barcodes = await decodePage(canvas);
       text = await ocrText(downscale(canvas, OCR_DPI / BARCODE_DPI));
+      // Gambarnya sudah ada di tangan — pratinjaunya diambil sekarang saja.
+      images.put(globalPage, thumbnailOf(canvas));
     }
 
     const i = n - 1;
-    visuals[i] = visualOf(
-      startPage + i, origin, barcodes, textTracking, useText ? "text" : "ocr", thumbnailOf(canvas),
-    );
-    rows[i] = parseLabelFields(text, startPage + i);
+    visuals[i] = visualOf(globalPage, origin, barcodes, textTracking, useText ? "text" : "ocr");
+    rows[i] = parseLabelFields(text, globalPage);
+    // Halaman pertama yang selesai cukup untuk menentukan jendela tanggal
+    // pencarian order — dipakai memanaskan pool sementara sisanya masih dibaca.
+    onFirstRow?.(rows[i]);
     page.cleanup();
 
     done++;
@@ -478,29 +604,34 @@ async function extractPdf(
     await mapLimit(head, TEXT_LANE_CONCURRENCY, (n) => handlePage(n, true));
 
     /**
-     * Kalau setiap halaman uji petik menunjukkan barcode yang sama persis
-     * dengan nomor di lapisan teksnya, sisa halaman tidak perlu dirender pada
-     * resolusi barcode lagi: keduanya berasal dari satu berkas cetak yang sama,
-     * dan teks digital bukan hasil pembacaan yang bisa meleset — ia huruf yang
+     * Kalau setiap halaman uji petik menunjukkan barcode yang sama persis dengan
+     * nomor di lapisan teksnya, sisa halaman tidak perlu lagi dirender pada
+     * resolusi barcode: keduanya berasal dari satu berkas cetak yang sama, dan
+     * teks digital bukan hasil pembacaan yang bisa meleset — ia huruf yang
      * memang ditulis ke dalam PDF. Begitu ada SATU saja yang tidak cocok,
      * seluruh sisa berkas diverifikasi seperti semula.
      */
     const trustText = spotChecked > 0 && spotAgree === spotChecked;
     await mapLimit(tail, TEXT_LANE_CONCURRENCY, (n) => handlePage(n, !trustText));
-  } finally {
+  } catch (e) {
+    // Dokumen hanya ditutup saat gagal; kalau sukses ia tetap dibuka supaya
+    // pratinjau bisa dirender belakangan (ditutup lewat images.dispose()).
     try {
       if (typeof pdf.destroy === "function") await pdf.destroy();
     } catch {
       /* abaikan */
     }
+    throw e;
   }
 
+  images.keepDoc(file.name, pdf);
   return { visuals, rows, textPages, ocrPages };
 }
 
 async function extractImage(
   file: File,
   startPage: number,
+  images: LazyPageImages,
   onProgress: ((p: OcrProgress) => void) | undefined,
   meta: { file: string; fileIndex?: number; fileCount?: number },
 ): Promise<FileResult> {
@@ -523,10 +654,9 @@ async function extractImage(
   const barcodes = await decodePage(canvas);
   const text = await ocrText(downscale(canvas, 0.5));
 
+  images.put(startPage, thumbnailOf(canvas));
   return {
-    visuals: [
-      visualOf(startPage, { file: file.name, pageInFile: 1 }, barcodes, null, "ocr", thumbnailOf(canvas)),
-    ],
+    visuals: [visualOf(startPage, { file: file.name, pageInFile: 1 }, barcodes, null, "ocr")],
     rows: [parseLabelFields(text, startPage)],
     textPages: 0,
     ocrPages: 1,
@@ -540,6 +670,8 @@ export interface ExtractOutcome {
   textPages: number;
   /** Halaman gambar yang harus diubah jadi teks lewat OCR. */
   ocrPages: number;
+  /** Sumber pratinjau; panggil dispose() saat batch diganti atau layar ditutup. */
+  images: PageImageStore;
 }
 
 /**
@@ -552,12 +684,15 @@ export interface ExtractOutcome {
 export async function extractFromFiles(
   files: File[],
   onProgress?: (p: OcrProgress) => void,
+  /** Dipanggil sekali, pada halaman pertama yang selesai dibaca. */
+  onFirstRow?: (row: ParsedRow) => void,
 ): Promise<ExtractOutcome> {
   const visuals: PageVisual[] = [];
   const rows: ParsedRow[] = [];
+  const images = new LazyPageImages();
   let textPages = 0;
   let ocrPages = 0;
-  if (!files.length) return { visuals, rows, textPages, ocrPages };
+  if (!files.length) return { visuals, rows, textPages, ocrPages, images };
 
   try {
     let nextPage = 1;
@@ -565,9 +700,15 @@ export async function extractFromFiles(
       const file = files[i];
       const meta = { file: file.name, fileIndex: i + 1, fileCount: files.length };
       const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
+      let firstSeen = false;
+      const first = (row: ParsedRow) => {
+        if (firstSeen) return;
+        firstSeen = true;
+        onFirstRow?.(row);
+      };
       const res = isImage
-        ? await extractImage(file, nextPage, onProgress, meta)
-        : await extractPdf(file, nextPage, onProgress, meta);
+        ? await extractImage(file, nextPage, images, onProgress, meta)
+        : await extractPdf(file, nextPage, images, onProgress, first, meta);
 
       visuals.push(...res.visuals);
       rows.push(...res.rows);
@@ -579,5 +720,5 @@ export async function extractFromFiles(
     // Worker OCR hanya hidup kalau tadi memang dipakai.
     await disposeScheduler();
   }
-  return { visuals, rows, textPages, ocrPages };
+  return { visuals, rows, textPages, ocrPages, images };
 }

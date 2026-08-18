@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
   ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
@@ -8,7 +8,10 @@ import {
 import type { LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
 import { extractZip } from "@/lib/receipt/local-extract";
-import { ACCEPTED_TYPES, extractFromFiles, isSupportedLabelFile, type OcrProgress } from "@/lib/receipt/browser-ocr";
+import {
+  ACCEPTED_TYPES, extractFromFiles, isSupportedLabelFile,
+  type OcrProgress, type PageImageStore,
+} from "@/lib/receipt/browser-ocr";
 import { exportReceiptCsv, exportReceiptXlsx, type ReceiptExportRow } from "@/lib/receipt/receipt-xlsx";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -160,6 +163,19 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
   const [verified, setVerified] = useState<Record<number, boolean>>({});
   const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  /** Dokumen PDF tetap terbuka selama hasilnya ditampilkan, supaya pratinjau
+   *  bisa dirender saat kartunya dilihat. Dilepas saat batch diganti/ditutup. */
+  const imagesRef = useRef<PageImageStore | null>(null);
+  const [images, setImages] = useState<PageImageStore | null>(null);
+
+  const releaseImages = useCallback(() => {
+    const store = imagesRef.current;
+    imagesRef.current = null;
+    setImages(null);
+    void store?.dispose();
+  }, []);
+
+  useEffect(() => releaseImages, [releaseImages]);
 
   /** Tambahkan berkas ke antrean — menjatuhkan berkas baru MENAMBAH, tidak
    *  menimpa, supaya batch bisa dikumpulkan sedikit demi sedikit. */
@@ -207,7 +223,27 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
     const started = Date.now();
     try {
       // 1) OCR sepenuhnya di browser — berkasnya tidak pernah meninggalkan perangkat.
-      const { visuals, rows, textPages, ocrPages } = await extractFromFiles(files, setProgress);
+      releaseImages();
+      // Pool order Shopify dipanaskan BERSAMAAN dengan pembacaan label: begitu
+      // tanggal kirim halaman pertama terbaca, permintaannya dilepas ke server
+      // dan ongkos jaringannya habis di belakang layar, bukan setelahnya.
+      let warmed: Promise<unknown> | null = null;
+      const warm = (shipDate: string) => {
+        if (warmed) return;
+        warmed = fetch("/api/receipt-sales/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ warm: true, shipDate }),
+        }).catch(() => null);
+      };
+
+      const { visuals, rows, textPages, ocrPages, images: store } = await extractFromFiles(
+        files,
+        setProgress,
+        (row) => warm(normalizeShipDate(row.ship_date) || new Date().toISOString().slice(0, 10)),
+      );
+      imagesRef.current = store;
+      setImages(store);
       const records = reconcile(rows, visuals);
 
       // 2) Cocokkan penerima ke order Shopify (permintaan kecil & cepat).
@@ -645,6 +681,7 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
 
           <ReviewPanel
             records={result.records}
+            images={images}
             edits={edits}
             verified={verified}
             onEdit={onEdit}
