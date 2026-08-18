@@ -4,7 +4,7 @@
 
 // Dinaikkan saat perilaku SW berubah — tanpa ini perangkat tetap memakai
 // service worker lama dari cache dan perbaikannya tidak pernah terpasang.
-const VERSION = "treelogy-hr-v3";
+const VERSION = "treelogy-hr-v4";
 const APP_SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;
@@ -53,7 +53,10 @@ function isStaticAsset(url) {
   return (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
-    /\.(?:js|css|woff2?|ttf|otf|png|jpg|jpeg|svg|webp|ico)$/.test(url.pathname)
+    // .mjs & .wasm = worker pdf.js dan pembaca barcode (masing-masing ~1MB,
+    // isinya tidak pernah berubah tanpa ganti nama versi). Tanpa ini keduanya
+    // diunduh ulang setiap kali halaman resi dipakai.
+    /\.(?:js|mjs|wasm|css|woff2?|ttf|otf|png|jpg|jpeg|svg|webp|ico)$/.test(url.pathname)
   );
 }
 

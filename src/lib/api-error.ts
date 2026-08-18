@@ -112,6 +112,11 @@ const MESSAGES: Record<string, Msg> = {
   file_too_large: { id: "File terlalu besar (maks 25MB).", en: "File is too large (max 25MB)." },
   upload_failed: { id: "Gagal mengunggah file. Coba lagi.", en: "Failed to upload the file. Try again." },
 
+  // --- receipt sales (resi → kurir/AWB/HP) ---
+  too_many_pages: { id: "Terlalu banyak halaman sekaligus. Pecah berkasnya.", en: "Too many pages at once. Split the file." },
+  shopify_failed: { id: "Gagal menghubungi Shopify. Coba lagi.", en: "Couldn't reach Shopify. Try again." },
+  jubelio_login_failed: { id: "Gagal masuk ke Jubelio — periksa kredensial API-nya.", en: "Jubelio login failed — check the API credentials." },
+
   // --- attendance / push / misc server ---
   attendance_write_failed: { id: "Gagal menyimpan absensi. Coba lagi.", en: "Failed to save attendance. Try again." },
   not_clocked_in: { id: "Belum ada clock-in hari ini untuk di-clock-out.", en: "No clock-in today to clock out from." },

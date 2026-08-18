@@ -13,3 +13,6 @@ next-env.d.ts
 # Rekaman layar / video kerja — jangan ikut ke repo
 *.mov
 *.mp4
+
+# Label resi berisi data pribadi pelanggan — jangan pernah ikut ke repo
+/label-samples/

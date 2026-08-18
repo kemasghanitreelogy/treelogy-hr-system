@@ -107,6 +107,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "receipt",
+    label: "Receipt Sales",
+    permissions: [
+      { id: "receipt.view", label: "Baca resi & cocokkan ke order Shopify" },
+      { id: "receipt.sync", label: "Tulis No. Resi ke Jubelio" },
+    ],
+  },
+  {
     module: "kpi",
     label: "KPI & Kinerja",
     permissions: [

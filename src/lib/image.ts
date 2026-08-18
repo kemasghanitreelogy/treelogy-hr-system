@@ -35,18 +35,36 @@ function fileToDataUrl(file: Blob): Promise<string> {
   });
 }
 
+/**
+ * Per-call overrides of the ceilings above. Defaults stay tuned for uploads to
+ * the API; callers that only need the file locally (e.g. on-device OCR, which
+ * re-renders the photo at ~4000px to decode a thin Code128 barcode) can raise
+ * the resolution ceiling so shrinking never costs them readable detail.
+ */
+export interface CompressOptions {
+  /** Skip re-encoding below this size (MB). Default 1.5. */
+  recompressAboveMB?: number;
+  /** Size ceiling for the re-encoded image (MB). Default 1.8. */
+  targetMaxMB?: number;
+  /** Longest-edge ceiling in px. Default 2560. */
+  maxDimension?: number;
+  /** Starting WebP quality (0-1). Default 0.92. */
+  quality?: number;
+}
+
 /** Compress an image File → a Blob (near-lossless WebP). Small files pass through. */
-export async function compressImageBlob(file: File): Promise<Blob> {
+export async function compressImageBlob(file: File, opts: CompressOptions = {}): Promise<Blob> {
+  const floorMB = opts.recompressAboveMB ?? RECOMPRESS_ABOVE_MB;
   // Already small enough → don't touch it (preserve original quality exactly).
-  if (file.size <= RECOMPRESS_ABOVE_MB * 1024 * 1024 && file.type !== "image/heic") {
+  if (file.size <= floorMB * 1024 * 1024 && file.type !== "image/heic") {
     return file;
   }
   const { default: imageCompression } = await import("browser-image-compression");
   try {
     const out = await imageCompression(file, {
-      maxSizeMB: TARGET_MAX_MB,
-      maxWidthOrHeight: MAX_DIMENSION,
-      initialQuality: INITIAL_QUALITY,
+      maxSizeMB: opts.targetMaxMB ?? TARGET_MAX_MB,
+      maxWidthOrHeight: opts.maxDimension ?? MAX_DIMENSION,
+      initialQuality: opts.quality ?? INITIAL_QUALITY,
       useWebWorker: true,
       fileType: "image/webp",
     });
