@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
 import { ALL_FIELDS, ReviewPanel, type Edits } from "./review-panel";
-import { JubelioPanel, type JubelioRow } from "./jubelio-panel";
 
 interface MatchResult {
   phone: string | null;
@@ -158,7 +157,7 @@ function initialEdits(records: LabelRecord[]): Edits {
   return init;
 }
 
-export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
+export function ReceiptSalesView() {
   const locale = useLocale();
   const t = STR[locale];
   const toast = useToast();
@@ -376,24 +375,6 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
     if (!result) return [];
     return filter === "review" ? pendingPages : result.records;
   }, [result, filter, pendingPages]);
-
-  /** Hanya baris cocok-Shopify yang punya legacyId + AWB yang bisa disinkron. */
-  const jubelioRows = useMemo<JubelioRow[]>(() => {
-    if (!result) return [];
-    return result.records
-      .filter((r) => r.matchStatus === "shopify" && r.legacyId && (edits[r.page]?.tracking_number ?? "").trim())
-      .map((r) => {
-        const e = edits[r.page] ?? {};
-        return {
-          page: r.page,
-          name: e.recipient_name ?? "",
-          legacyId: r.legacyId ?? "",
-          zip: extractZip(e.recipient_address ?? "") ?? "",
-          awb: (e.tracking_number ?? "").trim(),
-          courier: e.courier ?? "",
-        };
-      });
-  }, [result, edits]);
 
   async function unduh(kind: "xlsx" | "csv") {
     if (!exportRows.length) {
@@ -728,13 +709,6 @@ export function ReceiptSalesView({ canSync }: { canSync: boolean }) {
           />
           )}
 
-          <JubelioPanel rows={jubelioRows} canSync={canSync} />
-
-          <p className="text-[11px] leading-relaxed text-faint">
-            {locale === "en"
-              ? "Pages are rendered and read in your browser (pdf.js + Tesseract + barcode decoding). Only the extracted name, postcode, and phone last-4 are sent to the server to look up the order in Shopify — the file and its thumbnails never leave this device."
-              : "Halaman dirender dan dibaca di browser Anda (pdf.js + Tesseract + pembacaan barcode). Hanya nama, kodepos, dan 4 digit HP yang dikirim ke server untuk mencari ordernya di Shopify — berkas dan pratinjaunya tidak pernah meninggalkan perangkat ini."}
-          </p>
         </>
       )}
     </div>

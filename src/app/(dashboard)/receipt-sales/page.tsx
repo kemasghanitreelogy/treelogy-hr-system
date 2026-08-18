@@ -10,5 +10,5 @@ export default async function ReceiptSalesPage() {
   // Menu di-gate izin yang sama; guard ini menutup akses lewat URL langsung.
   if (!can(user, "receipt.view")) redirect("/dashboard");
 
-  return <ReceiptSalesView canSync={can(user, "receipt.sync")} />;
+  return <ReceiptSalesView />;
 }
