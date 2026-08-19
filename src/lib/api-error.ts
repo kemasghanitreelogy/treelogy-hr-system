@@ -113,6 +113,7 @@ const MESSAGES: Record<string, Msg> = {
   upload_failed: { id: "Gagal mengunggah file. Coba lagi.", en: "Failed to upload the file. Try again." },
 
   // --- receipt sales (resi → kurir/AWB/HP) ---
+  server_413: { id: "Berkas terlalu besar untuk dikirim langsung — dicoba lewat penyimpanan sementara.", en: "File too large to send directly — retried via temporary storage." },
   pdf_unreadable: { id: "PDF ini tidak bisa dibuka — mungkin rusak atau terkunci kata sandi.", en: "This PDF can't be opened — it may be damaged or password-protected." },
   pdf_no_pages: { id: "PDF ini tidak berisi halaman apa pun.", en: "This PDF has no pages." },
   needs_ocr: { id: "Halaman berkas ini berupa gambar. Pembacaannya perlu perangkat yang lebih baru — coba dari komputer.", en: "This file's pages are images. Reading them needs a newer device — try from a computer." },

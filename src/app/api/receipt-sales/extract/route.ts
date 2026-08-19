@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { can, getSessionUser } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { AWB_RE } from "@/lib/receipt/label-core";
 import { parseLabelFields, type ParsedRow } from "@/lib/receipt/local-extract";
 import { hasUsableTextLayer, linesFromTextContent } from "@/lib/receipt/pdf-text";
@@ -26,10 +27,55 @@ export const maxDuration = 300;
  * lalu hilang bersama akhir permintaan.
  */
 
-/** Batas ukuran berkas. Vercel menerima body sampai 100MB; angka ini menjaga
- *  pemakaian memori satu permintaan tetap wajar. */
+/** Batas ukuran berkas yang diproses, dari sumber mana pun. */
 const MAX_BYTES = 30 * 1024 * 1024;
 const MAX_PAGES = 300;
+/** Bucket singgah untuk berkas yang terlalu besar dikirim lewat body API. */
+const TEMP_BUCKET = "receipt-temp";
+
+/**
+ * Ambil isi PDF-nya, dari salah satu dari dua jalur.
+ *
+ * Berkas kecil dikirim langsung sebagai body. Berkas besar TIDAK BISA: platform
+ * menolak body di atas ±4,5MB (diuji: 4MB lolos, 6MB ditolak), sementara satu
+ * berkas label bisa 18MB. Untuk itu browser mengunggahnya lebih dulu ke bucket
+ * singgah — jalur yang tidak dibatasi ukuran body — dan di sini isinya diambil
+ * lalu berkasnya DIHAPUS, berhasil maupun gagal.
+ */
+async function readInput(
+  req: Request,
+  userId: string,
+): Promise<{ bytes: Uint8Array } | { error: string; status: number }> {
+  const type = req.headers.get("content-type") ?? "";
+
+  if (!type.includes("application/json")) {
+    const buf = await req.arrayBuffer().catch(() => null);
+    if (!buf || buf.byteLength === 0) return { error: "invalid_input", status: 400 };
+    if (buf.byteLength > MAX_BYTES) return { error: "file_too_large", status: 413 };
+    return { bytes: new Uint8Array(buf) };
+  }
+
+  const body = (await req.json().catch(() => ({}))) as { path?: string };
+  const path = typeof body.path === "string" ? body.path : "";
+  // Path wajib berada di folder milik pemanggil — tanpa ini, seseorang bisa
+  // menyebut path berkas singgah milik orang lain dan ikut membacanya.
+  if (!path || !path.startsWith(`${userId}/`) || path.includes("..")) {
+    return { error: "invalid_path", status: 400 };
+  }
+
+  const admin = createAdminClient();
+  if (!admin) return { error: "unavailable", status: 503 };
+
+  try {
+    const { data, error } = await admin.storage.from(TEMP_BUCKET).download(path);
+    if (error || !data) return { error: "not_found", status: 404 };
+    if (data.size > MAX_BYTES) return { error: "file_too_large", status: 413 };
+    return { bytes: new Uint8Array(await data.arrayBuffer()) };
+  } finally {
+    // Dihapus apa pun hasilnya. Bucket ini tempat singgah, bukan arsip.
+    await admin.storage.from(TEMP_BUCKET).remove([path]).catch(() => null);
+  }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 async function openPdf(data: Uint8Array): Promise<any> {
@@ -50,15 +96,14 @@ export async function POST(req: Request) {
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!can(me, "receipt.view")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const buf = await req.arrayBuffer().catch(() => null);
-  if (!buf || buf.byteLength === 0) return NextResponse.json({ error: "invalid_input" }, { status: 400 });
-  if (buf.byteLength > MAX_BYTES) return NextResponse.json({ error: "file_too_large" }, { status: 413 });
+  const input = await readInput(req, me.id);
+  if ("error" in input) return NextResponse.json({ error: input.error }, { status: input.status });
 
   const startPage = Number(new URL(req.url).searchParams.get("start") || "1") || 1;
 
   let pdf: any;
   try {
-    pdf = await openPdf(new Uint8Array(buf));
+    pdf = await openPdf(input.bytes);
   } catch {
     return NextResponse.json({ error: "pdf_unreadable" }, { status: 422 });
   }

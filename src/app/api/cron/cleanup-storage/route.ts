@@ -53,5 +53,44 @@ export async function GET(req: Request) {
     if (names.length < BATCH) break;
   }
 
-  return NextResponse.json({ ok: true, bucket: BUCKET, retentionDays: RETENTION_DAYS, deleted });
+  // Sapuan kedua: berkas singgah Receipt Sales.
+  //
+  // Berkas di bucket itu semestinya hidup beberapa detik saja — diunggah,
+  // dibaca, lalu dihapus pada permintaan yang sama. Sapuan ini hanya jaring
+  // pengaman untuk permintaan yang mati di tengah jalan, dan karena itu
+  // ambangnya jam, bukan hari.
+  const temp = await sweepTempReceipts(admin);
+
+  return NextResponse.json({
+    ok: true,
+    bucket: BUCKET,
+    retentionDays: RETENTION_DAYS,
+    deleted,
+    receiptTempDeleted: temp,
+  });
+}
+
+const TEMP_BUCKET = "receipt-temp";
+const TEMP_MAX_AGE_HOURS = 1;
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function sweepTempReceipts(admin: any): Promise<number> {
+  const cutoff = new Date(Date.now() - TEMP_MAX_AGE_HOURS * 3_600_000).toISOString();
+  try {
+    const { data, error } = await admin
+      .schema("storage")
+      .from("objects")
+      .select("name")
+      .eq("bucket_id", TEMP_BUCKET)
+      .lt("created_at", cutoff)
+      .limit(BATCH);
+    if (error) return 0;
+    const names = (data ?? []).map((r: { name: string }) => String(r.name));
+    if (!names.length) return 0;
+    const { error: rmErr } = await admin.storage.from(TEMP_BUCKET).remove(names);
+    return rmErr ? 0 : names.length;
+  } catch {
+    // Pembersihan tambahan tidak boleh menggagalkan pembersihan utama.
+    return 0;
+  }
 }

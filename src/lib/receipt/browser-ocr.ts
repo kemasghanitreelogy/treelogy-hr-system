@@ -769,6 +769,11 @@ async function extractImage(
  * dan kartu-kartunya menampilkan tempat kosong — itu pertukaran yang jauh lebih
  * baik daripada menu yang mentok total di perangkat orang.
  */
+/** Body permintaan di platform ini ditolak di atas ±4,5MB (diuji: 4MB lolos,
+ *  6MB ditolak). Di bawah ambang ini berkas dikirim langsung; di atasnya lewat
+ *  bucket singgah, yang tidak punya batas tersebut. */
+const DIRECT_BODY_LIMIT = 4 * 1024 * 1024;
+
 async function extractPdfOnServer(
   file: File,
   startPage: number,
@@ -777,11 +782,24 @@ async function extractPdfOnServer(
 ): Promise<FileResult> {
   onProgress?.({ stage: "server", ...meta });
 
-  const res = await fetch(`/api/receipt-sales/extract?start=${startPage}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/pdf" },
-    body: file,
-  });
+  let res: Response;
+  if (file.size <= DIRECT_BODY_LIMIT) {
+    res = await fetch(`/api/receipt-sales/extract?start=${startPage}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/pdf" },
+      body: file,
+    });
+  } else {
+    // Diunggah dulu ke bucket singgah, lalu server membacanya dari sana dan
+    // menghapusnya pada permintaan yang sama.
+    const { uploadReceiptTemp } = await import("./temp-upload");
+    const path = await uploadReceiptTemp(file);
+    res = await fetch(`/api/receipt-sales/extract?start=${startPage}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(String(data?.error ?? `server_${res.status}`));
 
