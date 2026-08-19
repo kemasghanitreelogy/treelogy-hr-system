@@ -105,6 +105,13 @@ export async function appendSheetRow(
    * berpengaruh. `values` tetap dikirim sebagai cadangan untuk jalur lama.
    */
   record?: Record<string, string | number>,
+  /**
+   * Kunci unik pengajuan. Dikirim ke Apps Script supaya SKRIPNYA bisa menolak
+   * menulis baris yang kuncinya sudah ada. Ini lapisan terakhir: seandainya
+   * balasan sempat tidak terbaca dan permintaannya diulang, sheet tetap hanya
+   * berisi satu baris.
+   */
+  idempotencyKey?: string,
 ): Promise<SheetResult> {
   const mode = sheetsMode();
   if (mode === "none") return { ok: false, reason: "not_configured" };
@@ -126,7 +133,7 @@ export async function appendSheetRow(
       const res = await fetch(WEBHOOK_URL!, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret: WEBHOOK_SECRET, values }),
+        body: JSON.stringify({ secret: WEBHOOK_SECRET, values, key: idempotencyKey }),
       });
       if (!res.ok) return { ok: false, reason: `webhook_${res.status}` };
       const text = (await res.text()).slice(0, 200);

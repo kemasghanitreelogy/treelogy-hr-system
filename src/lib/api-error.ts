@@ -64,6 +64,8 @@ const MESSAGES: Record<string, Msg> = {
   reason_required: { id: "Alasan penolakan wajib diisi.", en: "A rejection reason is required." },
 
   // --- pengajuan pembayaran ---
+  sedang_dikirim: { id: "Baris ini sedang dikirim ke sheet — tunggu sebentar.", en: "This row is being written to the sheet — hold on." },
+  claim_failed: { id: "Tidak bisa mengunci baris ini untuk dikirim. Coba lagi.", en: "Couldn't lock this row for sending. Try again." },
   already_synced: { id: "Pengajuan ini sudah masuk Google Sheet — tidak dikirim ulang agar tidak dobel.", en: "Already written to the Google Sheet — not resent, to avoid a duplicate row." },
   department_required: { id: "Departemen wajib dipilih.", en: "Department is required." },
   description_required: { id: "Deskripsi wajib diisi.", en: "Description is required." },

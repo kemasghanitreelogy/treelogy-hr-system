@@ -347,7 +347,9 @@ export type PaymentKind =
 export type PaymentFlow = "biasa" | "dinas";
 
 /** Status penyalinan baris ke Google Sheet keuangan — bukan status persetujuan. */
-export type SheetSyncStatus = "pending" | "synced" | "failed";
+/** "sending" = giliran penulisan sedang dipegang satu permintaan; lihat
+ *  ambilGiliranSheet() — statusnya sementara, hanya beberapa detik. */
+export type SheetSyncStatus = "pending" | "synced" | "failed" | "sending";
 
 /**
  * Status persetujuan. Pengajuan pembayaran TIDAK memakai antrean persetujuan

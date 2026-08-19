@@ -256,13 +256,18 @@ export async function PATCH(request: Request) {
   if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   // Penjaga anti-duplikat: baris yang sudah masuk sheet tidak dikirim lagi.
+  //
+  // Barisnya IKUT dikembalikan, bukan hanya kode kesalahan. Layar yang meminta
+  // kirim-ulang biasanya sedang menampilkan keadaan lama — kalau jawabannya cuma
+  // "sudah masuk", tandanya tetap merah dan orangnya menekan lagi dan lagi.
+  // Dengan mengirim barisnya, tampilannya langsung ikut terkoreksi.
   if (row.sheet_status === "synced") {
-    return NextResponse.json({ error: "already_synced" }, { status: 400 });
+    return NextResponse.json({ error: "already_synced", request: mapPaymentRequest(row) }, { status: 409 });
   }
   // Jalur dinas baru boleh masuk sheet setelah persetujuan akhir.
   const current = mapPaymentRequest(row);
   if (!eligibleForSheet(current)) {
-    return NextResponse.json({ error: "not_ops_approved" }, { status: 400 });
+    return NextResponse.json({ error: "not_ops_approved", request: current }, { status: 400 });
   }
 
   const result = await salinKeSheet(current, new URL(request.url).origin);

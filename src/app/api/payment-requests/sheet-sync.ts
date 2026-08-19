@@ -58,8 +58,8 @@ export async function catatStatusSheet(
   result: { ok: true } | { ok: false; reason: string },
 ): Promise<{ tercatat: boolean; alasan?: string }> {
   const patch = result.ok
-    ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null }
-    : { sheet_status: "failed", sheet_error: result.reason };
+    ? { sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null, sheet_claimed_at: null }
+    : { sheet_status: "failed", sheet_error: result.reason, sheet_claimed_at: null };
 
   const admin = createAdminClient();
   if (!admin) return { tercatat: false, alasan: "admin_client_unavailable" };
@@ -69,10 +69,80 @@ export async function catatStatusSheet(
   return { tercatat: true };
 }
 
-/** Salin satu pengajuan ke sheet lalu catat hasilnya. */
-export async function salinKeSheet(req: PaymentRequest, origin: string) {
+/** Giliran yang menggantung dilepas setelah ini (server mati di tengah kirim). */
+const CLAIM_STALE_MS = 2 * 60 * 1000;
+
+/**
+ * Ambil giliran menulis satu pengajuan ke sheet — satu operasi tunggal di
+ * database, bukan "baca lalu tulis".
+ *
+ * Ini penjaga anti-duplikat yang sebenarnya. Pemeriksaan sebelumnya (baca
+ * status, lalu kirim) bisa dilewati dua permintaan yang datang bersamaan:
+ * keduanya membaca "belum masuk sheet", keduanya mengirim, dan sheet keuangan
+ * mendapat dua baris identik. Di sini penanda 'sending' dipasang lewat UPDATE
+ * bersyarat: hanya satu permintaan yang mendapat barisnya kembali, sisanya
+ * mendapat nol baris dan berhenti tanpa mengirim apa pun.
+ */
+export async function ambilGiliranSheet(id: string): Promise<"ok" | "sedang_dikirim" | "sudah_masuk" | "gagal"> {
+  const admin = createAdminClient();
+  if (!admin) return "gagal";
+
+  const stale = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
+  const { data, error } = await admin
+    .from("payment_requests")
+    .update({ sheet_status: "sending", sheet_claimed_at: new Date().toISOString() })
+    .eq("id", id)
+    .neq("sheet_status", "synced")
+    // Baris yang sedang dikirim orang lain hanya boleh direbut kalau
+    // gilirannya sudah menggantung terlalu lama.
+    .or(`sheet_status.neq.sending,sheet_claimed_at.lt.${stale}`)
+    .select("id");
+
+  if (error) return "gagal";
+  if (data && data.length > 0) return "ok";
+
+  // Tidak dapat giliran: cari tahu kenapa, supaya pesannya tepat.
+  const { data: row } = await admin
+    .from("payment_requests")
+    .select("sheet_status")
+    .eq("id", id)
+    .maybeSingle();
+  if (row?.sheet_status === "synced") return "sudah_masuk";
+  if (row?.sheet_status === "sending") return "sedang_dikirim";
+  return "gagal";
+}
+
+/** Lepaskan giliran tanpa mengirim (mis. syarat lain tidak terpenuhi). */
+export async function lepasGiliranSheet(id: string) {
+  const admin = createAdminClient();
+  if (!admin) return;
+  await admin
+    .from("payment_requests")
+    .update({ sheet_status: "pending", sheet_claimed_at: null })
+    .eq("id", id)
+    .eq("sheet_status", "sending");
+}
+
+/**
+ * Salin satu pengajuan ke sheet lalu catat hasilnya.
+ *
+ * `sudahDiambil` dipakai pemanggil yang sudah memegang giliran (lihat
+ * ambilGiliranSheet) supaya tidak mengambilnya dua kali.
+ */
+export async function salinKeSheet(
+  req: PaymentRequest,
+  origin: string,
+  sudahDiambil = false,
+) {
+  if (!sudahDiambil) {
+    const giliran = await ambilGiliranSheet(req.id);
+    if (giliran === "sudah_masuk") return { ok: true as const };
+    if (giliran !== "ok") {
+      return { ok: false as const, reason: giliran === "sedang_dikirim" ? "sedang_dikirim" : "claim_failed" };
+    }
+  }
   const { values, record } = sheetValues(req, origin);
-  const result = await appendSheetRow(values, record);
+  const result = await appendSheetRow(values, record, req.id);
   await catatStatusSheet(req.id, result);
   return result;
 }

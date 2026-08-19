@@ -40,6 +40,7 @@ const STR: Record<Locale, Record<string, any>> = {
     colRequest: "Pengajuan", colDept: "Departemen", colAmount: "Nominal", colSheet: "Google Sheet",
     synced: "Masuk sheet", failed: "Belum masuk sheet",
     retry: "Kirim ulang ke sheet", retried: "Berhasil masuk Google Sheet ✓",
+    alreadyInSheet: "Ternyata sudah masuk sheet — tampilan diperbarui ✓",
     retryAll: "Kirim ulang semua", retryingAll: "Mengirim ulang…",
     retryAllDone: (ok: number, n: number) => `${ok} dari ${n} baris masuk sheet ✓`,
     retryAllFail: "Belum ada yang berhasil masuk sheet — periksa koneksi sheet.",
@@ -80,6 +81,7 @@ const STR: Record<Locale, Record<string, any>> = {
     colRequest: "Request", colDept: "Department", colAmount: "Amount", colSheet: "Google Sheet",
     synced: "In sheet", failed: "Not in sheet",
     retry: "Resend to sheet", retried: "Written to Google Sheet ✓",
+    alreadyInSheet: "It was already in the sheet — the view has caught up ✓",
     retryAll: "Resend all", retryingAll: "Resending…",
     retryAllDone: (ok: number, n: number) => `${ok} of ${n} rows written to the sheet ✓`,
     retryAllFail: "None made it into the sheet — check the sheet connection.",
@@ -258,8 +260,15 @@ export function PaymentView({
         return;
       }
       setList((cur) => cur.map((x) => (x.id === r.id ? (data.request as PaymentRequest) : x)));
-      if (data.ok) toast.success(t.retried);
-      else toast.error(`${t.createdSheetFail} ${data.reason ?? ""}`.trim());
+      if (data.error === "already_synced") {
+        // Layarnya yang tertinggal, bukan datanya. Barisnya sudah ikut
+        // diperbarui di atas, jadi tandanya berubah hijau saat itu juga.
+        toast.success(t.alreadyInSheet);
+      } else if (data.ok) {
+        toast.success(t.retried);
+      } else {
+        toast.error(`${t.createdSheetFail} ${data.reason ?? ""}`.trim());
+      }
       router.refresh();
     } catch {
       toast.error(t.connection);
@@ -290,7 +299,9 @@ export function PaymentView({
           if (data.request) {
             const saved = data.request as PaymentRequest;
             setList((cur) => cur.map((x) => (x.id === saved.id ? saved : x)));
-            if (data.ok) ok++;
+            // "Sudah masuk sheet" bukan kegagalan — barisnya memang sudah ada
+            // di sana, dan layar inilah yang baru saja menyusul kebenarannya.
+            if (data.ok || data.error === "already_synced") ok++;
           }
         } catch {
           /* lanjut ke baris berikutnya — satu gagal tidak menghentikan sisanya */
