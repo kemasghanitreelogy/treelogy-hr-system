@@ -52,6 +52,9 @@ const STR: Record<Locale, Record<string, string>> = {
     stageEngine: "Memuat mesin OCR…",
     stagePages: "Membaca label",
     stageOcr: "Mengubah gambar jadi teks",
+    stageServer: "Perangkat ini tidak sanggup — dibacakan di server…",
+    serverUsed:
+      "Perangkat ini tidak bisa membaca PDF sendiri, jadi berkasnya dibacakan di server. Hasilnya sama; pratinjau labelnya saja yang tidak tersedia.",
     modeText: "halaman teks langsung",
     modeOcr: "halaman gambar (OCR)",
     stageMatch: "Mencocokkan order Shopify…",
@@ -63,6 +66,7 @@ const STR: Record<Locale, Record<string, string>> = {
     xlsx: "Unduh Excel",
     csv: "Unduh CSV",
     exported: "Berkas terunduh.",
+    xlsxFailed: "Gagal membuat berkas Excel di perangkat ini — coba Unduh CSV.",
     nothingToExport: "Belum ada data untuk diunduh.",
     unsupported: "Pilih berkas PDF atau gambar (JPG/PNG/WebP).",
     failed: "Gagal membaca berkas. Pastikan berkasnya label pengiriman yang jelas.",
@@ -103,6 +107,9 @@ const STR: Record<Locale, Record<string, string>> = {
     stageEngine: "Loading the OCR engine…",
     stagePages: "Reading labels",
     stageOcr: "Converting images to text",
+    stageServer: "This device can't read it — reading on the server…",
+    serverUsed:
+      "This device can't read PDFs on its own, so the file was read on the server. Same results; only the label previews are unavailable.",
     modeText: "pages read as text",
     modeOcr: "image pages (OCR)",
     stageMatch: "Matching Shopify orders…",
@@ -114,6 +121,7 @@ const STR: Record<Locale, Record<string, string>> = {
     xlsx: "Download Excel",
     csv: "Download CSV",
     exported: "File downloaded.",
+    xlsxFailed: "Couldn't build the Excel file on this device — try Download CSV.",
     nothingToExport: "Nothing to download yet.",
     unsupported: "Choose a PDF or an image (JPG/PNG/WebP).",
     failed: "Couldn't read that file. Make sure it's a clear shipping label.",
@@ -250,7 +258,7 @@ export function ReceiptSalesView() {
         }).catch(() => null);
       };
 
-      const { visuals, rows, failures, textPages, ocrPages, images: store } = await extractFromFiles(
+      const { visuals, rows, failures, textPages, ocrPages, usedServer, images: store } = await extractFromFiles(
         files,
         setProgress,
         (row) => warm(normalizeShipDate(row.ship_date) || new Date().toISOString().slice(0, 10)),
@@ -261,7 +269,17 @@ export function ReceiptSalesView() {
       // Kegagalan per berkas dilaporkan lengkap dengan sebabnya — pesan umum
       // "berkasnya tidak jelas" pernah menyembunyikan kegagalan yang sebenarnya
       // berasal dari browser lama, dan tidak ada yang bisa menindaklanjutinya.
-      for (const f of failures) toast.error(`${t.failedFile} ${f.file} — ${f.reason}`);
+      for (const f of failures) {
+        // Sebab bisa berupa kode mesin dari server ("needs_ocr") atau pesan
+        // bebas dari pustaka. Yang pertama diterjemahkan jadi kalimat yang bisa
+        // ditindaklanjuti; yang kedua ditampilkan apa adanya karena justru
+        // isinya yang dibutuhkan untuk menelusuri masalah.
+        const kode = /^[a-z0-9_]+$/.test(f.reason);
+        toast.error(`${t.failedFile} ${f.file} — ${kode ? apiErrorMessage(f.reason, locale) : f.reason}`);
+      }
+      // Berkas yang terpaksa dibaca di server: pengguna berhak tahu, karena
+      // janji "berkas tidak meninggalkan perangkat" tidak berlaku untuk itu.
+      if (usedServer) toast.toast(t.serverUsed, "info");
       if (!visuals.length) {
         toast.error(t.noPages);
         return;
@@ -401,8 +419,10 @@ export function ReceiptSalesView() {
       if (kind === "xlsx") await exportReceiptXlsx(exportRows, locale);
       else exportReceiptCsv(exportRows, locale);
       toast.success(t.exported);
-    } catch {
-      toast.error(t.connection);
+    } catch (e) {
+      // Pembuatan XLSX memuat pustaka tersendiri; CSV tidak butuh apa-apa.
+      // Jadi kegagalan di sini selalu punya jalan keluar yang bisa disebutkan.
+      toast.error(kind === "xlsx" ? t.xlsxFailed : describeError(e));
     }
   }
 
@@ -414,9 +434,11 @@ export function ReceiptSalesView() {
       ? t.stageCompress
       : progress.stage === "engine"
         ? t.stageEngine
-        : progress.stage === "match"
-          ? t.stageMatch
-          : `${progress.fast === false ? t.stageOcr : t.stagePages} ${progress.page}/${progress.total}`;
+        : progress.stage === "server"
+          ? t.stageServer
+          : progress.stage === "match"
+            ? t.stageMatch
+            : `${progress.fast === false ? t.stageOcr : t.stagePages} ${progress.page}/${progress.total}`;
 
   /**
    * Kemajuan keseluruhan 0–1. Jumlah halaman seluruh antrean baru diketahui

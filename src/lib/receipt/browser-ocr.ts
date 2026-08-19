@@ -23,14 +23,14 @@
  * sementara jalur OCR memakan beberapa menit untuk jumlah halaman yang sama.
  */
 
-import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
-import { createScheduler, createWorker, type Scheduler } from "tesseract.js";
+import type { Scheduler } from "tesseract.js";
 import { compressImageBlob } from "@/lib/image";
 import { AWB_RE, type PageVisual } from "./label-core";
 import { parseLabelFields, type ParsedRow } from "./local-extract";
+import { hasUsableTextLayer, linesFromTextContent } from "./pdf-text";
 
 export interface OcrProgress {
-  stage: "compress" | "engine" | "pages" | "match";
+  stage: "compress" | "engine" | "pages" | "match" | "server";
   page?: number;
   total?: number;
   file?: string;
@@ -40,16 +40,41 @@ export interface OcrProgress {
   fast?: boolean;
 }
 
-// Binary wasm zxing di-host sendiri dari /public (bawaannya menarik dari CDN
-// jsDelivr). Pembacaan barcode-lah yang membuat nomor resi eksak — jangan
-// gantungkan pada jaringan pihak ketiga yang bisa diblokir jaringan kantor.
-// Disalin ulang tiap `npm install` lewat script postinstall.
-prepareZXingModule({
-  overrides: {
-    locateFile: (path: string, prefix: string) =>
-      path.endsWith(".wasm") ? "/zxing_reader.wasm" : prefix + path,
-  },
-});
+/**
+ * Pembaca barcode dimuat saat pertama dibutuhkan, dan boleh gagal.
+ *
+ * Dulu modul ini di-import statis: satu browser yang tidak sanggup memuatnya
+ * membuat SELURUH halaman tidak bisa dibuka, padahal barcode hanyalah saksi
+ * kedua — label digital sudah membawa nomor resinya sebagai teks. Sekarang
+ * kegagalannya hanya berarti "tanpa barcode", bukan menu yang mati.
+ *
+ * Binary wasm-nya di-host sendiri dari /public (bawaannya menarik dari CDN
+ * jsDelivr) supaya pembacaan resi tidak bergantung pada jaringan pihak ketiga
+ * yang bisa diblokir jaringan kantor.
+ */
+type ZxingModule = typeof import("zxing-wasm/reader");
+let zxingPromise: Promise<ZxingModule | null> | null = null;
+
+function getZxing(): Promise<ZxingModule | null> {
+  if (!zxingPromise) {
+    zxingPromise = import("zxing-wasm/reader")
+      .then((m) => {
+        try {
+          m.prepareZXingModule({
+            overrides: {
+              locateFile: (path: string, prefix: string) =>
+                path.endsWith(".wasm") ? "/zxing_reader.wasm" : prefix + path,
+            },
+          });
+        } catch {
+          /* biarkan memakai lokasi bawaannya */
+        }
+        return m;
+      })
+      .catch(() => null);
+  }
+  return zxingPromise;
+}
 
 /**
  * pdf.js memanggil `Promise.withResolvers`, yang baru ada di Safari/iOS 17.4.
@@ -132,9 +157,6 @@ const BARCODE_DPI = 400;
 const OCR_DPI = 200;
 /** Lebar pratinjau di kartu review. */
 const THUMB_W = 480;
-/** Sebuah halaman dianggap punya lapisan teks yang layak kalau sebanyak ini
- *  karakter terbaca DAN ada penanda label di dalamnya. */
-const TEXT_LAYER_MIN_CHARS = 80;
 /** Berapa halaman dikerjakan bersamaan di jalur teks. Render tetap di main
  *  thread, jadi angka besar tidak menolong dan hanya menambah beban memori. */
 const TEXT_LANE_CONCURRENCY = 3;
@@ -150,9 +172,11 @@ function toAwb(raw: string): string {
 }
 
 async function decodeCanvas(canvas: HTMLCanvasElement): Promise<string[]> {
-  const ctx = canvas.getContext("2d")!;
+  const zxing = await getZxing();
+  const ctx = canvas.getContext("2d");
+  if (!zxing || !ctx) return [];
   try {
-    const res = await readBarcodes(ctx.getImageData(0, 0, canvas.width, canvas.height), {
+    const res = await zxing.readBarcodes(ctx.getImageData(0, 0, canvas.width, canvas.height), {
       formats: ["Code128", "Code39", "ITF", "QRCode", "DataMatrix"],
       tryHarder: true,
       maxNumberOfSymbols: 20,
@@ -223,41 +247,6 @@ function thumbnailOf(canvas: HTMLCanvasElement): string {
   return tc.toDataURL("image/jpeg", 0.72);
 }
 
-/* ══════════════════════ lapisan teks PDF ══════════════════════ */
-
-/**
- * Susun ulang baris dari item teks pdf.js.
- *
- * pdf.js mengembalikan potongan teks beserta posisinya, tanpa baris. Parser
- * label bekerja per baris ("Penerima: NAMA ****1234" lalu alamat di bawahnya),
- * jadi potongan dengan posisi Y yang sama digabung jadi satu baris dan diurutkan
- * kiri→kanan. Tanpa ini, nama dan alamat bisa tertukar urutannya.
- */
-function linesFromTextContent(tc: any, tolerance = 2): string[] {
-  const rows: { y: number; parts: { x: number; str: string }[] }[] = [];
-  for (const it of tc.items ?? []) {
-    const str: string = it.str ?? "";
-    if (!str.trim()) continue;
-    const y: number = it.transform[5];
-    const x: number = it.transform[4];
-    let row = rows.find((r) => Math.abs(r.y - y) <= tolerance);
-    if (!row) {
-      row = { y, parts: [] };
-      rows.push(row);
-    }
-    row.parts.push({ x, str });
-  }
-  rows.sort((a, b) => b.y - a.y);
-  return rows.map((r) =>
-    r.parts.sort((a, b) => a.x - b.x).map((p) => p.str).join(" ").replace(/\s+/g, " ").trim(),
-  );
-}
-
-function hasUsableTextLayer(lines: string[]): boolean {
-  const flat = lines.join(" ");
-  return flat.length >= TEXT_LAYER_MIN_CHARS && /penerima|pengirim/i.test(flat);
-}
-
 /* ══════════════════════ kumpulan worker OCR ══════════════════════ */
 
 /**
@@ -280,6 +269,10 @@ async function getScheduler(): Promise<Scheduler> {
       // Sisakan satu inti untuk UI supaya halaman tidak membeku saat memproses.
       const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
       const n = Math.max(1, Math.min(4, cores - 1));
+      // Import dinamis: mesin OCR baru diunduh & diurai kalau memang ada
+      // halaman gambar. Batch PDF digital tidak boleh membayar ongkosnya —
+      // maupun ikut gagal kalau browsernya tidak sanggup memuatnya.
+      const { createScheduler, createWorker } = await import("tesseract.js");
       const scheduler = createScheduler();
       const workers = await Promise.all(Array.from({ length: n }, () => createWorker("ind+eng")));
       for (const w of workers) scheduler.addWorker(w);
@@ -575,6 +568,7 @@ async function extractPdf(
   const pdfjs = await getPdfjs();
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const total: number = pdf.numPages;
+  if (!total) throw new Error("pdf_no_pages");
   const visuals: PageVisual[] = new Array(total);
   const rows: ParsedRow[] = new Array(total);
   let done = 0;
@@ -641,7 +635,14 @@ async function extractPdf(
       ocrPages++;
       const canvas = await renderPage(page, BARCODE_DPI);
       barcodes = await decodePage(canvas);
-      text = await ocrText(downscale(canvas, OCR_DPI / BARCODE_DPI));
+      try {
+        text = await ocrText(downscale(canvas, OCR_DPI / BARCODE_DPI));
+      } catch {
+        // Mesin OCR gagal dimuat/berjalan. Nomor resi dari barcode sudah di
+        // tangan dan itu bagian terpentingnya — jangan ikut dibuang hanya
+        // karena teks tambahannya tidak terbaca.
+        text = "";
+      }
       // Gambarnya sudah ada di tangan — pratinjaunya diambil sekarang saja.
       images.put(globalPage, thumbnailOf(canvas));
       releaseCanvas(canvas);
@@ -659,6 +660,26 @@ async function extractPdf(
     onProgress?.({ stage: "pages", page: done, total, fast: useText, ...meta });
   };
 
+  /** Halaman yang gagal dibaca; dicatat agar tetap muncul dan bisa diperiksa. */
+  const brokenPages: number[] = [];
+
+  const safeHandlePage = async (n: number, verifyBarcode: boolean) => {
+    try {
+      await handlePage(n, verifyBarcode);
+    } catch (e) {
+      // Satu halaman rusak tidak boleh membatalkan berkas berisi ratusan
+      // halaman lain. Halaman itu tetap muncul sebagai kartu kosong yang
+      // ditandai perlu diperiksa, lengkap dengan alasannya.
+      brokenPages.push(n);
+      const i = n - 1;
+      visuals[i] = visualOf(startPage + i, { file: file.name, pageInFile: n }, [], null, "ocr");
+      rows[i] = parseLabelFields("", startPage + i);
+      done++;
+      onProgress?.({ stage: "pages", page: done, total, ...meta });
+      if (brokenPages.length === 1) console.warn("[receipt] halaman gagal dibaca:", n, e);
+    }
+  };
+
   try {
     const pages = Array.from({ length: total }, (_, i) => i + 1);
     const head = pages.slice(0, SPOT_CHECK_PAGES);
@@ -667,7 +688,7 @@ async function extractPdf(
     // Gelombang pertama selalu memverifikasi barcode — dan dijalankan satu per
     // satu, karena render 400 dpi adalah puncak pemakaian memori. Di ponsel,
     // tiga render sekaligus cukup untuk membuat halaman dihentikan browser.
-    await mapLimit(head, 1, (n) => handlePage(n, true));
+    await mapLimit(head, 1, (n) => safeHandlePage(n, true));
 
     /**
      * Kalau setiap halaman uji petik menunjukkan barcode yang sama persis dengan
@@ -678,7 +699,7 @@ async function extractPdf(
      * seluruh sisa berkas diverifikasi seperti semula.
      */
     const trustText = spotChecked > 0 && spotAgree === spotChecked;
-    await mapLimit(tail, TEXT_LANE_CONCURRENCY, (n) => handlePage(n, !trustText));
+    await mapLimit(tail, TEXT_LANE_CONCURRENCY, (n) => safeHandlePage(n, !trustText));
   } catch (e) {
     // Dokumen hanya ditutup saat gagal; kalau sukses ia tetap dibuka supaya
     // pratinjau bisa dirender belakangan (ditutup lewat images.dispose()).
@@ -688,6 +709,17 @@ async function extractPdf(
       /* abaikan */
     }
     throw e;
+  }
+
+  // Semua halaman gagal → berkas ini memang tidak terbaca di perangkat ini.
+  // Dilempar supaya pemanggilnya bisa mencoba jalan kedua (baca di server).
+  if (total > 0 && brokenPages.length === total) {
+    try {
+      if (typeof pdf.destroy === "function") await pdf.destroy();
+    } catch {
+      /* abaikan */
+    }
+    throw new Error("local_pdf_unreadable");
   }
 
   images.keepDoc(file.name, pdf);
@@ -729,6 +761,46 @@ async function extractImage(
   };
 }
 
+/**
+ * Jalan kedua — berkas dibaca di server saat perangkat ini tidak sanggup.
+ *
+ * Hanya dipakai setelah pembacaan lokal gagal. Yang didapat kembali adalah
+ * isian teks per halaman; pratinjau tidak ada (server tidak merender gambar),
+ * dan kartu-kartunya menampilkan tempat kosong — itu pertukaran yang jauh lebih
+ * baik daripada menu yang mentok total di perangkat orang.
+ */
+async function extractPdfOnServer(
+  file: File,
+  startPage: number,
+  onProgress: ((p: OcrProgress) => void) | undefined,
+  meta: { file: string; fileIndex?: number; fileCount?: number },
+): Promise<FileResult> {
+  onProgress?.({ stage: "server", ...meta });
+
+  const res = await fetch(`/api/receipt-sales/extract?start=${startPage}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: file,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(String(data?.error ?? `server_${res.status}`));
+
+  const rows: ParsedRow[] = data.rows ?? [];
+  const awbs: (string | null)[] = data.awbs ?? [];
+  const visuals: PageVisual[] = rows.map((row, i) =>
+    visualOf(
+      startPage + i,
+      { file: file.name, pageInFile: i + 1 },
+      [],
+      awbs[i] ?? null,
+      awbs[i] ? "text" : "ocr",
+    ),
+  );
+
+  onProgress?.({ stage: "pages", page: rows.length, total: rows.length, fast: true, ...meta });
+  return { visuals, rows, textPages: data.textPages ?? 0, ocrPages: 0 };
+}
+
 export interface FileFailure {
   file: string;
   /** Pesan asli dari pustaka — ditampilkan apa adanya supaya bisa didiagnosis. */
@@ -744,6 +816,8 @@ export interface ExtractOutcome {
   textPages: number;
   /** Halaman gambar yang harus diubah jadi teks lewat OCR. */
   ocrPages: number;
+  /** true kalau ada berkas yang terpaksa dibaca di server (perangkat tak sanggup). */
+  usedServer: boolean;
   /** Sumber pratinjau; panggil dispose() saat batch diganti atau layar ditutup. */
   images: PageImageStore;
 }
@@ -765,9 +839,13 @@ export async function extractFromFiles(
   const rows: ParsedRow[] = [];
   const images = new LazyPageImages();
   const failures: FileFailure[] = [];
+  /** Sekali PDF gagal dibaca di perangkat ini, berkas berikutnya langsung
+   *  lewat server — tidak perlu menunggu kegagalan yang sama berulang kali. */
+  let localPdfBroken = false;
+  let usedServer = false;
   let textPages = 0;
   let ocrPages = 0;
-  if (!files.length) return { visuals, rows, failures, textPages, ocrPages, images };
+  if (!files.length) return { visuals, rows, failures, textPages, ocrPages, usedServer, images };
 
   try {
     let nextPage = 1;
@@ -783,14 +861,33 @@ export async function extractFromFiles(
       };
       let res;
       try {
-        res = isImage
-          ? await extractImage(file, nextPage, images, onProgress, meta)
-          : await extractPdf(file, nextPage, images, onProgress, first, meta);
+        if (isImage) {
+          res = await extractImage(file, nextPage, images, onProgress, meta);
+        } else if (localPdfBroken) {
+          // Berkas sebelumnya sudah membuktikan perangkat ini tidak sanggup
+          // membaca PDF; jangan diulangi lagi dari awal untuk tiap berkas.
+          res = await extractPdfOnServer(file, nextPage, onProgress, meta);
+          usedServer = true;
+        } else {
+          res = await extractPdf(file, nextPage, images, onProgress, first, meta);
+        }
       } catch (e) {
-        // Satu berkas rusak/tidak didukung tidak boleh membuang hasil berkas
-        // lain yang sudah terbaca. Alasannya dibawa keluar apa adanya.
-        failures.push({ file: file.name, reason: describeError(e) });
-        continue;
+        const reason = describeError(e);
+        // Pembacaan lokal gagal. Untuk PDF masih ada jalan kedua: bacakan di
+        // server. Berkas gambar tidak punya jalan kedua — pembacaannya
+        // membutuhkan OCR yang memang hanya bisa jalan di perangkat.
+        if (isImage) {
+          failures.push({ file: file.name, reason });
+          continue;
+        }
+        try {
+          res = await extractPdfOnServer(file, nextPage, onProgress, meta);
+          localPdfBroken = true;
+          usedServer = true;
+        } catch (e2) {
+          failures.push({ file: file.name, reason: `${reason} · ${describeError(e2)}` });
+          continue;
+        }
       }
 
       visuals.push(...res.visuals);
@@ -803,5 +900,5 @@ export async function extractFromFiles(
     // Worker OCR hanya hidup kalau tadi memang dipakai.
     await disposeScheduler();
   }
-  return { visuals, rows, failures, textPages, ocrPages, images };
+  return { visuals, rows, failures, textPages, ocrPages, usedServer, images };
 }

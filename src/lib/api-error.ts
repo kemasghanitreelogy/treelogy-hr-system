@@ -113,6 +113,10 @@ const MESSAGES: Record<string, Msg> = {
   upload_failed: { id: "Gagal mengunggah file. Coba lagi.", en: "Failed to upload the file. Try again." },
 
   // --- receipt sales (resi → kurir/AWB/HP) ---
+  pdf_unreadable: { id: "PDF ini tidak bisa dibuka — mungkin rusak atau terkunci kata sandi.", en: "This PDF can't be opened — it may be damaged or password-protected." },
+  pdf_no_pages: { id: "PDF ini tidak berisi halaman apa pun.", en: "This PDF has no pages." },
+  needs_ocr: { id: "Halaman berkas ini berupa gambar. Pembacaannya perlu perangkat yang lebih baru — coba dari komputer.", en: "This file's pages are images. Reading them needs a newer device — try from a computer." },
+  local_pdf_unreadable: { id: "Perangkat ini tidak bisa membaca PDF tersebut.", en: "This device couldn't read that PDF." },
   too_many_pages: { id: "Terlalu banyak halaman sekaligus. Pecah berkasnya.", en: "Too many pages at once. Split the file." },
   shopify_failed: { id: "Gagal menghubungi Shopify. Coba lagi.", en: "Couldn't reach Shopify. Try again." },
   jubelio_login_failed: { id: "Gagal masuk ke Jubelio — periksa kredensial API-nya.", en: "Jubelio login failed — check the API credentials." },
