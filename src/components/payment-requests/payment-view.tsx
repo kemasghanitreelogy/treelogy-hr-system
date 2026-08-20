@@ -267,7 +267,9 @@ export function PaymentView({
       } else if (data.ok) {
         toast.success(t.retried);
       } else {
-        toast.error(`${t.createdSheetFail} ${data.reason ?? ""}`.trim());
+        // Sebab kegagalan diterjemahkan, bukan ditempel mentah. Kode seperti
+        // "claim_failed" tidak berarti apa-apa bagi orang yang membacanya.
+        toast.error(`${t.createdSheetFail} ${apiErrorMessage(data.reason, locale)}`.trim());
       }
       router.refresh();
     } catch {
