@@ -218,3 +218,34 @@ export function flagDuplicateTracking(records: LabelRecord[]): LabelRecord[] {
   }
   return records;
 }
+
+/**
+ * Rapikan nomor HP Indonesia ke bentuk +62.
+ *
+ * Nomor yang ditarik dari Shopify datang dalam bentuk campur: sebagian sudah
+ * "+6281…", sebagian "081…", ada yang memakai spasi, tanda hubung, atau kurung.
+ * Yang mengunduh berkasnya menyalin nomor itu ke WhatsApp dan sistem lain, jadi
+ * satu bentuk yang seragam menghemat pekerjaan merapikan manual — dan mencegah
+ * "0812…" terbaca sebagai angka lalu kehilangan nol depannya.
+ *
+ * Nomor yang jelas bukan Indonesia (mis. +65, +1) dibiarkan apa adanya: memaksa
+ * +62 ke sana akan mengubahnya menjadi nomor yang salah.
+ */
+export function formatPhoneId(raw: string | null | undefined): string {
+  const teks = (raw ?? "").trim();
+  if (!teks) return "";
+
+  const adaPlus = teks.startsWith("+");
+  const digit = teks.replace(/\D/g, "");
+  if (!digit) return "";
+
+  // Sudah internasional dan bukan Indonesia → jangan diutak-atik.
+  if (adaPlus && !digit.startsWith("62")) return "+" + digit;
+
+  if (digit.startsWith("62")) return "+" + digit;
+  if (digit.startsWith("0")) return "+62" + digit.slice(1);
+  // "8123…" — nol depannya hilang saat disalin/diketik.
+  if (digit.startsWith("8")) return "+62" + digit;
+
+  return adaPlus ? "+" + digit : digit;
+}

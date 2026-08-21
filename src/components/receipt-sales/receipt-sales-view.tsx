@@ -6,7 +6,7 @@ import {
   ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
-import { flagDuplicateTracking, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
+import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
 import { extractZip } from "@/lib/receipt/local-extract";
 import {
   ACCEPTED_TYPES, describeError, extractFromFiles, isSupportedLabelFile,
@@ -398,7 +398,9 @@ export function ReceiptSalesView() {
       return {
         awb: (e.tracking_number ?? "").trim(),
         recipientName: (e.recipient_name ?? "").trim(),
-        phone: (e.phone ?? "").trim(),
+        // Diseragamkan ke +62 hanya di sini, bukan di layar: yang diketik
+        // manusia biarkan apa adanya saat mengetik, yang keluar berkas rapi.
+        phone: formatPhoneId(e.phone),
       };
     });
   }, [result, edits]);
