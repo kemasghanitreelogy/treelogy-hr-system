@@ -108,15 +108,83 @@ if (typeof Promise.withResolvers !== "function") {
  * orang lain.
  */
 export function describeError(e: unknown): string {
-  if (!(e instanceof Error)) return String(e);
-  const frame = (e.stack ?? "")
+  return errorDetail(e).message;
+}
+
+export interface ErrorDetail {
+  /** Kalimat singkat untuk ditampilkan. */
+  message: string;
+  /** Baris-baris teknis: jenis error + tempat kejadiannya. */
+  detail: string;
+}
+
+/**
+ * Uraikan sebuah kegagalan selengkap mungkin.
+ *
+ * Pesan pustaka sendirian sering tidak berarti apa-apa ("undefined is not a
+ * function"). Yang menentukan justru JENIS error-nya dan DI BERKAS MANA ia
+ * terjadi — pustaka PDF, pembaca barcode, atau kode aplikasi. Semua itu
+ * dikumpulkan di sini karena kegagalannya terjadi di perangkat orang lain,
+ * yang tidak bisa saya periksa sendiri.
+ */
+export function errorDetail(e: unknown): ErrorDetail {
+  if (!(e instanceof Error)) {
+    const teks = String(e);
+    return { message: teks, detail: `jenis: ${typeof e}\nnilai: ${teks.slice(0, 200)}` };
+  }
+
+  const frames = (e.stack ?? "")
     .split("\n")
     .map((l) => l.trim())
-    .find((l) => l.includes("://"));
-  if (!frame) return e.message;
-  // Safari: "fn@https://host/_next/static/chunks/abc.js:12:34"
-  const m = frame.match(/([^/]+\.(?:m?js|wasm))(?::(\d+))?/);
-  return m ? `${e.message} [${m[1]}${m[2] ? ":" + m[2] : ""}]` : e.message;
+    .filter((l) => l.includes("://"))
+    .slice(0, 3)
+    .map((l) => l.replace(/https?:\/\/[^/]+/, ""));
+
+  const berkas = frames[0]?.match(/([^/\s]+\.(?:m?js|wasm))(?::(\d+))?/);
+  const message = berkas ? `${e.message} [${berkas[1]}${berkas[2] ? ":" + berkas[2] : ""}]` : e.message;
+
+  return {
+    message,
+    detail: [`jenis: ${e.name}`, `pesan: ${e.message}`, ...(frames.length ? ["jejak:", ...frames.map((f) => "  " + f)] : ["jejak: (tidak tersedia)"])].join("\n"),
+  };
+}
+
+/**
+ * Potret kemampuan perangkat & versi pustaka.
+ *
+ * Ikut disalin bersama laporan kegagalan: sebagian besar masalah di sini
+ * ternyata soal browser lama atau salinan berkas yang basi di cache, dan
+ * keduanya hanya terbaca dari angka-angka ini.
+ */
+export async function environmentReport(): Promise<string> {
+  const ada = (nama: string, nilai: unknown) => `${nama}: ${nilai ? "ada" : "TIDAK ADA"}`;
+  const baris: string[] = [];
+  try {
+    baris.push(`browser: ${navigator.userAgent}`);
+    baris.push(`bahasa: ${navigator.language} · inti prosesor: ${navigator.hardwareConcurrency ?? "?"}`);
+    const mem = (navigator as { deviceMemory?: number }).deviceMemory;
+    if (mem) baris.push(`memori perangkat: ~${mem} GB`);
+    baris.push(`aplikasi: ${process.env.NEXT_PUBLIC_COMMIT ?? "(tanpa penanda versi)"}`);
+    baris.push(ada("WebAssembly", typeof WebAssembly !== "undefined"));
+    baris.push(ada("OffscreenCanvas", typeof OffscreenCanvas !== "undefined"));
+    baris.push(ada("createImageBitmap", typeof createImageBitmap !== "undefined"));
+    baris.push(ada("Promise.withResolvers", typeof Promise.withResolvers === "function"));
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      baris.push(`service worker: ${reg ? (navigator.serviceWorker.controller ? "aktif & mengendalikan halaman" : "terdaftar, belum mengendalikan") : "tidak terdaftar"}`);
+    }
+    try {
+      const pdfjs = (await getPdfjs()) as { version?: string };
+      baris.push(`pdf.js: ${pdfjs.version ?? "?"}`);
+    } catch (e) {
+      baris.push(`pdf.js: GAGAL DIMUAT — ${errorDetail(e).message}`);
+    }
+    const zx = await getZxing();
+    baris.push(`pembaca barcode: ${zx ? "termuat" : "GAGAL DIMUAT"}`);
+  } catch (e) {
+    baris.push(`(gagal mengumpulkan sebagian keterangan: ${String(e).slice(0, 120)})`);
+  }
+  return baris.join("\n");
 }
 
 /**
@@ -379,6 +447,11 @@ function downscale(src: HTMLCanvasElement, factor: number): HTMLCanvasElement {
   return c;
 }
 
+/** Catat satu kejadian, dengan batas atas supaya panel tetap terbaca. */
+function diag(daftar: Diagnostic[], d: Diagnostic) {
+  if (daftar.length < 12) daftar.push(d);
+}
+
 /** Jalankan tugas dengan batas berapa yang boleh berjalan bersamaan. */
 async function mapLimit<T, R>(
   items: T[],
@@ -571,6 +644,7 @@ async function extractPdf(
   onProgress: ((p: OcrProgress) => void) | undefined,
   onFirstRow: ((row: ParsedRow) => void) | undefined,
   meta: { file: string; fileIndex?: number; fileCount?: number },
+  diag: Diagnostic[],
 ): Promise<FileResult> {
   const pdfjs = await getPdfjs();
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
@@ -683,7 +757,12 @@ async function extractPdf(
       rows[i] = parseLabelFields("", startPage + i);
       done++;
       onProgress?.({ stage: "pages", page: done, total, ...meta });
-      if (brokenPages.length === 1) console.warn("[receipt] halaman gagal dibaca:", n, e);
+      // Hanya beberapa halaman pertama yang dicatat: kalau seluruh berkas gagal,
+      // 125 catatan yang isinya sama tidak menambah keterangan apa pun.
+      if (brokenPages.length <= 3) {
+        const d = errorDetail(e);
+        diag.push({ tahap: `halaman ${n}`, file: file.name, message: d.message, detail: d.detail });
+      }
     }
   };
 
@@ -840,6 +919,17 @@ export interface ServerFallback {
   reason: string;
 }
 
+/** Satu kejadian yang layak dilaporkan: kegagalan halaman, kegagalan berkas,
+ *  atau perpindahan ke jalan kedua. Dikumpulkan agar pengguna bisa menyalinnya
+ *  utuh — bukan sekilas lewat sebagai notifikasi yang lalu hilang. */
+export interface Diagnostic {
+  /** Tahap saat kejadian: "buka PDF", "halaman 3", "baca di server", … */
+  tahap: string;
+  file: string;
+  message: string;
+  detail: string;
+}
+
 export interface ExtractOutcome {
   visuals: PageVisual[];
   rows: ParsedRow[];
@@ -851,6 +941,8 @@ export interface ExtractOutcome {
   ocrPages: number;
   /** Berkas yang terpaksa dibaca di server, lengkap dengan sebab lokalnya. */
   serverFallbacks: ServerFallback[];
+  /** Semua kejadian teknis selama proses — untuk panel "Detail teknis". */
+  diagnostics: Diagnostic[];
   /** Sumber pratinjau; panggil dispose() saat batch diganti atau layar ditutup. */
   images: PageImageStore;
 }
@@ -872,13 +964,14 @@ export async function extractFromFiles(
   const rows: ParsedRow[] = [];
   const images = new LazyPageImages();
   const failures: FileFailure[] = [];
+  const diagnostics: Diagnostic[] = [];
   /** Sekali PDF gagal dibaca di perangkat ini, berkas berikutnya langsung
    *  lewat server — tidak perlu menunggu kegagalan yang sama berulang kali. */
   let localPdfBroken = false;
   const serverFallbacks: ServerFallback[] = [];
   let textPages = 0;
   let ocrPages = 0;
-  if (!files.length) return { visuals, rows, failures, textPages, ocrPages, serverFallbacks, images };
+  if (!files.length) return { visuals, rows, failures, textPages, ocrPages, serverFallbacks, diagnostics, images };
 
   try {
     let nextPage = 1;
@@ -902,10 +995,12 @@ export async function extractFromFiles(
           res = await extractPdfOnServer(file, nextPage, onProgress, meta);
           serverFallbacks.push({ file: file.name, reason: "perangkat sama seperti berkas sebelumnya" });
         } else {
-          res = await extractPdf(file, nextPage, images, onProgress, first, meta);
+          res = await extractPdf(file, nextPage, images, onProgress, first, meta, diagnostics);
         }
       } catch (e) {
-        const reason = describeError(e);
+        const d = errorDetail(e);
+        const reason = d.message;
+        diag(diagnostics, { tahap: "baca di perangkat", file: file.name, message: d.message, detail: d.detail });
         // Pembacaan lokal gagal. Untuk PDF masih ada jalan kedua: bacakan di
         // server. Berkas gambar tidak punya jalan kedua — pembacaannya
         // membutuhkan OCR yang memang hanya bisa jalan di perangkat.
@@ -918,7 +1013,9 @@ export async function extractFromFiles(
           localPdfBroken = true;
           serverFallbacks.push({ file: file.name, reason });
         } catch (e2) {
-          failures.push({ file: file.name, reason: `${reason} · ${describeError(e2)}` });
+          const d2 = errorDetail(e2);
+          diag(diagnostics, { tahap: "baca di server", file: file.name, message: d2.message, detail: d2.detail });
+          failures.push({ file: file.name, reason: `${reason} · ${d2.message}` });
           continue;
         }
       }
@@ -933,5 +1030,5 @@ export async function extractFromFiles(
     // Worker OCR hanya hidup kalau tadi memang dipakai.
     await disposeScheduler();
   }
-  return { visuals, rows, failures, textPages, ocrPages, serverFallbacks, images };
+  return { visuals, rows, failures, textPages, ocrPages, serverFallbacks, diagnostics, images };
 }

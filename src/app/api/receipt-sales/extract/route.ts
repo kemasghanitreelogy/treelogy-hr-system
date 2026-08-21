@@ -104,8 +104,13 @@ export async function POST(req: Request) {
   let pdf: any;
   try {
     pdf = await openPdf(input.bytes);
-  } catch {
-    return NextResponse.json({ error: "pdf_unreadable" }, { status: 422 });
+  } catch (e) {
+    // Sebabnya ikut dikirim: "tidak bisa dibuka" saja tidak cukup untuk
+    // membedakan berkas rusak, berkas terkunci sandi, dan pustaka yang gagal
+    // dimuat di server — tiga hal dengan tindak lanjut yang sama sekali berbeda.
+    const sebab = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    console.error("[receipt/extract] gagal membuka PDF:", sebab);
+    return NextResponse.json({ error: "pdf_unreadable", detail: sebab.slice(0, 300) }, { status: 422 });
   }
 
   const total: number = Math.min(pdf.numPages, MAX_PAGES);

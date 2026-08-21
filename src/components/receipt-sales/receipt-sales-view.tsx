@@ -9,8 +9,8 @@ import type { LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
 import { extractZip } from "@/lib/receipt/local-extract";
 import {
-  ACCEPTED_TYPES, describeError, extractFromFiles, isSupportedLabelFile,
-  type OcrProgress, type PageImageStore,
+  ACCEPTED_TYPES, errorDetail, extractFromFiles, isSupportedLabelFile,
+  type Diagnostic, type OcrProgress, type PageImageStore,
 } from "@/lib/receipt/browser-ocr";
 import { exportReceiptCsv, exportReceiptXlsx, type ReceiptExportRow } from "@/lib/receipt/receipt-xlsx";
 import type { Locale } from "@/lib/i18n";
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
 import { ALL_FIELDS, ReviewPanel, type Edits } from "./review-panel";
+import { DiagnosticsPanel } from "./diagnostics-panel";
 
 interface MatchResult {
   phone: string | null;
@@ -185,6 +186,9 @@ export function ReceiptSalesView() {
   const [drag, setDrag] = useState(false);
   /** "review" hanya menampilkan kartu yang masih menunggu diperiksa. */
   const [filter, setFilter] = useState<"all" | "review">("all");
+  /** Catatan kejadian teknis; tetap tampil setelah proses selesai supaya bisa
+   *  dibaca dan disalin, bukan sekilas lewat sebagai notifikasi. */
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   /** Dokumen PDF tetap terbuka selama hasilnya ditampilkan, supaya pratinjau
    *  bisa dirender saat kartunya dilihat. Dilepas saat batch diganti/ditutup. */
@@ -243,6 +247,7 @@ export function ReceiptSalesView() {
     setBusy(true);
     setResult(null);
     setProgress(null);
+    setDiagnostics([]);
     const started = Date.now();
     try {
       // 1) OCR sepenuhnya di browser — berkasnya tidak pernah meninggalkan perangkat.
@@ -260,13 +265,14 @@ export function ReceiptSalesView() {
         }).catch(() => null);
       };
 
-      const { visuals, rows, failures, textPages, ocrPages, serverFallbacks, images: store } = await extractFromFiles(
+      const { visuals, rows, failures, textPages, ocrPages, serverFallbacks, diagnostics: catatan, images: store } = await extractFromFiles(
         files,
         setProgress,
         (row) => warm(normalizeShipDate(row.ship_date) || new Date().toISOString().slice(0, 10)),
       );
       imagesRef.current = store;
       setImages(store);
+      setDiagnostics(catatan);
 
       // Kegagalan per berkas dilaporkan lengkap dengan sebabnya — pesan umum
       // "berkasnya tidak jelas" pernah menyembunyikan kegagalan yang sebenarnya
@@ -372,10 +378,12 @@ export function ReceiptSalesView() {
         elapsedMs: Date.now() - started,
       });
     } catch (e) {
-      // Sebabnya ikut ditampilkan: tanpa itu, kegagalan di perangkat orang lain
-      // tidak bisa didiagnosis dari jarak jauh.
-      const sebab = describeError(e);
-      toast.error(`${t.failed} (${sebab})`);
+      // Sebabnya ikut ditampilkan DAN dicatat: notifikasi hilang dalam beberapa
+      // detik, sementara kegagalan di perangkat orang lain baru bisa ditelusuri
+      // kalau keterangannya masih ada saat orangnya sempat membacanya.
+      const d = errorDetail(e);
+      setDiagnostics((cur) => [...cur, { tahap: "proses", file: files.map((f) => f.name).join(", "), message: d.message, detail: d.detail }]);
+      toast.error(`${t.failed} (${d.message})`);
     } finally {
       setBusy(false);
       setProgress(null);
@@ -432,7 +440,7 @@ export function ReceiptSalesView() {
     } catch (e) {
       // Pembuatan XLSX memuat pustaka tersendiri; CSV tidak butuh apa-apa.
       // Jadi kegagalan di sini selalu punya jalan keluar yang bisa disebutkan.
-      toast.error(kind === "xlsx" ? t.xlsxFailed : describeError(e));
+      toast.error(kind === "xlsx" ? t.xlsxFailed : errorDetail(e).message);
     }
   }
 
@@ -624,8 +632,10 @@ export function ReceiptSalesView() {
         )}
       </section>
 
+      <DiagnosticsPanel diagnostics={diagnostics} />
+
       {/* ── Sebelum ada hasil: penjelasan singkat cara kerjanya ── */}
-      {!result && !busy && (
+      {!result && !busy && diagnostics.length === 0 && (
         <section className="rounded-2xl border border-dashed border-line bg-cream/40 px-5 py-8 text-center">
           <PackageSearch className="mx-auto h-8 w-8 text-faint" />
           <p className="mt-2 text-sm font-semibold text-ink">{t.emptyTitle}</p>
