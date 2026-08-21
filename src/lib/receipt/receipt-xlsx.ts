@@ -5,6 +5,7 @@
 // berat, kode order) hanya menambah lebar tanpa dipakai, dan membuat berkasnya
 // sulit ditempel ke sistem lain. Rinciannya tetap ada di layar Periksa hasil.
 import type { Locale } from "../i18n";
+import { saveBlobAsFile } from "../download";
 import { witaToday } from "../utils";
 
 export interface ReceiptExportRow {
@@ -41,15 +42,6 @@ const STR: Record<Locale, Record<string, string>> = {
     rows: "rows",
   },
 };
-
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 /** Unduh rekap sebagai XLSX. Mengembalikan jumlah baris yang diekspor. */
 export async function exportReceiptXlsx(rows: ReceiptExportRow[], locale: Locale): Promise<number> {
@@ -130,7 +122,7 @@ export async function exportReceiptXlsx(rows: ReceiptExportRow[], locale: Locale
   ws.autoFilter = { from: { row: HEAD, column: 1 }, to: { row: HEAD, column: lastCol } };
 
   const buf = await wb.xlsx.writeBuffer();
-  saveBlob(
+  saveBlobAsFile(
     new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `resi-${witaToday()}.xlsx`,
   );
@@ -147,6 +139,6 @@ export function exportReceiptCsv(rows: ReceiptExportRow[], locale: Locale): numb
     ...rows.map((r) => [r.awb, r.recipientName, r.phone].map(esc).join(",")),
   ];
   // BOM supaya Excel membuka UTF-8 dengan benar (nama sering beraksen).
-  saveBlob(new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" }), `resi-${witaToday()}.csv`);
+  saveBlobAsFile(new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" }), `resi-${witaToday()}.csv`);
   return rows.length;
 }

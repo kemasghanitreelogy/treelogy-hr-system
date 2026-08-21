@@ -4,6 +4,7 @@ import type { PaymentFlow, PaymentRequest } from "./types";
 import type { Locale } from "./i18n";
 import { APPROVAL_LABEL, DEPT_LABEL, FLOW_LABEL, KIND_LABEL } from "./payment-request";
 import { witaToday } from "./utils";
+import { saveBlobAsFile } from "./download";
 
 /** Baris + tautan berkas yang sudah ditandatangani server (bisa dibuka siapa pun). */
 export interface PaymentRow extends PaymentRequest {
@@ -320,16 +321,12 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   const blob = new Blob([buf], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
   // Jalur ikut ke nama berkas: mengunduh biasa lalu dinas di hari yang sama
   // tidak boleh menghasilkan dua file bernama sama di folder Unduhan.
   const namaJalur = flow === "all" ? "" : `-${flow}`;
-  a.download = from && to
+  const namaBerkas = from && to
     ? `pengajuan-pembayaran${namaJalur}-${from}_${to}.xlsx`
     : `pengajuan-pembayaran${namaJalur}-semua-${witaToday()}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobAsFile(blob, namaBerkas);
   return rows.length;
 }

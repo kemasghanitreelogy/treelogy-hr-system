@@ -5,6 +5,7 @@ import type { TravelRequest } from "./types";
 import type { Locale } from "./i18n";
 import { TRANSPORT_LABEL } from "./travel";
 import { witaToday } from "./utils";
+import { saveBlobAsFile } from "./download";
 
 export interface TravelXlsxEmp {
   id: string;
@@ -338,13 +339,9 @@ export async function exportTravelXlsx(opts: TravelXlsxOptions): Promise<number>
   const blob = new Blob([buf], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = from && to
+  const namaBerkas = from && to
     ? `perjalanan-dinas-${from}_${to}.xlsx`
     : `perjalanan-dinas-semua-${witaToday()}.xlsx`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobAsFile(blob, namaBerkas);
   return rows.length;
 }

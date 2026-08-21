@@ -6,6 +6,7 @@ import type { AttendanceRecord, AttendanceStatus, Team } from "./types";
 import { TEAM_META } from "./constants";
 import { monthLabel, witaToday } from "./utils";
 import type { Locale } from "./i18n";
+import { saveBlobAsFile } from "./download";
 
 export interface XlsxEmp {
   id: string;
@@ -393,14 +394,10 @@ export async function exportAttendanceXlsx(opts: ExportXlsxOptions): Promise<num
   // ── Unduh ──
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
   const fname = from.slice(0, 7) === to.slice(0, 7)
     ? `rekap-absensi-${from.slice(0, 7)}.xlsx`
     : `rekap-absensi-${from}_${to}.xlsx`;
-  a.download = fname;
-  a.click();
-  URL.revokeObjectURL(url);
+  const namaBerkas = fname;
+  saveBlobAsFile(blob, namaBerkas);
   return employees.length;
 }
