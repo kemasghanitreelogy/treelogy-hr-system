@@ -142,3 +142,26 @@ export function exportReceiptCsv(rows: ReceiptExportRow[], locale: Locale): numb
   saveBlobAsFile(new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" }), `resi-${witaToday()}.csv`);
   return rows.length;
 }
+
+/**
+ * Salin rekap ke papan klip sebagai TSV, siap ditempel ke Google Sheet.
+ *
+ * Ini jalan ketiga, dan untuk sebagian orang justru yang paling langsung:
+ * mengunggah berkas ke Google Drive lewat Safari kerap gagal ("Upload failed")
+ * apa pun format berkasnya — XLSX maupun CSV sama saja, karena yang bermasalah
+ * pengunggahnya, bukan berkasnya. Menempel tidak melewati pengunggah itu sama
+ * sekali: klik satu sel di Sheet, tekan tempel, selesai.
+ *
+ * Pemisah TAB dipilih, bukan koma: Google Sheet membagi kolom dari tab tanpa
+ * bertanya apa pun, sementara teks berkoma memunculkan dialog impor — dan
+ * alamat maupun nama sering memuat koma.
+ */
+export function copyReceiptRows(rows: ReceiptExportRow[], locale: Locale): string {
+  const t = STR[locale];
+  // Tab dan baris baru di dalam sel akan merusak bentuk tabelnya saat ditempel.
+  const bersih = (v: string) => String(v ?? "").replace(/[\t\r\n]+/g, " ").trim();
+  return [
+    [t.awb, t.name, t.phone].join("\t"),
+    ...rows.map((r) => [bersih(r.awb), bersih(r.recipientName), bersih(r.phone)].join("\t")),
+  ].join("\n");
+}

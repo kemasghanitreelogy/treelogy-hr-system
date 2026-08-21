@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
+  CheckCircle2, ClipboardCopy, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
   ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
@@ -12,7 +12,7 @@ import {
   ACCEPTED_TYPES, errorDetail, extractFromFiles, isSupportedLabelFile,
   type Diagnostic, type OcrProgress, type PageImageStore,
 } from "@/lib/receipt/browser-ocr";
-import { exportReceiptCsv, exportReceiptXlsx, type ReceiptExportRow } from "@/lib/receipt/receipt-xlsx";
+import { copyReceiptRows, exportReceiptCsv, exportReceiptXlsx, type ReceiptExportRow } from "@/lib/receipt/receipt-xlsx";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
@@ -67,6 +67,9 @@ const STR: Record<Locale, Record<string, string>> = {
     elapsed: "Waktu",
     xlsx: "Unduh Excel",
     csv: "Unduh CSV",
+    copySheet: "Salin untuk Sheet",
+    copied: "Tersalin ✓ Buka Google Sheet, klik sel A1, lalu tempel (⌘V).",
+    copyFailed: "Tidak bisa menyalin otomatis. Coba Unduh CSV.",
     exported: "Berkas terunduh.",
     xlsxFailed: "Gagal membuat berkas Excel di perangkat ini — coba Unduh CSV.",
     nothingToExport: "Belum ada data untuk diunduh.",
@@ -123,6 +126,9 @@ const STR: Record<Locale, Record<string, string>> = {
     elapsed: "Time",
     xlsx: "Download Excel",
     csv: "Download CSV",
+    copySheet: "Copy for Sheets",
+    copied: "Copied ✓ Open Google Sheets, click cell A1, then paste (⌘V).",
+    copyFailed: "Couldn't copy automatically. Try Download CSV instead.",
     exported: "File downloaded.",
     xlsxFailed: "Couldn't build the Excel file on this device — try Download CSV.",
     nothingToExport: "Nothing to download yet.",
@@ -427,6 +433,44 @@ export function ReceiptSalesView() {
     if (!result) return [];
     return filter === "review" ? pendingPages : result.records;
   }, [result, filter, pendingPages]);
+
+  /**
+   * Salin ke papan klip, lalu tempel ke Google Sheet.
+   *
+   * Mengunggah berkas ke Google Drive lewat Safari kerap gagal — XLSX maupun
+   * CSV sama saja, karena yang bermasalah pengunggahnya, bukan berkasnya.
+   * Menempel tidak melewati pengunggah itu sama sekali.
+   */
+  async function salinUntukSheet() {
+    if (!exportRows.length) {
+      toast.error(t.nothingToExport);
+      return;
+    }
+    // Teksnya disusun lebih dulu dan disalin tanpa menunggu apa pun: Safari
+    // hanya mengizinkan papan klip ditulis selagi ketukan penggunanya masih
+    // "hidup", dan penantian sekecil apa pun sudah cukup untuk membatalkannya.
+    const teks = copyReceiptRows(exportRows, locale);
+    try {
+      await navigator.clipboard.writeText(teks);
+      toast.success(t.copied);
+    } catch {
+      // Cara lama, untuk peramban yang menolak papan klip modern.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = teks;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        if (!ok) throw new Error("gagal");
+        toast.success(t.copied);
+      } catch {
+        toast.error(t.copyFailed);
+      }
+    }
+  }
 
   async function unduh(kind: "xlsx" | "csv") {
     if (!exportRows.length) {
@@ -741,6 +785,11 @@ export function ReceiptSalesView() {
                   </button>
                 ))}
               </div>
+              {/* Paling depan: satu-satunya jalur yang tidak melewati
+                  pengunggah Google Drive, yang kerap gagal di Safari. */}
+              <Button onClick={salinUntukSheet}>
+                <ClipboardCopy className="h-4 w-4" /> {t.copySheet}
+              </Button>
               <Button variant="outline" onClick={() => unduh("csv")}>
                 <FileDown className="h-4 w-4" /> {t.csv}
               </Button>
