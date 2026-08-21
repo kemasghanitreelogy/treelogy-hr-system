@@ -62,8 +62,10 @@ function getZxing(): Promise<ZxingModule | null> {
         try {
           m.prepareZXingModule({
             overrides: {
+              // Sama seperti worker pdf.js: versinya dibubuhkan supaya salinan
+              // lama di cache tidak pernah dipakai diam-diam.
               locateFile: (path: string, prefix: string) =>
-                path.endsWith(".wasm") ? "/zxing_reader.wasm" : prefix + path,
+                path.endsWith(".wasm") ? `/zxing_reader.wasm?v=${m.ZXING_WASM_VERSION ?? "x"}` : prefix + path,
             },
           });
         } catch {
@@ -140,7 +142,12 @@ async function getPdfjs() {
     // bisa dibaca"). Selisih ukurannya ±60 KB dan hanya diunduh saat halaman ini
     // dipakai — harga yang murah untuk perangkat yang tetap bisa bekerja.
     pdfjsPromise = import("pdfjs-dist/legacy/build/pdf.mjs").then((pdfjs) => {
-      pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+      // Nomor versi dibubuhkan ke URL-nya. Nama berkasnya tidak pernah berubah,
+      // jadi tanpa ini sebuah perangkat bisa terus memakai worker lama dari
+      // cache service worker sementara halamannya sudah memakai pustaka baru —
+      // dan pdf.js menolak jalan kalau keduanya tidak sepadan.
+      const v = (pdfjs as { version?: string }).version ?? "x";
+      pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs?v=${v}`;
       return pdfjs;
     });
   }
@@ -825,6 +832,14 @@ export interface FileFailure {
   reason: string;
 }
 
+/** Kenapa sebuah berkas terpaksa dibaca di server. Disimpan meski jalan
+ *  keduanya berhasil — tanpa ini, kegagalan di perangkat orang lain tidak
+ *  meninggalkan jejak apa pun dan mustahil ditelusuri. */
+export interface ServerFallback {
+  file: string;
+  reason: string;
+}
+
 export interface ExtractOutcome {
   visuals: PageVisual[];
   rows: ParsedRow[];
@@ -834,8 +849,8 @@ export interface ExtractOutcome {
   textPages: number;
   /** Halaman gambar yang harus diubah jadi teks lewat OCR. */
   ocrPages: number;
-  /** true kalau ada berkas yang terpaksa dibaca di server (perangkat tak sanggup). */
-  usedServer: boolean;
+  /** Berkas yang terpaksa dibaca di server, lengkap dengan sebab lokalnya. */
+  serverFallbacks: ServerFallback[];
   /** Sumber pratinjau; panggil dispose() saat batch diganti atau layar ditutup. */
   images: PageImageStore;
 }
@@ -860,10 +875,10 @@ export async function extractFromFiles(
   /** Sekali PDF gagal dibaca di perangkat ini, berkas berikutnya langsung
    *  lewat server — tidak perlu menunggu kegagalan yang sama berulang kali. */
   let localPdfBroken = false;
-  let usedServer = false;
+  const serverFallbacks: ServerFallback[] = [];
   let textPages = 0;
   let ocrPages = 0;
-  if (!files.length) return { visuals, rows, failures, textPages, ocrPages, usedServer, images };
+  if (!files.length) return { visuals, rows, failures, textPages, ocrPages, serverFallbacks, images };
 
   try {
     let nextPage = 1;
@@ -885,7 +900,7 @@ export async function extractFromFiles(
           // Berkas sebelumnya sudah membuktikan perangkat ini tidak sanggup
           // membaca PDF; jangan diulangi lagi dari awal untuk tiap berkas.
           res = await extractPdfOnServer(file, nextPage, onProgress, meta);
-          usedServer = true;
+          serverFallbacks.push({ file: file.name, reason: "perangkat sama seperti berkas sebelumnya" });
         } else {
           res = await extractPdf(file, nextPage, images, onProgress, first, meta);
         }
@@ -901,7 +916,7 @@ export async function extractFromFiles(
         try {
           res = await extractPdfOnServer(file, nextPage, onProgress, meta);
           localPdfBroken = true;
-          usedServer = true;
+          serverFallbacks.push({ file: file.name, reason });
         } catch (e2) {
           failures.push({ file: file.name, reason: `${reason} · ${describeError(e2)}` });
           continue;
@@ -918,5 +933,5 @@ export async function extractFromFiles(
     // Worker OCR hanya hidup kalau tadi memang dipakai.
     await disposeScheduler();
   }
-  return { visuals, rows, failures, textPages, ocrPages, usedServer, images };
+  return { visuals, rows, failures, textPages, ocrPages, serverFallbacks, images };
 }

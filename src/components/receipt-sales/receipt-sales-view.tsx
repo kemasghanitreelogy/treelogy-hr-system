@@ -55,6 +55,7 @@ const STR: Record<Locale, Record<string, string>> = {
     stageServer: "Perangkat ini tidak sanggup — dibacakan di server…",
     serverUsed:
       "Perangkat ini tidak bisa membaca PDF sendiri, jadi berkasnya dibacakan di server. Hasilnya sama; pratinjau labelnya saja yang tidak tersedia.",
+    serverWhy: "Sebab di perangkat ini:",
     modeText: "halaman teks langsung",
     modeOcr: "halaman gambar (OCR)",
     stageMatch: "Mencocokkan order Shopify…",
@@ -110,6 +111,7 @@ const STR: Record<Locale, Record<string, string>> = {
     stageServer: "This device can't read it — reading on the server…",
     serverUsed:
       "This device can't read PDFs on its own, so the file was read on the server. Same results; only the label previews are unavailable.",
+    serverWhy: "Reason on this device:",
     modeText: "pages read as text",
     modeOcr: "image pages (OCR)",
     stageMatch: "Matching Shopify orders…",
@@ -258,7 +260,7 @@ export function ReceiptSalesView() {
         }).catch(() => null);
       };
 
-      const { visuals, rows, failures, textPages, ocrPages, usedServer, images: store } = await extractFromFiles(
+      const { visuals, rows, failures, textPages, ocrPages, serverFallbacks, images: store } = await extractFromFiles(
         files,
         setProgress,
         (row) => warm(normalizeShipDate(row.ship_date) || new Date().toISOString().slice(0, 10)),
@@ -279,7 +281,13 @@ export function ReceiptSalesView() {
       }
       // Berkas yang terpaksa dibaca di server: pengguna berhak tahu, karena
       // janji "berkas tidak meninggalkan perangkat" tidak berlaku untuk itu.
-      if (usedServer) toast.toast(t.serverUsed, "info");
+      if (serverFallbacks.length) {
+        toast.toast(t.serverUsed, "info");
+        // Sebab lokalnya ikut ditampilkan. Sebelumnya ia ditelan diam-diam
+        // begitu jalan kedua berhasil — dan kegagalan yang tidak meninggalkan
+        // jejak mustahil ditelusuri dari perangkat orang lain.
+        for (const f of serverFallbacks) toast.toast(`${t.serverWhy} ${f.reason}`, "info");
+      }
       if (!visuals.length) {
         toast.error(t.noPages);
         return;
