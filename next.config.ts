@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
   // membaca sendiri, selalu gagal. Di luar bundel, Node memuatnya dari
   // node_modules seperti biasa dan worker-nya ketemu.
   serverExternalPackages: ["pdfjs-dist"],
+  // Berkas worker pdf.js dimuat saat berjalan, bukan lewat import — penelusur
+  // berkas tidak melihatnya, jadi ia tidak ikut terkemas ke fungsi server dan
+  // pembacaan PDF di sana gagal. Disebut eksplisit supaya ikut terbawa.
+  outputFileTracingIncludes: {
+    "/api/receipt-sales/extract": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
+  },
   experimental: {
     // Router cache halaman dinamis: hasil prefetch/kunjungan dipakai ulang
     // selama 3 menit — pindah-pindah menu tanpa server roundtrip (instan).

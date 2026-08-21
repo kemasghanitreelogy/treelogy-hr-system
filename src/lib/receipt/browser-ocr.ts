@@ -79,6 +79,38 @@ function getZxing(): Promise<ZxingModule | null> {
 }
 
 /**
+ * Safari tidak mendukung iterasi async atas ReadableStream, dan pdf.js
+ * memakainya di `getTextContent`: `for await (const value of readableStream)`.
+ * Tanpa tambalan ini, setiap halaman gagal dibaca di Safari dengan pesan yang
+ * sama sekali tidak menunjuk penyebabnya — "undefined is not a function
+ * (near '...t of e...')".
+ *
+ * Direproduksi dengan mematikan fitur itu di WebKit: tanpa tambalan gagal
+ * persis seperti di perangkat pengguna, dengan tambalan seluruh halaman
+ * terbaca. Catatan untuk kemudian: WebKit bawaan Playwright MENDUKUNG fitur
+ * ini sementara Safari tidak, jadi lolos di sana bukan jaminan lolos di Safari.
+ */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+if (typeof ReadableStream !== "undefined" && !(ReadableStream.prototype as any)[Symbol.asyncIterator]) {
+  const iterate = function <T>(this: ReadableStream<T>) {
+    const reader = this.getReader();
+    return {
+      next: () => reader.read(),
+      async return(value?: unknown) {
+        await reader.cancel();
+        return { done: true as const, value };
+      },
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+  };
+  (ReadableStream.prototype as any)[Symbol.asyncIterator] = iterate;
+  (ReadableStream.prototype as any).values = iterate;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/**
  * pdf.js memanggil `Promise.withResolvers`, yang baru ada di Safari/iOS 17.4.
  * Tanpa tambalan ini, iPhone yang belum diperbarui gagal sejak baris pertama
  * pustaka — dan kegagalannya muncul sebagai "berkas tidak bisa dibaca", seolah
@@ -887,7 +919,13 @@ async function extractPdfOnServer(
     });
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(String(data?.error ?? `server_${res.status}`));
+  if (!res.ok) {
+    // Sebab dari server ikut dibawa. "pdf_unreadable" saja tidak membedakan
+    // berkas rusak, berkas terkunci sandi, dan pustaka yang gagal dimuat di
+    // server — dan itulah yang menentukan langkah berikutnya.
+    const kode = String(data?.error ?? `server_${res.status}`);
+    throw new Error(data?.detail ? `${kode} — ${data.detail}` : kode);
+  }
 
   const rows: ParsedRow[] = data.rows ?? [];
   const awbs: (string | null)[] = data.awbs ?? [];

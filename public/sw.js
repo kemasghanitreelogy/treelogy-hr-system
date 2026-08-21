@@ -4,7 +4,7 @@
 
 // Dinaikkan saat perilaku SW berubah — tanpa ini perangkat tetap memakai
 // service worker lama dari cache dan perbaikannya tidak pernah terpasang.
-const VERSION = "treelogy-hr-v7";
+const VERSION = "treelogy-hr-v8";
 const APP_SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const PAGES = `${VERSION}-pages`;

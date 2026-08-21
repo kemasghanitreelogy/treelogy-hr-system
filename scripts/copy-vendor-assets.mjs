@@ -13,7 +13,17 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
  * worker saat menyalin: worker adalah konteks JavaScript tersendiri, jadi
  * tambalan di halaman utama tidak sampai ke sana.
  */
-const WITH_RESOLVERS_POLYFILL = `if(typeof Promise.withResolvers!=="function"){Promise.withResolvers=function(){let a,b;const p=new Promise((res,rej)=>{a=res;b=rej});return{promise:p,resolve:a,reject:b}}};\n`;
+const WITH_RESOLVERS_POLYFILL = `if(typeof Promise.withResolvers!=="function"){Promise.withResolvers=function(){let a,b;const p=new Promise((res,rej)=>{a=res;b=rej});return{promise:p,resolve:a,reject:b}}};`;
+
+/**
+ * Safari tidak mendukung iterasi async atas ReadableStream, dan pdf.js
+ * memakainya (`for await (const x of stream)`) di kedua sisi — halaman DAN
+ * worker. Worker adalah konteks JavaScript tersendiri, jadi tambalan di halaman
+ * tidak sampai ke sana dan harus ikut disisipkan di sini.
+ */
+const STREAM_ITERATOR_POLYFILL = `if(typeof ReadableStream!=="undefined"&&!ReadableStream.prototype[Symbol.asyncIterator]){var __it=function(){var r=this.getReader();return{next:function(){return r.read()},return:function(v){return r.cancel().then(function(){return{done:true,value:v}})},[Symbol.asyncIterator]:function(){return this}}};ReadableStream.prototype[Symbol.asyncIterator]=__it;ReadableStream.prototype.values=__it};`;
+
+const POLYFILLS = WITH_RESOLVERS_POLYFILL + STREAM_ITERATOR_POLYFILL + "\n";
 
 const ASSETS = [
   {
@@ -21,7 +31,7 @@ const ASSETS = [
     // halaman (lihat browser-ocr.ts): versi worker dan versi pustaka WAJIB sama.
     from: "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
     to: "public/pdf.worker.min.mjs",
-    prepend: WITH_RESOLVERS_POLYFILL,
+    prepend: POLYFILLS,
   },
   {
     from: "node_modules/zxing-wasm/dist/reader/zxing_reader.wasm",

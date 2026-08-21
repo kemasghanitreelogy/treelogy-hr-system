@@ -1,4 +1,4 @@
-if(typeof Promise.withResolvers!=="function"){Promise.withResolvers=function(){let a,b;const p=new Promise((res,rej)=>{a=res;b=rej});return{promise:p,resolve:a,reject:b}}};
+if(typeof Promise.withResolvers!=="function"){Promise.withResolvers=function(){let a,b;const p=new Promise((res,rej)=>{a=res;b=rej});return{promise:p,resolve:a,reject:b}}};if(typeof ReadableStream!=="undefined"&&!ReadableStream.prototype[Symbol.asyncIterator]){var __it=function(){var r=this.getReader();return{next:function(){return r.read()},return:function(v){return r.cancel().then(function(){return{done:true,value:v}})},[Symbol.asyncIterator]:function(){return this}}};ReadableStream.prototype[Symbol.asyncIterator]=__it;ReadableStream.prototype.values=__it};
 /**
  * @licstart The following is the entire license notice for the
  * JavaScript code in this page

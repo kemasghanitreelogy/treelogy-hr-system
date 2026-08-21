@@ -82,6 +82,21 @@ async function openPdf(data: Uint8Array): Promise<any> {
   // Build "legacy" juga di sini: ia yang dirancang jalan di luar browser modern,
   // termasuk di runtime Node tanpa DOM.
   const pdfjs: any = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  // Letak berkas worker ditunjuk secara eksplisit. Dibiarkan menebak sendiri,
+  // pdf.js mencarinya di dalam folder build dan gagal ("Cannot find module
+  // .../chunks/pdf.worker.mjs") — kegagalan yang membuat pembacaan di server
+  // tidak pernah berhasil sama sekali.
+  if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    try {
+      const { createRequire } = await import("node:module");
+      const req = createRequire(import.meta.url);
+      pdfjs.GlobalWorkerOptions.workerSrc = req.resolve("pdfjs-dist/legacy/build/pdf.worker.mjs");
+    } catch {
+      /* biarkan pdf.js memakai cara bawaannya */
+    }
+  }
+
   return pdfjs.getDocument({
     data,
     // Tanpa DOM: jangan memuat font ke halaman, dan jangan memakai eval.
