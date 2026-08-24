@@ -3,7 +3,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
-  TokopediaRejected, TokopediaSchemaError, picturesExpireAt, pullReviews,
+  TokopediaRejected, TokopediaSchemaError, TokopediaUnreachable, picturesExpireAt, pullReviews,
   type PullTarget, type PulledReview,
 } from "@/lib/tokopedia/gql";
 import { mapRun } from "@/lib/tokopedia/map";
@@ -115,6 +115,14 @@ export async function POST(req: Request) {
   try {
     pulled = await pullReviews(targets, seen, { budgetMs: BUDGET_MS });
   } catch (e) {
+    // Tidak pernah sampai ke Tokopedia = bukan penolakan Tokopedia. Dicatat
+    // sebagai `failed` (jeda 1 jam, bisa ditembus), bukan `rejected` (24 jam,
+    // tidak bisa ditembus siapa pun) — supaya gangguan jaringan tidak mengunci
+    // siapa pun sehari penuh atas sesuatu yang bukan salah mereka.
+    if (e instanceof TokopediaUnreachable) {
+      await closeRun({ status: "failed" satisfies TokopediaRunStatus, error: `tidak tersambung — ${e.detail}` });
+      return NextResponse.json({ outcome: "failed", detail: e.detail, state: await readState() });
+    }
     if (e instanceof TokopediaRejected) {
       await closeRun({
         status: "rejected" satisfies TokopediaRunStatus,

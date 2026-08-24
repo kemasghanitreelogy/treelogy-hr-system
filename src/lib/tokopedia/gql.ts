@@ -81,6 +81,21 @@ export class TokopediaRejected extends Error {
   }
 }
 
+/**
+ * Permintaannya tidak pernah SAMPAI — DNS gagal, koneksi ditolak, TLS putus,
+ * atau kehabisan waktu sebelum ada satu byte pun balasan.
+ *
+ * Ini sengaja BUKAN turunan penolakan. Menyamakan keduanya membuat masalah
+ * jaringan memasang jeda 24 jam yang tidak bisa ditembus siapa pun — hukuman
+ * berat untuk sesuatu yang bahkan tidak pernah menyentuh Tokopedia.
+ */
+export class TokopediaUnreachable extends Error {
+  constructor(readonly detail: string) {
+    super("tokopedia_unreachable");
+    this.name = "TokopediaUnreachable";
+  }
+}
+
 /** Query ditolak isinya (mis. schema drift) — bukan penolakan rate-limit. */
 export class TokopediaSchemaError extends Error {
   constructor(readonly detail: string) {
@@ -127,10 +142,17 @@ async function fetchPage(productId: string, page: number): Promise<{
       }),
       signal: AbortSignal.timeout(30_000),
     });
-  } catch {
-    // Jaringan putus / timeout — diperlakukan sama seperti penolakan: berhenti,
-    // jangan diulang. Yang belum terambil bukan hilang, hanya tertunda.
-    throw new TokopediaRejected(0);
+  } catch (e) {
+    // Galat aslinya DIBAWA, bukan ditelan. `fetch failed` sendirian tidak bisa
+    // didiagnosa; yang menjelaskan apa-apa justru ada di `cause` (ETIMEDOUT,
+    // ECONNREFUSED, ENOTFOUND, galat sertifikat) — dan tanpa itu satu-satunya
+    // jalan menebak penyebabnya adalah menekan tombolnya lagi.
+    const err = e as { name?: string; message?: string; cause?: { code?: string; message?: string } };
+    const parts = [err?.name, err?.message, err?.cause?.code, err?.cause?.message]
+      .filter((v): v is string => Boolean(v));
+    throw new TokopediaUnreachable(
+      (err?.name === "TimeoutError" ? "timeout 30s · " : "") + (parts.join(" · ") || "unknown"),
+    );
   }
 
   if (!res.ok) throw new TokopediaRejected(res.status);
