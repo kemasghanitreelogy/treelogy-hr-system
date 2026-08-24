@@ -37,7 +37,7 @@ function authorized(req: Request): boolean {
 type Body =
   | { action: "start" }
   | { action: "finish"; runId: string; requests: number; partial?: boolean; reviews: PulledReview[] }
-  | { action: "fail"; runId: string; kind: "rejected" | "failed"; detail?: string };
+  | { action: "fail"; runId: string; kind: "rejected" | "failed" | "unreachable"; detail?: string };
 
 export async function POST(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -142,7 +142,8 @@ export async function POST(req: Request) {
     // `rejected` (jeda 24 jam, tidak bisa ditembus) hanya untuk penolakan yang
     // benar-benar datang dari Tokopedia lewat status HTTP. Gagal tersambung
     // masuk `failed` — hukuman sehari penuh untuk masalah jaringan tidak adil.
-    const status: TokopediaRunStatus = body.kind === "rejected" ? "rejected" : "failed";
+    const status: TokopediaRunStatus =
+      body.kind === "rejected" ? "rejected" : body.kind === "unreachable" ? "unreachable" : "failed";
     await admin
       .from("tokopedia_review_runs")
       .update({

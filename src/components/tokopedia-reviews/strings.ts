@@ -125,6 +125,7 @@ export const STR: Record<Locale, Record<string, string>> = {
     stPartial: "Sebagian",
     stRejected: "Ditolak",
     stFailed: "Gagal",
+    stUnreachable: "Tidak tersambung",
     stRunning: "Berjalan",
     newLabel: "baru",
 
@@ -275,6 +276,7 @@ export const STR: Record<Locale, Record<string, string>> = {
     stPartial: "Partial",
     stRejected: "Rejected",
     stFailed: "Failed",
+    stUnreachable: "Unreachable",
     stRunning: "Running",
     newLabel: "new",
 

@@ -13,6 +13,7 @@ const TONE: Record<TokopediaRunStatus, "matcha" | "gold" | "clay" | "neutral"> =
   partial: "gold",
   rejected: "clay",
   failed: "clay",
+  unreachable: "gold",
   running: "neutral",
 };
 
@@ -21,7 +22,8 @@ export function RunLog({ locale, runs }: { locale: Locale; runs: TokopediaRun[] 
   const [open, setOpen] = useState(false);
 
   const label: Record<TokopediaRunStatus, string> = {
-    ok: t.stOk, partial: t.stPartial, rejected: t.stRejected, failed: t.stFailed, running: t.stRunning,
+    ok: t.stOk, partial: t.stPartial, rejected: t.stRejected, failed: t.stFailed,
+    unreachable: t.stUnreachable, running: t.stRunning,
   };
 
   return (

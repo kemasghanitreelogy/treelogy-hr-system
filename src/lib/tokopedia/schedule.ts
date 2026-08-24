@@ -74,6 +74,13 @@ export function pullGate(runs: TokopediaRun[], now = new Date()): PullGate {
     return { allowed: true, nextPullAt: null, reason: null, overridable: false };
   }
 
+  // Tidak pernah sampai = jejaknya nol, jadi tidak ada apa pun yang perlu
+  // didinginkan. Menahan orang satu jam sesudah internetnya putus hanya
+  // menghukum mereka atas sesuatu yang bahkan tidak menyentuh Tokopedia.
+  if (last.status === "unreachable") {
+    return { allowed: true, nextPullAt: null, reason: null, overridable: false };
+  }
+
   const waitHours =
     last.status === "rejected"
       ? REJECTED_COOLDOWN_HOURS

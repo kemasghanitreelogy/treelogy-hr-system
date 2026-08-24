@@ -199,8 +199,10 @@ async function main() {
     // terambil di run berikutnya; memaksa hari ini justru yang mengubah pola
     // ini dari pengunjung jadi bot.
     const rejected = e instanceof Rejected;
-    const detail = rejected ? e.message : e instanceof Unreachable ? `tidak tersambung — ${e.message}` : e.message;
-    await ingest({ action: "fail", runId, kind: rejected ? "rejected" : "failed", detail }).catch(() => {});
+    const unreachable = e instanceof Unreachable;
+    const kind = rejected ? "rejected" : unreachable ? "unreachable" : "failed";
+    const detail = unreachable ? `tidak tersambung — ${e.message}` : e.message;
+    await ingest({ action: "fail", runId, kind, detail }).catch(() => {});
     console.error(
       `\n  Berhenti: ${detail}\n` +
         (rejected ? "  Ini batas laju. JANGAN diulang hari ini — coba lagi besok.\n" : "\n"),

@@ -108,8 +108,8 @@ export async function POST(req: Request) {
     // tidak bisa ditembus siapa pun) — supaya gangguan jaringan tidak mengunci
     // siapa pun sehari penuh atas sesuatu yang bukan salah mereka.
     if (e instanceof TokopediaUnreachable) {
-      await closeRun({ status: "failed" satisfies TokopediaRunStatus, error: `tidak tersambung — ${e.detail}` });
-      return NextResponse.json({ outcome: "failed", detail: e.detail, state: await readState() });
+      await closeRun({ status: "unreachable" satisfies TokopediaRunStatus, error: e.detail });
+      return NextResponse.json({ outcome: "unreachable", detail: e.detail, state: await readState() });
     }
     if (e instanceof TokopediaRejected) {
       await closeRun({

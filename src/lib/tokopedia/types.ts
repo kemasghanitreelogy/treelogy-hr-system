@@ -1,6 +1,14 @@
 /** Bentuk data yang dipakai bersama server & layar. */
 
-export type TokopediaRunStatus = "running" | "ok" | "partial" | "rejected" | "failed";
+export type TokopediaRunStatus =
+  | "running"
+  | "ok"
+  | "partial"
+  | "rejected"
+  /** Ditolak isinya / gagal menyimpan — permintaannya SAMPAI ke Tokopedia. */
+  | "failed"
+  /** Tidak pernah sampai: DNS, koneksi, TLS, atau kehabisan waktu. Jejak nol. */
+  | "unreachable";
 
 export interface TokopediaProduct {
   productId: string;
