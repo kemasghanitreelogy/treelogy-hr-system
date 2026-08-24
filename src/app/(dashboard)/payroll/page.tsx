@@ -15,7 +15,7 @@ import { periodsBack } from "@/lib/utils";
 import type { AttendanceRecord, Employee, LeaveRequest, OvertimeRequest, Payslip } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 
-export const metadata = { title: "Payroll — Treelogy HR" };
+export const metadata = { title: "Payroll — Treelogy Workspace" };
 
 const STR: Record<
   Locale,

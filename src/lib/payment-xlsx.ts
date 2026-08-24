@@ -40,7 +40,7 @@ const STR: Record<Locale, Record<string, string>> = {
     sheetDetail: "Pengajuan Pembayaran", sheetSummary: "Ringkasan",
     title: "REKAP PENGAJUAN PEMBAYARAN",
     periodAll: "Seluruh periode",
-    generated: "Dibuat", by: "Treelogy HR",
+    generated: "Dibuat", by: "Treelogy Workspace",
     no: "No", submitted: "Waktu ajukan", dept: "Departemen", requester: "Pengaju",
     email: "Email", kind: "Jenis", flow: "Jalur", approval: "Status persetujuan",
     invoiceDate: "Tgl invoice", desc: "Deskripsi",
@@ -55,7 +55,7 @@ const STR: Record<Locale, Record<string, string>> = {
     sheetDetail: "Payment Requests", sheetSummary: "Summary",
     title: "PAYMENT REQUESTS REPORT",
     periodAll: "All periods",
-    generated: "Generated", by: "Treelogy HR",
+    generated: "Generated", by: "Treelogy Workspace",
     no: "No", submitted: "Submitted", dept: "Department", requester: "Requester",
     email: "Email", kind: "Type", flow: "Flow", approval: "Approval status",
     invoiceDate: "Invoice date", desc: "Description",
@@ -104,7 +104,7 @@ export async function exportPaymentXlsx(opts: PaymentXlsxOptions): Promise<numbe
   const mod = await import("exceljs");
   const ExcelJS = mod.default ?? (mod as unknown as typeof mod.default);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Treelogy HR";
+  wb.creator = "Treelogy Workspace";
 
   const thin = { style: "thin" as const, color: { argb: C.line } };
   const border = { top: thin, left: thin, right: thin, bottom: thin };

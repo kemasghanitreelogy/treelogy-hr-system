@@ -39,8 +39,8 @@ const C = {
 } as const;
 
 const STR: Record<Locale, { sheet: string; title: string; generated: string; by: string; rows: string }> = {
-  id: { sheet: "Review", title: "REVIEW TOKOPEDIA", generated: "Dibuat", by: "Treelogy HR", rows: "baris" },
-  en: { sheet: "Reviews", title: "TOKOPEDIA REVIEWS", generated: "Generated", by: "Treelogy HR", rows: "rows" },
+  id: { sheet: "Review", title: "REVIEW TOKOPEDIA", generated: "Dibuat", by: "Treelogy Workspace", rows: "baris" },
+  en: { sheet: "Reviews", title: "TOKOPEDIA REVIEWS", generated: "Generated", by: "Treelogy Workspace", rows: "rows" },
 };
 
 /**
@@ -60,7 +60,7 @@ export async function exportReviewsXlsx(
   const mod = await import("exceljs");
   const ExcelJS = mod.default ?? (mod as unknown as typeof mod.default);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Treelogy HR";
+  wb.creator = "Treelogy Workspace";
 
   const thin = { style: "thin" as const, color: { argb: C.line } };
   const border = { top: thin, left: thin, right: thin, bottom: thin };

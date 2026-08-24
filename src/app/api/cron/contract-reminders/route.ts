@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { brandedEmail, isSmtpConfigured, sendEmail } from "@/lib/email";
 import { pushNotifications, type NewNotification } from "@/lib/notify";
+import { appOrigin } from "@/lib/app-url";
 
 export const runtime = "nodejs";
 
@@ -128,7 +129,7 @@ export async function GET(req: Request) {
     if (isSmtpConfigured) {
       for (const h of hrList) {
         if (h.email && h.employee_id !== c.employee_id) {
-          emailTasks.push(sendEmail({ to: h.email, subject: `${hrTitle} — ${empName}`, text: hrBody, html: brandedEmail({ heading: hrTitle, intro: "Pengingat kontrak", message: hrBody, ctaLabel: "Buka data karyawan", ctaUrl: "https://treelogy-hr-system.vercel.app/employees" }) }));
+          emailTasks.push(sendEmail({ to: h.email, subject: `${hrTitle} — ${empName}`, text: hrBody, html: brandedEmail({ heading: hrTitle, intro: "Pengingat kontrak", message: hrBody, ctaLabel: "Buka data karyawan", ctaUrl: `${appOrigin()}/employees` }) }));
         }
       }
       if (empEmail) {

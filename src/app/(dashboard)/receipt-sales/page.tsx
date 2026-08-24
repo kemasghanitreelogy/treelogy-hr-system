@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { ReceiptSalesView } from "@/components/receipt-sales/receipt-sales-view";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Receipt Sales — Treelogy HR" };
+export const metadata = { title: "Receipt Sales — Treelogy Workspace" };
 
 export default async function ReceiptSalesPage() {
   const user = await getSessionUser();

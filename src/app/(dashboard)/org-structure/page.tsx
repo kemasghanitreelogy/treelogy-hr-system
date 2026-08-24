@@ -2,7 +2,7 @@ import { OrgView } from "@/components/org/org-view";
 import { getEmployees } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Struktur Organisasi — Treelogy HR" };
+export const metadata = { title: "Struktur Organisasi — Treelogy Workspace" };
 
 export default async function OrgStructurePage() {
   const [employeesAll, user] = await Promise.all([getEmployees(), getSessionUser()]);

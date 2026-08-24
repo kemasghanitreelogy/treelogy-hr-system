@@ -7,7 +7,7 @@ import { signedFileUrl } from "@/lib/file-link";
 import { sheetsMode } from "@/lib/sheets";
 import { witaToday } from "@/lib/utils";
 
-export const metadata = { title: "Pengajuan Pembayaran — Treelogy HR" };
+export const metadata = { title: "Pengajuan Pembayaran — Treelogy Workspace" };
 
 export default async function PaymentRequestsPage() {
   const [requests, user, h] = await Promise.all([

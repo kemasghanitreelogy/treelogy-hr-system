@@ -3,7 +3,7 @@ import { EmployeesView } from "@/components/employees/employees-view";
 import { getAllContracts, getEmployees, getRoles, getSystemUsers } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Karyawan — Treelogy HR" };
+export const metadata = { title: "Karyawan — Treelogy Workspace" };
 
 export default async function EmployeesPage() {
   const [employees, user, users, contracts] = await Promise.all([

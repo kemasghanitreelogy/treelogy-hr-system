@@ -68,7 +68,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <Logo />
-          <h1 className="mt-6 font-display text-2xl font-bold text-ink">Masuk ke Treelogy HR</h1>
+          <h1 className="mt-6 font-display text-2xl font-bold text-ink">Masuk ke Treelogy Workspace</h1>
           <p className="mt-1 text-sm text-muted">Sistem SDM untuk tim pabrik, kebun &amp; sales 🌿</p>
         </div>
 

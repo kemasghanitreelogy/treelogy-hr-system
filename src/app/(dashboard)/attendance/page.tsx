@@ -14,7 +14,7 @@ import {
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Absensi — Treelogy HR" };
+export const metadata = { title: "Absensi — Treelogy Workspace" };
 
 export default async function AttendancePage() {
   const [all, employeesAll, settings, user, approvalsAll, holidaysAll] = await Promise.all([

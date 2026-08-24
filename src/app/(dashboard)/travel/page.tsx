@@ -3,7 +3,7 @@ import { TravelView } from "@/components/travel/travel-view";
 import { can, getSessionUser } from "@/lib/auth";
 import { getEmployees, getTravelRequests, liveToday } from "@/lib/data";
 
-export const metadata = { title: "Perjalanan Dinas — Treelogy HR" };
+export const metadata = { title: "Perjalanan Dinas — Treelogy Workspace" };
 
 export default async function TravelPage() {
   const [requests, employeesAll, user] = await Promise.all([

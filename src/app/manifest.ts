@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Treelogy HR — Sistem SDM",
-    short_name: "Treelogy HR",
+    name: "Treelogy Workspace",
+    short_name: "Treelogy",
     description:
-      "Absensi, shift, cuti, payroll (BPJS & PPh 21), dan manajemen karyawan Treelogy.",
+      "Ruang kerja internal Treelogy: absensi, payroll, perjalanan dinas, pembayaran, inventaris, surat, dan review marketplace.",
     id: "/dashboard",
     start_url: "/dashboard",
     scope: "/",

@@ -100,7 +100,7 @@ export function InstallPrompt() {
           <Logo mark />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-ink">Pasang Treelogy HR</p>
+          <p className="text-sm font-semibold text-ink">Pasang Treelogy Workspace</p>
 
           {iosHint ? (
             inApp ? (

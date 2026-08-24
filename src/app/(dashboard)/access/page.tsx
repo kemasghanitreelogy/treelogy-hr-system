@@ -3,7 +3,7 @@ import { AccessView } from "@/components/access/access-view";
 import { getEmployees, getRoles, getSystemUsers } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Peran & Akses — Treelogy HR" };
+export const metadata = { title: "Peran & Akses — Treelogy Workspace" };
 
 export default async function AccessPage() {
   // Khusus admin (access.roles) — cegah akses lewat URL untuk peran lain.

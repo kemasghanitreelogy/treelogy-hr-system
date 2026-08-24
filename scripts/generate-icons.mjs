@@ -1,4 +1,4 @@
-// Generates Treelogy HR PWA icons (PNG) from inline SVG using sharp.
+// Generates Treelogy Workspace PWA icons (PNG) from inline SVG using sharp.
 // Run: node scripts/generate-icons.mjs
 import sharp from "sharp";
 import { mkdir } from "node:fs/promises";

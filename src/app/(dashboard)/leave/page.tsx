@@ -3,7 +3,7 @@ import { getAllContracts, getEmployees, getLeaveBalances, getLeaveRequests, getT
 import { applyTenureQuota, earliestContractStart, tenureStart } from "@/lib/leave-policy";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Cuti & Izin — Treelogy HR" };
+export const metadata = { title: "Cuti & Izin — Treelogy Workspace" };
 
 export default async function LeavePage() {
   const [requests, balancesRaw, tabungan, employeesAll, contracts, user] = await Promise.all([

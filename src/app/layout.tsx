@@ -18,18 +18,18 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  applicationName: "Treelogy HR",
+  applicationName: "Treelogy Workspace",
   title: {
-    default: "Treelogy HR — Sistem SDM",
-    template: "%s · Treelogy HR",
+    default: "Treelogy Workspace",
+    template: "%s · Treelogy Workspace",
   },
   description:
-    "Sistem HR Treelogy: absensi, shift, cuti, payroll (BPJS & PPh 21), dan manajemen karyawan untuk tim pabrik, kebun, dan sales.",
+    "Ruang kerja internal Treelogy: absensi, shift, cuti, payroll, perjalanan dinas, pengajuan pembayaran, inventaris, surat keluar, dan review marketplace.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Treelogy HR",
+    title: "Treelogy Workspace",
   },
   formatDetection: { telephone: false },
   robots: { index: false, follow: false },

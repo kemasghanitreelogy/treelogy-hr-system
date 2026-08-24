@@ -3,7 +3,7 @@ import { DocumentsView } from "@/components/documents/documents-view";
 import { can, getSessionUser } from "@/lib/auth";
 import { getCompanyDocuments } from "@/lib/data";
 
-export const metadata = { title: "Dokumen — Treelogy HR" };
+export const metadata = { title: "Dokumen — Treelogy Workspace" };
 
 export default async function DocumentsPage({
   searchParams,

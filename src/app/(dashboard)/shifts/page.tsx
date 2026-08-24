@@ -2,7 +2,7 @@ import { ShiftsView } from "@/components/shifts/shifts-view";
 import { getEmployees, getScheduleTemplates } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Jadwal — Treelogy HR" };
+export const metadata = { title: "Jadwal — Treelogy Workspace" };
 
 export default async function ShiftsPage({
   searchParams,

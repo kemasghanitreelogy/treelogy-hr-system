@@ -3,7 +3,7 @@ import { InventoryView } from "@/components/inventory/inventory-view";
 import { can, getSessionUser } from "@/lib/auth";
 import { getEmployees, getInventoryItems } from "@/lib/data";
 
-export const metadata = { title: "Inventaris — Treelogy HR" };
+export const metadata = { title: "Inventaris — Treelogy Workspace" };
 
 export default async function InventoryPage({
   searchParams,

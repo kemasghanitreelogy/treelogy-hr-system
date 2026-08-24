@@ -4,7 +4,7 @@ import { getSessionUser } from "@/lib/auth";
 import { witaToday } from "@/lib/utils";
 import type { ContractType } from "@/lib/types";
 
-export const metadata = { title: "Profil — Treelogy HR" };
+export const metadata = { title: "Profil — Treelogy Workspace" };
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {

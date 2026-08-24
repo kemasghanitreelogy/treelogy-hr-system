@@ -1,5 +1,5 @@
 /**
- * Treelogy HR — penerima baris "Pengajuan Pembayaran" untuk Google Sheet keuangan.
+ * Treelogy Workspace — penerima baris "Pengajuan Pembayaran" untuk Google Sheet keuangan.
  *
  * Pasang di Apps Script milik spreadsheet "Payment Request Response Form",
  * lalu Deploy → Web app (Execute as: Me, Who has access: Anyone).

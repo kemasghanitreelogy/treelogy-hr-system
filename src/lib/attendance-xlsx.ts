@@ -167,7 +167,7 @@ export async function exportAttendanceXlsx(opts: ExportXlsxOptions): Promise<num
   const mod = await import("exceljs");
   const ExcelJS = (mod.default ?? (mod as unknown as typeof mod.default));
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Treelogy HR";
+  wb.creator = "Treelogy Workspace";
 
   // ════════════════════════════════ Sheet: Rekap ════════════════════════════════
   const FIRST_DAY_COL = 4; // A=No, B=Nama, C=Tim, D.. = hari

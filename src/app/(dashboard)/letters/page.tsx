@@ -3,7 +3,7 @@ import { LettersView } from "@/components/letters/letters-view";
 import { can, getSessionUser } from "@/lib/auth";
 import { getOutgoingLetters } from "@/lib/data";
 
-export const metadata = { title: "Surat Keluar — Treelogy HR" };
+export const metadata = { title: "Surat Keluar — Treelogy Workspace" };
 
 export default async function LettersPage() {
   const [letters, user] = await Promise.all([getOutgoingLetters(), getSessionUser()]);

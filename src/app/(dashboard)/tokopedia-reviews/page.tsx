@@ -3,7 +3,7 @@ import { TokopediaReviewsView } from "@/components/tokopedia-reviews/tokopedia-r
 import { can, getSessionUser } from "@/lib/auth";
 import { readState } from "@/app/api/tokopedia-reviews/state";
 
-export const metadata = { title: "Review Tokopedia — Treelogy HR" };
+export const metadata = { title: "Review Tokopedia — Treelogy Workspace" };
 export const dynamic = "force-dynamic";
 
 export default async function TokopediaReviewsPage() {

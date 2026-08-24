@@ -1,7 +1,7 @@
 import { NotificationsView } from "@/components/notifications/notifications-view";
 import { getNotifications } from "@/lib/data";
 
-export const metadata = { title: "Notifikasi — Treelogy HR" };
+export const metadata = { title: "Notifikasi — Treelogy Workspace" };
 export const dynamic = "force-dynamic";
 
 export default async function NotificationsPage() {

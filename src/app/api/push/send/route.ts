@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   }
 
   const result = await sendPushToEmployees(admin, [user.employeeId], {
-    title: body.title || "Treelogy HR",
+    title: body.title || "Treelogy Workspace",
     body: body.body || "Anda punya notifikasi baru.",
     url: body.url || "/dashboard",
     tag: body.tag || "treelogy-hr",

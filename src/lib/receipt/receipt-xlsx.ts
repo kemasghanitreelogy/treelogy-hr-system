@@ -25,7 +25,7 @@ const STR: Record<Locale, Record<string, string>> = {
     sheet: "Resi",
     title: "REKAP RESI",
     generated: "Dibuat",
-    by: "Treelogy HR",
+    by: "Treelogy Workspace",
     awb: "No. Resi",
     name: "Nama Penerima",
     phone: "No. HP",
@@ -35,7 +35,7 @@ const STR: Record<Locale, Record<string, string>> = {
     sheet: "Labels",
     title: "SHIPPING LABEL LIST",
     generated: "Generated",
-    by: "Treelogy HR",
+    by: "Treelogy Workspace",
     awb: "Tracking No.",
     name: "Recipient Name",
     phone: "Phone",
@@ -51,7 +51,7 @@ export async function exportReceiptXlsx(rows: ReceiptExportRow[], locale: Locale
   const mod = await import("exceljs");
   const ExcelJS = mod.default ?? (mod as unknown as typeof mod.default);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Treelogy HR";
+  wb.creator = "Treelogy Workspace";
 
   const thin = { style: "thin" as const, color: { argb: C.line } };
   const border = { top: thin, left: thin, right: thin, bottom: thin };

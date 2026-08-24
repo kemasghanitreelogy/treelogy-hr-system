@@ -3,7 +3,7 @@ import { getEmployees, getOvertimeRequests } from "@/lib/data";
 import { contractRatePerHour } from "@/lib/overtime";
 import { can, getSessionUser } from "@/lib/auth";
 
-export const metadata = { title: "Lembur — Treelogy HR" };
+export const metadata = { title: "Lembur — Treelogy Workspace" };
 
 export default async function OvertimePage() {
   const [requests, employeesAll, user] = await Promise.all([

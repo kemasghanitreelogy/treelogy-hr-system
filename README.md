@@ -1,6 +1,6 @@
-# 🌿 Treelogy HR System
+# 🌿 Treelogy Workspace
 
-A world-class, **mobile-first** HR system for **Treelogy** (premium organic moringa, Bali) — built with
+A world-class, **mobile-first** internal workspace for **Treelogy** (premium organic moringa, Bali) — built with
 **Next.js 15 (App Router) + TypeScript + Tailwind v4**, backed by **Supabase** (Postgres + Auth + RLS).
 
 Designed for three workforce types: **factory**, **farm**, and **sales/office** teams.

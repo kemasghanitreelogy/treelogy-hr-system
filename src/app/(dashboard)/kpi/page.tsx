@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { getEmployees, getKpis } from "@/lib/data";
 import type { Kpi } from "@/lib/types";
 
-export const metadata = { title: "KPI & Kinerja — Treelogy HR" };
+export const metadata = { title: "KPI & Kinerja — Treelogy Workspace" };
 
 /** Lower-is-better metrics where actual below target = good. */
 const LOWER_BETTER = new Set(["Defect rate", "Churn"]);

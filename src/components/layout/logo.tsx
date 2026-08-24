@@ -20,7 +20,7 @@ export function Logo({ className, mark = false }: { className?: string; mark?: b
             TREELOGY
           </span>
           <span className="block text-[10px] font-medium uppercase tracking-[0.18em] opacity-60">
-            HR System
+            Workspace
           </span>
         </div>
       )}

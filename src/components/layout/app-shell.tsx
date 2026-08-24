@@ -178,7 +178,7 @@ export function AppShell({
   );
   // Titles for routes that aren't in the sidebar menu.
   const EXTRA_TITLES: Record<string, string> = { "/notifications": dict.notifications, "/profile": dict.profile };
-  const title = (current ? navLabel(current, locale) : undefined) ?? EXTRA_TITLES[pathname] ?? "Treelogy HR";
+  const title = (current ? navLabel(current, locale) : undefined) ?? EXTRA_TITLES[pathname] ?? "Treelogy Workspace";
 
   function requestLogout() {
     setDrawerOpen(false);

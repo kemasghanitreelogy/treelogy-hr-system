@@ -35,7 +35,7 @@ export const runtime = "nodejs";
 function pesan(judul: string, isi: string, status: number) {
   const html = `<!doctype html><html lang="id"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${judul} — Treelogy HR</title>
+<title>${judul} — Treelogy Workspace</title>
 <style>
   body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#f6f4ea;
        font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f241b;padding:24px}
@@ -48,7 +48,7 @@ function pesan(judul: string, isi: string, status: number) {
   .kaki{margin-top:18px;font-size:.75rem;color:#6e7463}
 </style></head><body><div class="kotak">
 <div class="tanda">!</div><h1>${judul}</h1><p>${isi}</p>
-<p class="kaki">Treelogy HR · Lampiran pengajuan pembayaran</p>
+<p class="kaki">Treelogy Workspace · Lampiran pengajuan pembayaran</p>
 </div></body></html>`;
   return new Response(html, { status, headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
@@ -83,7 +83,7 @@ export async function GET(req: Request) {
   } = await supabase.auth.getUser();
   if (!user) {
     return pesan("Tautan lama, perlu masuk dulu",
-      "Tautan ini dibuat sebelum sistem menerbitkan tautan yang bisa dibuka siapa pun. Masuk ke aplikasi Treelogy HR lalu buka lagi, atau minta HR mengirimkan tautan terbarunya.", 401);
+      "Tautan ini dibuat sebelum sistem menerbitkan tautan yang bisa dibuka siapa pun. Masuk ke aplikasi Treelogy Workspace lalu buka lagi, atau minta HR mengirimkan tautan terbarunya.", 401);
   }
 
   const { data, error } = await supabase.storage.from("payment-files").createSignedUrl(path, 120);

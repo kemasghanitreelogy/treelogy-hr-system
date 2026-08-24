@@ -8,7 +8,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { getLocale } from "@/lib/locale-server";
 import type { Locale } from "@/lib/i18n";
 
-export const metadata = { title: "Detail Slip Gaji — Treelogy HR" };
+export const metadata = { title: "Detail Slip Gaji — Treelogy Workspace" };
 
 const STR: Record<Locale, { backToPayroll: string }> = {
   id: { backToPayroll: "Kembali ke Payroll" },

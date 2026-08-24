@@ -4,7 +4,7 @@ import { getSuperAdminAccounts } from "@/lib/data";
 import { getLocale } from "@/lib/locale-server";
 import { SuperAdminView } from "@/components/super-admin/super-admin-view";
 
-export const metadata = { title: "Super Admin — Treelogy HR" };
+export const metadata = { title: "Super Admin — Treelogy Workspace" };
 
 export default async function SuperAdminPage() {
   const user = await getSessionUser();

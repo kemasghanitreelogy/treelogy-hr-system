@@ -60,7 +60,7 @@ const STR: Record<
   id: {
     sheetDetail: "Perjalanan Dinas", sheetSummary: "Ringkasan", title: "REKAP PERJALANAN DINAS",
     periodAll: "Seluruh periode", period: (a, b) => `Periode ${a} s/d ${b}`,
-    generated: (d) => `Dibuat ${d} · Treelogy HR`,
+    generated: (d) => `Dibuat ${d} · Treelogy Workspace`,
     no: "No", requestedAt: "Tgl ajukan", employee: "Karyawan", jobTitle: "Jabatan",
     destination: "Tujuan", purpose: "Keperluan", depart: "Berangkat", ret: "Kembali", days: "Lama (hari)",
     transport: "Moda transportasi", lodging: "Perlu penginapan", yes: "Ya", no2: "Tidak",
@@ -74,7 +74,7 @@ const STR: Record<
   en: {
     sheetDetail: "Business Travel", sheetSummary: "Summary", title: "BUSINESS TRAVEL REPORT",
     periodAll: "All periods", period: (a, b) => `Period ${a} to ${b}`,
-    generated: (d) => `Generated ${d} · Treelogy HR`,
+    generated: (d) => `Generated ${d} · Treelogy Workspace`,
     no: "No", requestedAt: "Submitted", employee: "Employee", jobTitle: "Job title",
     destination: "Destination", purpose: "Purpose", depart: "Departure", ret: "Return", days: "Days",
     transport: "Mode of transport", lodging: "Lodging needed", yes: "Yes", no2: "No",
@@ -110,7 +110,7 @@ export async function exportTravelXlsx(opts: TravelXlsxOptions): Promise<number>
   const mod = await import("exceljs");
   const ExcelJS = mod.default ?? (mod as unknown as typeof mod.default);
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Treelogy HR";
+  wb.creator = "Treelogy Workspace";
 
   const thin = { style: "thin" as const, color: { argb: C.line } };
   const border = { top: thin, left: thin, right: thin, bottom: thin };
