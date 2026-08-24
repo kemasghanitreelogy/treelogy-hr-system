@@ -124,6 +124,16 @@ const MESSAGES: Record<string, Msg> = {
   shopify_failed: { id: "Gagal menghubungi Shopify. Coba lagi.", en: "Couldn't reach Shopify. Try again." },
   jubelio_login_failed: { id: "Gagal masuk ke Jubelio — periksa kredensial API-nya.", en: "Jubelio login failed — check the API credentials." },
 
+  // --- review tokopedia → judge.me ---
+  cooldown: { id: "Belum waktunya menarik lagi — penarikan dijaga jarang supaya jejaknya tetap sekecil satu pengunjung biasa.", en: "Too soon to pull again — pulls are kept rare so the footprint stays as small as a single visitor's." },
+  cooldown_rejected: { id: "Tokopedia menolak penarikan terakhir. Tunggu sehari penuh sebelum mencoba lagi — jangan diulang hari ini.", en: "Tokopedia rejected the last pull. Wait a full day before trying again — don't retry today." },
+  already_running: { id: "Penarikan lain sedang berjalan. Tunggu sampai selesai.", en: "Another pull is already running. Wait for it to finish." },
+  no_products: { id: "Belum ada produk Tokopedia di peta. Tambahkan dulu minimal satu.", en: "No Tokopedia products mapped yet. Add at least one first." },
+  run_start_failed: { id: "Tidak bisa memulai penarikan. Coba lagi.", en: "Couldn't start the pull. Try again." },
+  invalid_product_id: { id: "ID produk Tokopedia harus berupa angka (ambil dari URL produknya).", en: "The Tokopedia product ID must be numeric (copy it from the product URL)." },
+  invalid_handle: { id: "Handle Shopify hanya boleh huruf kecil, angka, dan tanda hubung.", en: "A Shopify handle may only contain lowercase letters, numbers, and hyphens." },
+  has_reviews: { id: "Produk ini sudah punya review di ledger — nonaktifkan saja, jangan dihapus, agar review lama tidak tertarik ulang dan masuk dobel.", en: "This product already has reviews in the ledger — deactivate it instead of deleting, so old reviews aren't re-pulled and imported twice." },
+
   // --- attendance / push / misc server ---
   attendance_write_failed: { id: "Gagal menyimpan absensi. Coba lagi.", en: "Failed to save attendance. Try again." },
   not_clocked_in: { id: "Belum ada clock-in hari ini untuk di-clock-out.", en: "No clock-in today to clock out from." },

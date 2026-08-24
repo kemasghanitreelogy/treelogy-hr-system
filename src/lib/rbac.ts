@@ -115,6 +115,15 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "reviews",
+    label: "Review Tokopedia",
+    permissions: [
+      { id: "reviews.view", label: "Lihat review Tokopedia & unduh CSV Judge.me" },
+      { id: "reviews.pull", label: "Tarik review baru dari Tokopedia" },
+      { id: "reviews.manage", label: "Kelola peta produk Tokopedia → Shopify" },
+    ],
+  },
+  {
     module: "kpi",
     label: "KPI & Kinerja",
     permissions: [
@@ -226,7 +235,7 @@ export const roles: Role[] = [
     color: "#6b7548",
     // Terpisah dari "Pengelola Inventaris" supaya pemegang peran itu TIDAK ikut
     // mendapat hak menyetujui perjalanan dinas.
-    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve"],
+    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve", "reviews.view", "reviews.pull"],
   },
   {
     id: "role-receipt",
@@ -236,14 +245,16 @@ export const roles: Role[] = [
     // Peran turunan, bukan menambah receipt.view ke "Karyawan" — kalau tidak,
     // SEMUA karyawan ikut melihat nomor telepon pelanggan. receipt.sync sengaja
     // tidak ikut: menulis ke Jubelio mengubah data pesanan sungguhan.
-    permissionIds: [...EMPLOYEE_PERMS, "receipt.view"],
+    // Review Tokopedia ikut karena tim yang sama mengurus toko; `reviews.manage`
+    // tidak, supaya peta produk hanya diubah HR/admin.
+    permissionIds: [...EMPLOYEE_PERMS, "receipt.view", "reviews.view", "reviews.pull"],
   },
   {
     id: "role-manager-receipt",
     name: "Manager + Receipt Sales",
     description: "Hak manajer, plus membaca label resi & mencocokkannya ke order Shopify.",
     color: "#4a7ba6",
-    permissionIds: [...MANAGER_PERMS, "receipt.view"],
+    permissionIds: [...MANAGER_PERMS, "receipt.view", "reviews.view", "reviews.pull"],
   },
   {
     id: "role-finance-lead",
