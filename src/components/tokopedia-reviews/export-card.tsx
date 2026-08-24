@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { hasBody, picturesExpired, type NameStyle } from "@/lib/tokopedia/judgeme";
+import { hasBody, namedCount, picturesExpired, type NameStyle } from "@/lib/tokopedia/judgeme";
 import { buildJudgeMeTsv } from "@/lib/tokopedia/judgeme";
 import { exportJudgeMeCsv, exportReviewsXlsx, exportSkippedCsv } from "@/lib/tokopedia/judgeme-export";
 import type { TokopediaReview } from "@/lib/tokopedia/types";
@@ -62,7 +62,7 @@ export function ExportCard({
   const toast = useToast();
 
   const [scope, setScope] = useState<Scope>("new");
-  const [nameStyle, setNameStyle] = useState<NameStyle>("masked");
+  const [nameStyle, setNameStyle] = useState<NameStyle>("respect");
   const [busyXlsx, setBusyXlsx] = useState(false);
   /** ID yang baru saja ditandai — supaya penandaannya bisa dibatalkan. */
   const [justMarked, setJustMarked] = useState<string[]>([]);
@@ -175,13 +175,21 @@ export function ExportCard({
               value={nameStyle}
               onChange={setNameStyle}
               options={[
+                { value: "respect", label: t.nameRespect },
                 { value: "masked", label: t.nameMasked },
                 { value: "anonymous", label: t.nameAnon },
               ]}
             />
           </div>
           <p className="mt-1.5 text-[11px] leading-relaxed text-faint">
-            {nameStyle === "masked" ? t.nameMaskedHint : t.nameAnonHint}
+            {nameStyle === "respect" ? t.nameRespectHint : nameStyle === "masked" ? t.nameMaskedHint : t.nameAnonHint}
+          </p>
+          {/* Angka nyata, bukan penjelasan saja — bedanya antar-pilihan baru
+              terasa kalau terlihat berapa baris yang benar-benar bernama. */}
+          <p className="mt-1 text-[11px] tabular-nums text-muted">
+            <span className="font-semibold text-ink">{namedCount(importable, nameStyle)}</span>
+            {" / "}
+            {importable.length} {t.namedPreview}
           </p>
         </div>
       </div>

@@ -68,12 +68,16 @@ export const STR: Record<Locale, Record<string, string>> = {
     scopeAllWarn:
       "Mengekspor SEMUA akan mengulang review yang sudah pernah diimport. Judge.me tidak punya dedup bawaan — barisnya akan dobel di toko.",
     nameStyle: "Nama penulis",
-    nameMasked: "Nama tersamar",
+    nameRespect: "Ikuti pembeli",
+    nameRespectHint:
+      "Yang tidak memilih anonim tampil dengan nama aslinya; yang memilih anonim ditulis “Anonymous”. Persis seperti di Tokopedia, tanpa nama berbintang yang terbaca seperti hasil scrape.",
+    nameMasked: "Tersamar apa adanya",
     nameMaskedHint:
-      "Persis yang sudah tampil di Tokopedia (mis. M***c). Tidak menambah informasi baru tentang orangnya.",
-    nameAnon: "Anonymous",
+      "Nama anonim ditulis seperti aslinya dari Tokopedia (mis. M***c). Jujur, tapi di widget toko terlihat seperti data mentah.",
+    nameAnon: "Anonymous semua",
     nameAnonHint:
-      "Semua baris bernama sama. Di widget toko, ratusan review “Anonymous” justru terbaca seperti review palsu.",
+      "Membuang nama asli yang sebetulnya boleh tampil. Hampir tidak pernah pilihan yang tepat — pakai hanya kalau ada alasan privasi yang menuntutnya.",
+    namedPreview: "tampil bernama asli",
     csv: "Unduh CSV Judge.me",
     xlsx: "Unduh Excel (untuk diperiksa)",
     copySheet: "Salin untuk Sheet",
@@ -223,11 +227,16 @@ export const STR: Record<Locale, Record<string, string>> = {
     scopeAllWarn:
       "Exporting EVERYTHING repeats reviews already imported. Judge.me has no built-in dedup — the rows will double up in your store.",
     nameStyle: "Reviewer name",
-    nameMasked: "Masked name",
-    nameMaskedHint: "Exactly what Tokopedia already shows (e.g. M***c). It reveals nothing new about the person.",
-    nameAnon: "Anonymous",
+    nameRespect: "Follow the buyer",
+    nameRespectHint:
+      "Buyers who didn't opt for anonymity appear under their real name; those who did are written “Anonymous”. Just like Tokopedia, minus the starred names that read like scraped data.",
+    nameMasked: "Masked as-is",
+    nameMaskedHint:
+      "Anonymous names are written exactly as Tokopedia sends them (e.g. M***c). Honest, but it looks like raw data in the widget.",
+    nameAnon: "All Anonymous",
     nameAnonHint:
-      "Every row gets the same name. In the storefront widget, hundreds of “Anonymous” reviews read like fakes.",
+      "Throws away real names that were fine to show. Almost never the right choice — use it only if a privacy reason demands it.",
+    namedPreview: "shown under a real name",
     csv: "Download Judge.me CSV",
     xlsx: "Download Excel (to eyeball)",
     copySheet: "Copy for Sheets",

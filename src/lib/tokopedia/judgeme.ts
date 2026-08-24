@@ -32,14 +32,21 @@ const MAX_PICTURES = 5;
 /**
  * Bagaimana nama penulis ditulis di CSV.
  *
- * Tokopedia menandai hampir semua review `isAnonymous: true`, tapi tetap
- * MENAMPILKAN nama tersamar ("M***c") di halaman produknya. Mengikuti tanda
- * itu secara harfiah membuat seluruh review masuk sebagai "Anonymous" — ratusan
- * baris dengan nama yang sama, yang di widget toko terbaca seperti review palsu.
- * Karena itu bawaannya memakai nama tersamar: itu persis yang sudah publik di
- * Tokopedia, tidak menambah satu pun informasi baru tentang orangnya.
+ * `isAnonymous` ternyata menentukan segalanya, dan korelasinya sempurna pada
+ * 359 review yang ditarik: yang memilih anonim namanya disamarkan Tokopedia
+ * jadi "M***c" (222 baris), yang tidak memilih anonim namanya utuh dan bersih —
+ * Vita, Wara, Irvan, Theresia (137 baris).
+ *
+ *   "respect"   — ikuti pilihan pembeli. Nama asli dipakai apa adanya; yang
+ *                 memilih anonim ditulis "Anonymous". Ini bawaannya, karena
+ *                 "M***c" di widget toko terbaca seperti data hasil scrape,
+ *                 sedangkan "Anonymous" adalah label yang sudah dikenal orang.
+ *   "masked"    — tulis apa adanya dari Tokopedia, bintang dan semua.
+ *   "anonymous" — semua jadi "Anonymous". Membuang 137 nama asli, jadi hampir
+ *                 tidak pernah pilihan yang tepat; disediakan untuk kalau ada
+ *                 alasan privasi yang menuntutnya.
  */
-export type NameStyle = "masked" | "anonymous";
+export type NameStyle = "respect" | "masked" | "anonymous";
 
 /** dd/mm/yyyy menurut WIB — satu-satunya jalur Judge.me yang bisa backdate. */
 export function judgemeDate(iso: string): string {
@@ -58,7 +65,17 @@ export function judgemeDate(iso: string): string {
 export function reviewerName(review: TokopediaReview, style: NameStyle): string {
   if (style === "anonymous") return "Anonymous";
   const name = (review.reviewerName || "").trim();
-  return name || "Anonymous";
+  if (!name) return "Anonymous";
+  // Yang memilih anonim tidak punya nama untuk ditampilkan — yang ada hanya
+  // sisa huruf dari nama yang sengaja disembunyikan. Menuliskannya sebagai
+  // "Anonymous" bukan membuang informasi, justru menyebutnya dengan benar.
+  if (style === "respect" && (review.isAnonymous || name.includes("*"))) return "Anonymous";
+  return name;
+}
+
+/** Berapa baris yang akan tampil bernama asli dengan gaya ini — untuk layar. */
+export function namedCount(reviews: TokopediaReview[], style: NameStyle): number {
+  return reviews.reduce((n, r) => n + (reviewerName(r, style) === "Anonymous" ? 0 : 1), 0);
 }
 
 export function toJudgeMeRow(review: TokopediaReview, style: NameStyle): JudgeMeRow {
