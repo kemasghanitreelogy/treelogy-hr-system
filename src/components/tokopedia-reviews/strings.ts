@@ -35,6 +35,19 @@ export const STR: Record<Locale, Record<string, string>> = {
     partialBody:
       "Yang sudah tertarik tersimpan. Sisanya ikut terambil pada penarikan berikutnya — tidak ada yang hilang.",
 
+    // — tarik dari laptop —
+    localTitle: "Tarik dari laptop",
+    localWhy:
+      "Tokopedia mem-blackhole IP datacenter: dari server, koneksinya menggantung 30 detik lalu mati tanpa satu byte pun balasan — padahal panggilan ke Shopify dan Jubelio dari server yang sama berjalan normal. Jadi yang menelepon Tokopedia harus mesin ber-IP rumahan; sisanya tetap di sini.",
+    localCmd: "Jalankan di folder proyek:",
+    localCopy: "Salin perintah",
+    localCopied: "Perintah tersalin ✓",
+    localEnv: "Perlu dua env di .env.local:",
+    localSafe:
+      "Aman dijalankan dua kali — penjaga jeda, dedup, dan validasi semuanya tetap di server, jadi yang kedua akan ditolak sendiri.",
+    localAfter: "Setelah selesai, muat ulang halaman ini untuk melihat hasilnya.",
+    serverTry: "Coba lewat server",
+    serverTryHint: "Terbukti gagal dari Vercel. Ada di sini kalau suatu saat blokirnya dicabut.",
     // — angka ringkas —
     inLedger: "Review di ledger",
     inLedgerSub: "seluruh yang pernah tertarik",
@@ -178,6 +191,19 @@ export const STR: Record<Locale, Record<string, string>> = {
     partialTitle: "The run stopped midway because it ran out of time",
     partialBody: "What was pulled is saved. The rest comes in on the next pull — nothing is lost.",
 
+    // — pull from a laptop —
+    localTitle: "Pull from a laptop",
+    localWhy:
+      "Tokopedia blackholes datacenter IPs: from the server the connection hangs for 30 seconds and dies without a single byte back — while calls to Shopify and Jubelio from that same server work fine. So whatever calls Tokopedia has to run on a home-IP machine; everything else stays here.",
+    localCmd: "Run this in the project folder:",
+    localCopy: "Copy the command",
+    localCopied: "Command copied ✓",
+    localEnv: "Needs two env vars in .env.local:",
+    localSafe:
+      "Safe to run twice — the interval guard, dedup, and validation all still live on the server, so the second run refuses itself.",
+    localAfter: "When it finishes, reload this page to see the results.",
+    serverTry: "Try via the server",
+    serverTryHint: "Proven to fail from Vercel. Kept here in case the block is ever lifted.",
     inLedger: "Reviews in ledger",
     inLedgerSub: "everything ever pulled",
     pending: "Not exported",

@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Clock, Download, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
+import {
+  AlertTriangle, Check, Clock, ClipboardCopy, Loader2, ServerCrash, ShieldCheck, Terminal, TriangleAlert,
+} from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { TokopediaRun } from "@/lib/tokopedia/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import { STR } from "./strings";
+
+const PULL_COMMAND = "node scripts/tokopedia-pull.mjs";
 
 /** Sisa waktu dalam bahasa manusia — "3 hari 4 jam", "12 menit". */
 function untilLabel(iso: string, locale: Locale, now: number): string {
@@ -43,7 +48,13 @@ export function PullCard({
   onPull: (force: boolean) => void;
 }) {
   const t = STR[locale];
+  const toast = useToast();
   const last = runs[0];
+  const [copied, setCopied] = useState(false);
+  // Asal URL dibaca SESUDAH hydrate. Membacanya saat render pertama membuat
+  // HTML server dan klien berbeda, dan React membuang seluruh pohonnya.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
   const [askForce, setAskForce] = useState(false);
 
   // Hitung mundur berdetak sendiri: kalau tidak, layar yang dibiarkan terbuka
@@ -87,22 +98,75 @@ export function PullCard({
         </div>
 
         <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+          {/* Tombol ini terbukti gagal dari Vercel, jadi ia BUKAN aksi utama —
+              menampilkannya sebagai tombol besar hijau hanya akan menuntun
+              orang ke kegagalan yang sudah kita ketahui. */}
           <Button
-            size="lg"
+            variant="outline"
             onClick={() => onPull(false)}
             disabled={!canPull || busy || locked}
             className="w-full sm:w-auto"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            {busy ? t.pulling : t.pull}
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ServerCrash className="h-4 w-4" />}
+            {busy ? t.pulling : t.serverTry}
           </Button>
-          {busy && <p className="text-[11px] text-faint sm:text-right">{t.pullingHint}</p>}
+          <p className="max-w-[15rem] text-[11px] leading-relaxed text-faint sm:text-right">
+            {busy ? t.pullingHint : t.serverTryHint}
+          </p>
           {locked && !busy && (
             <p className="text-[11px] text-faint sm:text-right">
               {t.cooldownIn} <span className="font-semibold text-ink">{untilLabel(nextPullAt!, locale, now)}</span>
             </p>
           )}
         </div>
+      </div>
+
+      {/* Jalur yang benar-benar bekerja. Ditaruh di badan kartu, bukan di
+          catatan kaki, karena inilah yang akan dipakai orang tiap bulan. */}
+      <div className="mt-4 rounded-xl border border-forest-200 bg-forest-50/60 p-3 sm:p-4">
+        <p className="flex items-center gap-2 text-sm font-semibold text-forest-700">
+          <Terminal className="h-4 w-4 shrink-0" />
+          {t.localTitle}
+        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">{t.localWhy}</p>
+
+        <p className="mt-3 text-[11px] font-medium text-ink">{t.localCmd}</p>
+        <div className="mt-1 flex items-center gap-2 rounded-lg border border-line bg-panel px-3 py-2">
+          <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-ink">
+            {PULL_COMMAND}
+          </code>
+          <button
+            type="button"
+            aria-label={t.localCopy}
+            title={t.localCopy}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(PULL_COMMAND);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+                toast.success(t.localCopied);
+              } catch {
+                toast.error(t.copyFailed);
+              }
+            }}
+            className="shrink-0 cursor-pointer rounded-lg p-1.5 text-faint transition-colors hover:bg-forest-50 hover:text-forest-700"
+          >
+            {copied ? <Check className="h-4 w-4 text-forest-600" /> : <ClipboardCopy className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <p className="mt-2 text-[11px] text-faint">{t.localEnv}</p>
+        <pre className="mt-1 overflow-x-auto rounded-lg bg-sand/70 px-3 py-2 font-mono text-[10px] leading-relaxed text-muted">
+{`TOKOPEDIA_INGEST_URL=${origin}/api/tokopedia-reviews/ingest
+TOKOPEDIA_INGEST_SECRET=<sama dengan env di Vercel>`}
+        </pre>
+
+        <p className="mt-2 flex gap-1.5 text-[11px] leading-relaxed text-forest-700">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            {t.localSafe} {t.localAfter}
+          </span>
+        </p>
       </div>
 
       {/* Kenapa footprint-nya sekecil itu — ditulis di layar, bukan hanya di
