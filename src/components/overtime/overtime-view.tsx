@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ExternalLink, FileText, Loader2, Paperclip, Pencil, Plus, Wallet, X } from "lucide-react";
+import { Check, ExternalLink, FileText, Loader2, Paperclip, Pencil, Plus, ShieldCheck, Wallet, X } from "lucide-react";
 import type { ContractType, Employee, OvertimeRequest, Team } from "@/lib/types";
 import { overtimePayEstimate } from "@/lib/overtime";
 import { TEAM_META } from "@/lib/constants";
@@ -43,6 +43,7 @@ const STR: Record<
     approve: string;
     reject: string;
     viaPayroll: string;
+    selfDecide: string;
     sheetTitle: string;
     sheetDesc: string;
     requestSent: string;
@@ -106,6 +107,7 @@ const STR: Record<
     approve: "Setujui",
     reject: "Tolak",
     viaPayroll: "Lewat payroll",
+    selfDecide: "Tanpa atasan — putusanmu sendiri",
     sheetTitle: "Ajukan Lembur",
     sheetDesc: "Buat pengajuan lembur baru",
     requestSent: "Pengajuan lembur terkirim ✓",
@@ -168,6 +170,7 @@ const STR: Record<
     approve: "Approve",
     reject: "Reject",
     viaPayroll: "Via payroll",
+    selfDecide: "No supervisor — yours to decide",
     sheetTitle: "Request Overtime",
     sheetDesc: "Create a new overtime request",
     requestSent: "Overtime request submitted ✓",
@@ -225,6 +228,7 @@ export function OvertimeView({
   currentEmployeeId = null,
   canRequestForOthers = true,
   canApproveAll = false,
+  canDecideOwn = false,
   approverTeam = null,
   selfRatePerHour = 0,
   selfContractType = "pkwt",
@@ -235,6 +239,8 @@ export function OvertimeView({
   currentEmployeeId?: string | null;
   canRequestForOthers?: boolean;
   canApproveAll?: boolean;
+  /** Boleh memutus pengajuan sendiri — hanya bila tak ada atasan di atasnya. */
+  canDecideOwn?: boolean;
   approverTeam?: Team | null;
   /** Hourly rate of the logged-in user (own salary only) for the live estimate. */
   selfRatePerHour?: number;
@@ -273,11 +279,15 @@ export function OvertimeView({
     !canApproveAll && approverTeam != null && r.employeeId !== currentEmployeeId && empMap.get(r.employeeId)?.managerId === currentEmployeeId;
   const canDecide = useMemo(
     () => (r: OvertimeRequest) => {
-      if (r.status !== "pending" || r.employeeId === currentEmployeeId) return false;
+      if (r.status !== "pending") return false;
+      // Pengajuan sendiri hanya boleh diputus kalau memang tidak ada siapa pun
+      // di atasnya. Kalau tidak, pengajuannya akan menggantung selamanya —
+      // bukan berpindah ke orang lain.
+      if (r.employeeId === currentEmployeeId) return canDecideOwn;
       if (amHR) return true;
       return amManagerOf(r) && !r.managerApprover;
     },
-    [amHR, approverTeam, currentEmployeeId, empMap],
+    [amHR, approverTeam, currentEmployeeId, empMap, canDecideOwn],
   );
   const canReset = (r: OvertimeRequest) => amHR && r.status !== "pending";
 
@@ -373,6 +383,13 @@ export function OvertimeView({
                   <Button size="sm" onClick={() => setRevising(r)}>
                     <Pencil className="h-4 w-4" /> {t.reviseShort}
                   </Button>
+                )}
+                {/* Memutus pengajuan sendiri menyangkut pembayaran diri sendiri —
+                    sebutkan alasannya di layar supaya tidak terbaca seperti celah. */}
+                {canDecide(r) && r.employeeId === currentEmployeeId && (
+                  <Badge tone="gold" className="whitespace-nowrap">
+                    <ShieldCheck className="h-3.5 w-3.5" /> {t.selfDecide}
+                  </Badge>
                 )}
                 {canDecide(r) ? (
                   <>

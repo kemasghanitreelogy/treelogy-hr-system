@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import { revisionGuard, revisionReset } from "@/lib/revision";
 import { applyApproval, type ApprovalAction } from "@/lib/approval";
+import { canDecideOwnRequest } from "@/lib/self-approval";
 import { contractRatePerHour, overtimePayEstimate, parseContractType } from "@/lib/overtime";
 import { can, getSessionUser } from "@/lib/auth";
 import type { RequestStatus } from "@/lib/types";
@@ -282,6 +283,15 @@ export async function PATCH(req: Request) {
   // (manager_id) who can approve. No atasan → HR finalises directly.
   const { data: needMgr } = await supabase!.rpc("employee_requires_manager", { emp: prev.employee_id });
   const managerRequired = needMgr === true;
+
+  // Memutus pengajuan sendiri: dilarang, KECUALI memang tidak ada siapa pun di
+  // atasnya. Dulu larangan ini hanya berupa tombol yang disembunyikan di layar
+  // — artinya siapa pun yang memanggil API langsung bisa melewatinya. Sekarang
+  // aturannya ditegakkan di sini, tempat yang tidak bisa dilewati.
+  const isSelf = Boolean(user.employeeId) && prev.employee_id === user.employeeId;
+  if (isSelf && body.action !== "reset" && !canDecideOwnRequest({ isHR, requiresManager: managerRequired })) {
+    return NextResponse.json({ error: "self_approval" }, { status: 403 });
+  }
 
   const result = applyApproval({
     action: body.action,
