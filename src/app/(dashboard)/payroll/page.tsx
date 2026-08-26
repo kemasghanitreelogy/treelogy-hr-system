@@ -57,7 +57,11 @@ export default async function PayrollPage() {
   const user = await getSessionUser();
   const locale = await getLocale();
   const t = STR[locale];
-  const isOps = can(user, "payroll.process") || can(user, "employees.manage");
+  // `employees.manage` DULU ikut membuka mode operasional — artinya siapa pun
+  // yang boleh mengelola data karyawan otomatis melihat gaji semua orang.
+  // Keduanya dipisah supaya hak "kelola karyawan" bisa diberikan tanpa
+  // sekalian menyerahkan besaran gaji seisi kantor.
+  const isOps = can(user, "payroll.process") || can(user, "payroll.salary");
 
   // Absensi hanya untuk jendela riwayat (bukan seluruh tabel) — lebih cepat.
   const [employeesAll, attendance, overtime, leave] = await Promise.all([

@@ -17,6 +17,7 @@ export default async function EmployeesPage() {
   if (!can(user, "employees.manage")) redirect("/dashboard");
   const canManage = can(user, "employees.manage");
   const canAssignRoles = can(user, "access.users");
+  const canSeeSalary = can(user, "payroll.salary");
   const roles = getRoles().map((r) => ({ id: r.id, name: r.name, color: r.color }));
   const roleByEmployee: Record<string, string> = {};
   for (const u of users) roleByEmployee[u.employeeId] = u.roleId;
@@ -25,6 +26,7 @@ export default async function EmployeesPage() {
       <EmployeesView
         initial={employees}
         canManage={canManage}
+        canSeeSalary={canSeeSalary}
         canAssignRoles={canAssignRoles}
         roles={roles}
         roleByEmployee={roleByEmployee}

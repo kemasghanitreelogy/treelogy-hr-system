@@ -268,6 +268,7 @@ const STR: Record<Locale, typeof ID_STR> = {
 export function EmployeesView({
   initial,
   canManage = false,
+  canSeeSalary = false,
   canAssignRoles = false,
   roles = [],
   roleByEmployee = {},
@@ -275,6 +276,8 @@ export function EmployeesView({
 }: {
   initial: Employee[];
   canManage?: boolean;
+  /** Boleh melihat BESARAN gaji karyawan lain (payroll.salary). */
+  canSeeSalary?: boolean;
   canAssignRoles?: boolean;
   roles?: RoleLite[];
   roleByEmployee?: Record<string, string>;
@@ -412,7 +415,7 @@ export function EmployeesView({
                 <th className="px-5 py-3">{t.thTeam}</th>
                 <th className="px-5 py-3">{t.thPosition}</th>
                 <th className="px-5 py-3">{t.thJoined}</th>
-                <th className="px-5 py-3 text-right">{t.thBaseSalary}</th>
+                {canSeeSalary && <th className="px-5 py-3 text-right">{t.thBaseSalary}</th>}
                 <th className="px-5 py-3">{t.thStatus}</th>
               </tr>
             </thead>
@@ -439,9 +442,11 @@ export function EmployeesView({
                   </td>
                   <td className="px-5 py-3 text-muted">{e.position}</td>
                   <td className="px-5 py-3 text-muted">{formatDate(e.joinDate, "short", locale)}</td>
-                  <td className="px-5 py-3 text-right font-medium text-ink">
-                    {e.contractType === "parttime" ? `${rupiah(e.hourlyRate ?? 0)}${t.perHourSuffix}` : rupiah(e.baseSalary)}
-                  </td>
+                  {canSeeSalary && (
+                    <td className="px-5 py-3 text-right font-medium text-ink">
+                      {e.contractType === "parttime" ? `${rupiah(e.hourlyRate ?? 0)}${t.perHourSuffix}` : rupiah(e.baseSalary)}
+                    </td>
+                  )}
                   <td className="px-5 py-3">
                     <EmployeeStatusBadge status={e.status} />
                   </td>
@@ -472,11 +477,13 @@ export function EmployeesView({
                 <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", TEAM_META[e.team].chip)}>
                   {TEAM_META[e.team].label}
                 </span>
-                <span className="text-xs text-muted">
-                  {e.contractType === "parttime"
-                    ? `${rupiah(e.hourlyRate ?? 0, { compact: true })}${t.perHourSuffix}`
-                    : rupiah(e.baseSalary, { compact: true })}
-                </span>
+                {canSeeSalary && (
+                  <span className="text-xs text-muted">
+                    {e.contractType === "parttime"
+                      ? `${rupiah(e.hourlyRate ?? 0, { compact: true })}${t.perHourSuffix}`
+                      : rupiah(e.baseSalary, { compact: true })}
+                  </span>
+                )}
               </div>
             </div>
           </button>
@@ -529,6 +536,7 @@ export function EmployeesView({
           <EmployeeDetail
             emp={selected}
             canManage={canManage}
+            canSeeSalary={canSeeSalary}
             canAssignRoles={canAssignRoles}
             roles={roles}
             currentRoleId={roleMap[selected.id]}
@@ -543,7 +551,7 @@ export function EmployeesView({
 
       {/* Add form */}
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.addTitle} description={t.addDescription}>
-        <EmployeeForm onSaved={(e) => onSaved(e, "create")} onCancel={() => setAdding(false)} />
+        <EmployeeForm canSeeSalary={canSeeSalary} onSaved={(e) => onSaved(e, "create")} onCancel={() => setAdding(false)} />
       </Sheet>
 
       {/* Post-create success step — next-step CTA: set the work schedule */}
@@ -572,7 +580,9 @@ export function EmployeesView({
         title={t.editTitle}
         description={editing ? `${editing.nik} · ${editing.name}` : ""}
       >
-        {editing && <EmployeeForm initial={editing} onSaved={(e) => onSaved(e, "edit")} onCancel={() => setEditing(null)} />}
+        {editing && (
+          <EmployeeForm canSeeSalary={canSeeSalary} initial={editing} onSaved={(e) => onSaved(e, "edit")} onCancel={() => setEditing(null)} />
+        )}
       </Sheet>
 
       {/* Deactivate confirmation */}
@@ -616,6 +626,7 @@ function FilterChip({
 function EmployeeDetail({
   emp,
   canManage,
+  canSeeSalary,
   canAssignRoles,
   roles,
   currentRoleId,
@@ -623,6 +634,7 @@ function EmployeeDetail({
   onRoleAssigned,
 }: {
   emp: Employee;
+  canSeeSalary: boolean;
   canManage: boolean;
   canAssignRoles: boolean;
   roles: RoleLite[];
@@ -699,12 +711,13 @@ function EmployeeDetail({
           <Wallet className="h-4 w-4 text-forest-600" /> {t.compensationTax}
         </h3>
         <dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm">
-          {emp.contractType === "parttime" ? (
-            <Stat label={t.hourlyRateLabel} value={`${rupiah(emp.hourlyRate ?? 0)}${t.perHourSuffix}`} />
-          ) : (
-            <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
-          )}
-          <Stat label={t.allowance} value={rupiah(emp.allowance)} />
+          {canSeeSalary &&
+            (emp.contractType === "parttime" ? (
+              <Stat label={t.hourlyRateLabel} value={`${rupiah(emp.hourlyRate ?? 0)}${t.perHourSuffix}`} />
+            ) : (
+              <Stat label={t.baseSalary} value={rupiah(emp.baseSalary)} />
+            ))}
+          {canSeeSalary && <Stat label={t.allowance} value={rupiah(emp.allowance)} />}
           <Stat label={t.contractType} value={CONTRACT_LABEL[emp.contractType ?? "pkwt"]} />
           <Stat label={t.religion} value={emp.religion ? RELIGION_LABEL[locale][emp.religion] : "—"} />
           <Stat label={t.npwp} value={emp.npwp ?? "—"} />
@@ -884,10 +897,12 @@ function PostCreatePanel({
 }
 
 function EmployeeForm({
+  canSeeSalary = false,
   initial,
   onSaved,
   onCancel,
 }: {
+  canSeeSalary?: boolean;
   initial?: Employee;
   onSaved: (e: Employee) => void;
   onCancel: () => void;
@@ -934,9 +949,17 @@ function EmployeeForm({
         position: form.position,
         email: form.email,
         phone: form.phone,
-        baseSalary: Number(form.baseSalary) || 0,
-        allowance: Number(form.allowance) || 0,
-        hourlyRate: Number(form.hourlyRate) || 0,
+        // Isian gaji DIHILANGKAN dari kiriman, bukan dikirim nol, saat yang
+        // menyunting tidak boleh melihatnya. API hanya menulis kolom gaji
+        // `if (p.baseSalary !== undefined)`, jadi menghilangkannya berarti
+        // nilai lamanya utuh — sedangkan mengirim 0 akan menghapus gaji orang.
+        ...(canSeeSalary
+          ? {
+              baseSalary: Number(form.baseSalary) || 0,
+              allowance: Number(form.allowance) || 0,
+              hourlyRate: Number(form.hourlyRate) || 0,
+            }
+          : {}),
         contractType: form.contractType,
         religion: form.religion || null,
         birthPlace: form.birthPlace || null,
@@ -992,7 +1015,7 @@ function EmployeeForm({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        {form.contractType === "parttime" ? (
+        {!canSeeSalary ? null : form.contractType === "parttime" ? (
           <Field label={t.hourlyRateRp}>
             <Input type="number" value={form.hourlyRate} onChange={(e) => set("hourlyRate", e.target.value)} />
           </Field>
@@ -1001,9 +1024,14 @@ function EmployeeForm({
             <Input type="number" value={form.baseSalary} onChange={(e) => set("baseSalary", e.target.value)} />
           </Field>
         )}
-        <Field label={t.allowanceRp}>
-          <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
-        </Field>
+        {/* Tunjangan ikut disembunyikan: payload-nya juga dihilangkan saat tak
+            boleh melihat gaji, jadi membiarkan isiannya terbuka berarti nilai
+            yang diketik hilang tanpa pesan. */}
+        {canSeeSalary && (
+          <Field label={t.allowanceRp}>
+            <Input type="number" value={form.allowance} onChange={(e) => set("allowance", e.target.value)} />
+          </Field>
+        )}
       </div>
       <Field label={t.contractType} hint={form.contractType === "parttime" ? t.partTimeContractHint : undefined}>
         <Select value={form.contractType} onChange={(e) => set("contractType", e.target.value as ContractType)}>

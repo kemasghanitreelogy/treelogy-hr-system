@@ -54,6 +54,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { id: "payroll.view", label: "Lihat payroll & slip gaji" },
       { id: "payroll.process", label: "Proses & setujui payroll" },
       { id: "payroll.export", label: "Ekspor transfer bank" },
+      { id: "payroll.salary", label: "Lihat gaji karyawan lain" },
     ],
   },
   {
@@ -184,6 +185,14 @@ const MANAGER_PERMS = [
 // shifts.view = lihat halaman Jadwal (jadwal sendiri + tabungan libur).
 const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view", "documents.view", "travel.view", "travel.request", "payment.request", ];
 
+/**
+ * Izin yang membuka BESARAN GAJI karyawan lain.
+ *
+ * `payroll.view` sengaja tidak termasuk — di sistem ini artinya "boleh melihat
+ * slip gaji SENDIRI", dan setiap karyawan memilikinya.
+ */
+export const SALARY_PERMS = ["payroll.salary", "payroll.process", "payroll.export"];
+
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");
 
@@ -269,6 +278,17 @@ export const roles: Role[] = [
     description: "Hak Karyawan + proses pengajuan pembayaran + persetujuan akhir perjalanan dinas.",
     color: "#a8842c",
     permissionIds: [...EMPLOYEE_PERMS, "payment.manage", "travel.finalize"],
+  },
+  {
+    id: "role-hr-no-salary",
+    name: "HR Officer (tanpa akses gaji)",
+    description:
+      "Seluruh hak HR Officer, kecuali melihat besaran gaji karyawan lain dan memproses payroll.",
+    color: "#6b7548",
+    // Diturunkan dari HR_PERMS lewat penyaringan, bukan ditulis ulang: kalau
+    // suatu saat HR mendapat izin baru, peran ini ikut mendapatkannya tanpa ada
+    // yang perlu ingat menyalinnya ke sini.
+    permissionIds: HR_PERMS.filter((id) => !SALARY_PERMS.includes(id)),
   },
   {
     id: "role-payroll",
