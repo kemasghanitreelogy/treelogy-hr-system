@@ -68,6 +68,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fromPdf: "teks PDF",
     shopify: "Shopify",
     manual: "Manual / WA",
+    orderPdf: "Dari PDF pesanan",
     verified: "Sudah diperiksa",
     markVerified: "Tandai sudah diperiksa",
     more: "Detail lain dari label",
@@ -83,6 +84,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fromPdf: "PDF text",
     shopify: "Shopify",
     manual: "Manual / WA",
+    orderPdf: "From order PDF",
     verified: "Verified",
     markVerified: "Mark as verified",
     more: "Other details from the label",
@@ -202,12 +204,25 @@ function LazyThumb({
 
 function SourceBadge({ record, locale }: { record: LabelRecord; locale: Locale }) {
   const t = STR[locale];
-  return record.matchStatus === "shopify" ? (
-    <Badge tone="matcha" dot>
-      <ShoppingBag className="h-3 w-3" /> {t.shopify}
-      {record.matchedOrder ? ` ${record.matchedOrder}` : ""}
-    </Badge>
-  ) : (
+  if (record.matchStatus === "shopify") {
+    return (
+      <Badge tone="matcha" dot>
+        <ShoppingBag className="h-3 w-3" /> {t.shopify}
+        {record.matchedOrder ? ` ${record.matchedOrder}` : ""}
+      </Badge>
+    );
+  }
+  // Packing slip: namanya dan HP-nya tercetak di halaman itu sendiri. Menandai
+  // ini "Manual / WA" akan menyuruh orang memeriksa sesuatu yang justru paling
+  // pasti di seluruh berkas.
+  if (record.matchStatus === "pdf") {
+    return (
+      <Badge tone="sky" dot>
+        <FileText className="h-3 w-3" /> {t.orderPdf}
+      </Badge>
+    );
+  }
+  return (
     <Badge tone="gold" dot>
       {t.manual}
     </Badge>

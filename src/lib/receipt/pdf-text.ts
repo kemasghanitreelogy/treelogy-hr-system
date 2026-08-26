@@ -52,3 +52,62 @@ export function hasUsableTextLayer(lines: string[]): boolean {
   const flat = lines.join(" ");
   return flat.length >= TEXT_LAYER_MIN_CHARS && /penerima|pengirim/i.test(flat);
 }
+
+/* ============================================================
+   Packing slip pesanan website (Shopify) — format kedua.
+
+   Ini BUKAN label pengiriman: tidak ada barcode, tidak ada nomor resi. Yang
+   ada justru hal yang pada label harus dikejar ke Shopify — nama penerima dan
+   nomor HP-nya tercetak langsung di halaman.
+
+   Yang membuatnya perlu penanganan sendiri adalah tata letaknya: SHIP TO dan
+   BILL TO berdiri BERDAMPINGAN pada ketinggian yang sama. Penyusun baris biasa
+   menggabungkan keduanya jadi satu baris —
+
+       "Hotmaria Siregar Hotmaria Siregar"
+
+   — dan memotongnya di tengah hanya benar selama penerima dan pembayar orang
+   yang sama. Begitu pesanannya dikirim ke alamat orang lain (hadiah, kantor),
+   potongan itu diam-diam mengambil nama yang salah. Karena itu kolomnya
+   dipisah dari POSISI X-nya, bukan dari isi teksnya.
+   ============================================================ */
+
+/** Penanda format; dicari pada baris hasil penyusunan biasa. */
+const SHIP_TO_RE = /\bSHIP\s*TO\b/i;
+const BILL_TO_RE = /\bBILL\s*TO\b/i;
+
+export function isPackingSlip(lines: string[]): boolean {
+  const flat = lines.join(" ");
+  return SHIP_TO_RE.test(flat) && BILL_TO_RE.test(flat);
+}
+
+/**
+ * Baris kolom SHIP TO saja, atau null bila halaman ini bukan packing slip.
+ *
+ * Batas kolomnya diambil dari posisi "BILL TO" itu sendiri, bukan dari angka
+ * tetap: lebar kolom berubah mengikuti panjang alamat, dan menuliskan batas
+ * yang dihitung sekali akan meleset pada pesanan berikutnya.
+ */
+export function shipToLines(
+  tc: { items?: TextItemLike[] } | null | undefined,
+  tolerance = 2,
+): string[] | null {
+  const items = (tc?.items ?? []).filter((it) => (it?.str ?? "").trim() && (it?.transform?.length ?? 0) >= 6);
+  if (!items.length) return null;
+
+  const shipTo = items.find((it) => SHIP_TO_RE.test(it.str ?? ""));
+  const billTo = items.find((it) => BILL_TO_RE.test(it.str ?? ""));
+  if (!shipTo || !billTo) return null;
+
+  const shipX = shipTo.transform![4];
+  const billX = billTo.transform![4];
+  // BILL TO harus benar-benar di KANAN. Kalau tidak, tata letaknya bukan yang
+  // kita kenali — lebih baik mundur ke penyusunan biasa daripada memotong
+  // halaman menurut asumsi yang keliru.
+  if (billX <= shipX) return null;
+
+  // Sedikit lega ke kiri dari BILL TO: huruf pertama sebuah kolom tidak selalu
+  // persis di x penandanya.
+  const batas = billX - 4;
+  return linesFromTextContent({ items: items.filter((it) => it.transform![4] < batas) }, tolerance);
+}

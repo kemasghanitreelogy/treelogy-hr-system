@@ -27,7 +27,7 @@ import type { Scheduler } from "tesseract.js";
 import { compressImageBlob } from "@/lib/image";
 import { AWB_RE, type PageVisual } from "./label-core";
 import { parseLabelFields, type ParsedRow } from "./local-extract";
-import { hasUsableTextLayer, linesFromTextContent } from "./pdf-text";
+import { hasUsableTextLayer, isPackingSlip, linesFromTextContent, shipToLines } from "./pdf-text";
 
 export interface OcrProgress {
   stage: "compress" | "engine" | "pages" | "match" | "server";
@@ -633,6 +633,7 @@ function visualOf(
   barcodes: string[],
   textTracking: string | null,
   textMode: PageVisual["textMode"],
+  docType: PageVisual["docType"] = "label",
 ): PageVisual {
   const counts = new Map<string, number>();
   for (const b of barcodes) counts.set(b, (counts.get(b) || 0) + 1);
@@ -654,6 +655,7 @@ function visualOf(
     trackingConfirmed: best >= 2 || (!!tracking && tracking === textTracking),
     textTracking,
     textMode,
+    docType,
   };
 }
 
@@ -704,8 +706,15 @@ async function extractPdf(
     // halaman cetakan digital sekaligus halaman hasil pindai/gambar (mis. label
     // susulan yang difoto lalu digabung). Memeriksanya murah — lapisan teksnya
     // terbaca dalam hitungan milidetik.
-    const lines = linesFromTextContent(await page.getTextContent());
-    const useText = hasUsableTextLayer(lines);
+    const tc = await page.getTextContent();
+    const lines = linesFromTextContent(tc);
+    // Packing slip pesanan website: dikenali dari SHIP TO + BILL TO yang
+    // berdampingan, lalu HANYA kolom SHIP TO yang diambil — nama penerima,
+    // bukan nama pembayar. Keduanya berbeda saat pesanan dikirim sebagai
+    // hadiah atau ke alamat kantor.
+    const slipLines = isPackingSlip(lines) ? shipToLines(tc) : null;
+    const isSlip = slipLines !== null;
+    const useText = isSlip || hasUsableTextLayer(lines);
 
     let text: string;
     let textTracking: string | null = null;
@@ -714,12 +723,15 @@ async function extractPdf(
 
     if (useText) {
       textPages++;
-      text = lines.join("\n");
-      textTracking = toAwb(text) || null;
+      text = (slipLines ?? lines).join("\n");
+      textTracking = isSlip ? null : toAwb(text) || null;
 
-      // Halaman tanpa nomor resi di teksnya tidak punya sumber eksak lain, jadi
-      // barcodenya selalu dibaca berapa pun hasil uji petiknya.
-      if (verifyBarcode || !textTracking) {
+      // Packing slip tidak punya barcode sama sekali. Merendernya untuk dipindai
+      // memakan waktu paling lama di seluruh proses, dan hasilnya sudah pasti
+      // kosong — jadi dilewati, bukan dicoba lalu gagal.
+      // Halaman label tanpa nomor resi di teksnya tidak punya sumber eksak lain,
+      // jadi barcodenya selalu dibaca berapa pun hasil uji petiknya.
+      if (!isSlip && (verifyBarcode || !textTracking)) {
         const [rx, ry, rw, rh] = BARCODE_CORNER;
         corner = await renderRegion(page, BARCODE_DPI, rx, ry, rw, rh);
         barcodes = await decodeCanvas(corner);
@@ -762,8 +774,8 @@ async function extractPdf(
     }
 
     const i = n - 1;
-    visuals[i] = visualOf(globalPage, origin, barcodes, textTracking, useText ? "text" : "ocr");
-    rows[i] = parseLabelFields(text, globalPage);
+    visuals[i] = visualOf(globalPage, origin, barcodes, textTracking, useText ? "text" : "ocr", isSlip ? "packing_slip" : "label");
+    rows[i] = parseLabelFields(text, globalPage, isSlip ? "packing_slip" : "label");
     // Halaman pertama yang selesai cukup untuk menentukan jendela tanggal
     // pencarian order — dipakai memanaskan pool sementara sisanya masih dibaca.
     onFirstRow?.(rows[i]);

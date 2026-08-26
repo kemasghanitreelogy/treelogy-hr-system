@@ -309,13 +309,21 @@ export function ReceiptSalesView() {
       // 2) Cocokkan penerima ke order Shopify (permintaan kecil & cepat).
       setProgress({ stage: "match" });
       const shipDate = normalizeShipDate(rows.find((r) => r.ship_date)?.ship_date);
-      const inputs = records.map((r) => ({
-        page: r.page,
-        name: r.fields.recipient_name?.value || "",
-        zip: extractZip(r.fields.recipient_address?.value || "") || "",
-        phoneLast4: r.phoneLast4 || "",
-        shipDate,
-      }));
+      // Packing slip pesanan website sudah memuat nama DAN nomor HP-nya sendiri.
+      // Mengirimnya ke pencocok Shopify bukan cuma mubazir — kecocokan yang
+      // "certain" tapi keliru akan MENIMPA nomor yang sudah pasti benar.
+      const rowByPage = new Map(rows.map((r) => [r.page, r]));
+      const isSlip = (page: number) => rowByPage.get(page)?.doc_type === "packing_slip";
+
+      const inputs = records
+        .filter((r) => !isSlip(r.page))
+        .map((r) => ({
+          page: r.page,
+          name: r.fields.recipient_name?.value || "",
+          zip: extractZip(r.fields.recipient_address?.value || "") || "",
+          phoneLast4: r.phoneLast4 || "",
+          shipDate,
+        }));
 
       let matches: Record<number, MatchResult> = {};
       try {
@@ -339,6 +347,24 @@ export function ReceiptSalesView() {
       // 3) Gabungkan — data Shopify hanya dipakai kalau kecocokannya "certain".
       //    Lebih baik kosong daripada memasang nomor HP milik orang lain.
       for (const r of records) {
+        if (isSlip(r.page)) {
+          // Sumbernya "pdf", bukan "shopify": nomornya tercetak di halaman itu
+          // sendiri, jadi tidak ada langkah tebak-menebak yang perlu diperiksa.
+          const hp = rowByPage.get(r.page)?.recipient_phone ?? null;
+          r.fields.phone = hp
+            ? { value: hp, source: "pdf", confidence: "certain", flag: null }
+            : {
+                value: null,
+                source: "none",
+                confidence: "low",
+                flag: locale === "en" ? "No phone printed on this page." : "Halaman ini tidak mencantumkan nomor HP.",
+              };
+          r.matchedOrder = null;
+          r.matchReasons = [];
+          r.matchStatus = "pdf";
+          r.needsReview = Object.values(r.fields).some((f) => f.confidence === "low");
+          continue;
+        }
         const m = matches[r.page];
         if (m && m.confidence === "certain") {
           r.fields.phone = { value: m.phone, source: "shopify", confidence: "certain", flag: null };
@@ -379,7 +405,7 @@ export function ReceiptSalesView() {
         textPages,
         ocrPages,
         barcodeConfirmed: records.filter((r) => r.fields.tracking_number?.confidence === "certain").length,
-        phoneMatched: records.filter((r) => r.matchStatus === "shopify").length,
+        phoneMatched: records.filter((r) => Boolean(r.fields.phone?.value)).length,
         reviewCount: records.filter((r) => r.needsReview).length,
         elapsedMs: Date.now() - started,
       });

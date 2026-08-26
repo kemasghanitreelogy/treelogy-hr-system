@@ -39,6 +39,8 @@ export interface PageVisual {
   textTracking: string | null;
   /** "text" = dibaca dari lapisan teks PDF (eksak); "ocr" = hasil pembacaan gambar. */
   textMode: PageTextMode;
+  /** "packing_slip" = pesanan website: memang tidak punya resi. */
+  docType?: "label" | "packing_slip";
 }
 
 export interface LabelRecord {
@@ -52,7 +54,8 @@ export interface LabelRecord {
   phoneLast4?: string;
   matchedOrder?: string | null;
   matchReasons?: string[];
-  matchStatus?: "shopify" | "manual" | null;
+  /** "pdf" = data datang eksak dari halaman itu sendiri (packing slip). */
+  matchStatus?: "shopify" | "manual" | "pdf" | null;
   /** ID numerik order Shopify — kunci eksak ke `ref_no` Jubelio. */
   legacyId?: string | null;
 }
@@ -135,6 +138,11 @@ export function reconcile<T extends { page: number }>(
           fields[key] = mkField(pdfAwb, "pdf", "certain", bantah);
         } else if (vis.tracking) {
           fields[key] = mkField(vis.tracking, "barcode", "high", "barcode hanya terbaca sekali");
+        } else if (vis.docType === "packing_slip") {
+          // Packing slip memang tidak punya nomor resi. Menandainya "periksa
+          // manual" akan menyuruh orang mencari sesuatu yang tidak pernah ada,
+          // dan membuat SETIAP halaman masuk daftar periksa tanpa guna.
+          fields[key] = mkField(null, "none", "certain", null);
         } else {
           fields[key] = mkField(ocrVal, ocrVal ? "ocr" : "none", "low", "tanpa barcode — periksa manual");
         }

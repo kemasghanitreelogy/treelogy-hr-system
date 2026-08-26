@@ -9,8 +9,15 @@
 
 import { extractZip } from "./label-core";
 
+/** Jenis dokumen sebuah halaman — menentukan isian mana yang masuk akal. */
+export type DocType = "label" | "packing_slip";
+
 export interface ParsedRow {
   page: number;
+  /** "packing_slip" = pesanan website: tanpa resi, tapi HP-nya tercetak. */
+  doc_type: DocType;
+  /** Nomor HP LENGKAP — hanya terisi pada packing slip, yang mencetaknya. */
+  recipient_phone: string | null;
   order_code: string | null;
   service_code: string | null;
   recipient_name: string | null;
@@ -64,7 +71,90 @@ function detectCourier(text: string): string | null {
   return null;
 }
 
-export function parseLabelFields(rawText: string, page: number): ParsedRow {
+/**
+ * Baris nomor telepon pada packing slip.
+ *
+ * Bentuknya beragam di data nyata — "081380210999", "08194218555", dan
+ * "+628161669810" semuanya muncul di satu berkas yang sama. Yang menyatukan
+ * ketiganya: satu baris utuh berisi angka saja, boleh diawali "+".
+ * Baris alamat tidak pernah lolos karena selalu memuat huruf.
+ */
+const PACKING_PHONE_RE = /^\+?[\d][\d\s().-]{7,19}$/;
+
+/**
+ * Packing slip pesanan website — hanya NAMA dan NOMOR HP yang diambil.
+ *
+ * Dokumen ini tidak punya nomor resi, dan tidak perlu: yang dibutuhkan gudang
+ * dari sebuah label (nama + HP untuk menghubungi pembeli) justru sudah
+ * tercetak di sini. Isian lain (biaya, berat, kurir) sengaja dibiarkan kosong
+ * daripada diisi tebakan — kolom kosong jujur, kolom salah menyesatkan.
+ *
+ * `lines` WAJIB sudah disaring ke kolom SHIP TO saja (lihat shipToLines di
+ * pdf-text.ts). Kalau kolom BILL TO ikut, namanya akan terbaca ganda.
+ */
+function parsePackingSlip(lines: string[], page: number): ParsedRow {
+  const shipIdx = lines.findIndex((l) => /\bship\s*to\b/i.test(l));
+
+  // Nama = baris pertama SETELAH penanda SHIP TO. Ini yang diminta: nama
+  // penerima, bukan nama pembayar — keduanya berbeda saat pesanan dikirim
+  // sebagai hadiah atau ke alamat kantor.
+  let recipient_name: string | null = null;
+  if (shipIdx >= 0) {
+    for (let i = shipIdx + 1; i < lines.length; i++) {
+      const kandidat = lines[i].trim();
+      // Lewati baris yang jelas bukan nama orang.
+      if (!kandidat || PACKING_PHONE_RE.test(kandidat) || /^(items?|quantity)$/i.test(kandidat)) continue;
+      recipient_name = kandidat;
+      break;
+    }
+  }
+
+  // HP dicari HANYA di antara penanda SHIP TO dan daftar barang, supaya angka
+  // lain di halaman (kode SKU, nomor pesanan) tidak pernah ikut terjaring.
+  const batasBawah = lines.findIndex((l, i) => i > shipIdx && /^\s*items?\b/i.test(l));
+  const akhir = batasBawah > shipIdx ? batasBawah : lines.length;
+  let recipient_phone: string | null = null;
+  for (let i = shipIdx + 1; i < akhir; i++) {
+    const baris = lines[i].trim();
+    if (!PACKING_PHONE_RE.test(baris)) continue;
+    const digit = baris.replace(/\D/g, "");
+    if (digit.length < 8 || digit.length > 15) continue;
+    recipient_phone = baris.replace(/\s+/g, "");
+    break;
+  }
+
+  const flat = lines.join(" ");
+  return {
+    page,
+    doc_type: "packing_slip",
+    order_code: pick(/Order\s*#\s*(\d+)/i, flat),
+    service_code: null,
+    recipient_name,
+    recipient_address: null,
+    // Empat digit terakhir tetap diisi supaya kode lama yang membacanya (mis.
+    // pencocok Shopify) tidak menemukan bentuk yang berbeda dari biasanya.
+    recipient_phone_last4: recipient_phone ? recipient_phone.replace(/\D/g, "").slice(-4) : null,
+    recipient_phone,
+    courier: null,
+    sender_name: null,
+    sender_address: null,
+    shipping_cost: null,
+    weight: null,
+    payment_method: null,
+    item: null,
+    notes: null,
+    ship_date: null,
+  };
+}
+
+export function parseLabelFields(rawText: string, page: number, docType: DocType = "label"): ParsedRow {
+  // `scrub` membuang noise satu karakter di ujung baris — perlu untuk hasil
+  // OCR, tapi MERUSAK teks digital: ia menelan "+" di depan "+62…" dan tanda
+  // kutip pada nama seperti "Annisaa'". Packing slip selalu berasal dari
+  // lapisan teks PDF, jadi tidak ada noise yang perlu dibersihkan.
+  if (docType === "packing_slip") {
+    return parsePackingSlip(rawText.split("\n").map((l) => l.trim()).filter(Boolean), page);
+  }
   const lines = rawText.split("\n").map(scrub).filter(Boolean);
   const flat = lines.join(" ");
 
@@ -134,6 +224,8 @@ export function parseLabelFields(rawText: string, page: number): ParsedRow {
 
   return {
     page,
+    doc_type: "label",
+    recipient_phone: null,
     order_code: pick(/\b(\d{3}-[A-Z0-9]{3,}-[A-Z0-9]{2,})\b/i, flat),
     service_code: pick(/\b(EZ|NP|REG|EZBIG)\b/, flat),
     recipient_name,

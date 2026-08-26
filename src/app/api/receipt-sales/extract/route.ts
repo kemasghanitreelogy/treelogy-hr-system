@@ -3,7 +3,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AWB_RE } from "@/lib/receipt/label-core";
 import { parseLabelFields, type ParsedRow } from "@/lib/receipt/local-extract";
-import { hasUsableTextLayer, linesFromTextContent } from "@/lib/receipt/pdf-text";
+import { hasUsableTextLayer, isPackingSlip, linesFromTextContent, shipToLines } from "@/lib/receipt/pdf-text";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -136,19 +136,26 @@ export async function POST(req: Request) {
   try {
     for (let n = 1; n <= total; n++) {
       let lines: string[] = [];
+      let slipLines: string[] | null = null;
       try {
         const page = await pdf.getPage(n);
-        lines = linesFromTextContent(await page.getTextContent());
+        const tc = await page.getTextContent();
+        lines = linesFromTextContent(tc);
+        // Sama seperti jalur di perangkat: kolom SHIP TO saja, supaya nama
+        // penerima tidak tertukar dengan nama pembayar.
+        if (isPackingSlip(lines)) slipLines = shipToLines(tc);
         page.cleanup();
       } catch {
         // Satu halaman rusak tidak boleh menggagalkan berkasnya; halaman itu
         // muncul kosong dan otomatis masuk daftar yang perlu diperiksa.
       }
-      const usable = hasUsableTextLayer(lines);
+      const isSlip = slipLines !== null;
+      const usable = isSlip || hasUsableTextLayer(lines);
       if (usable) textPages++;
-      const text = lines.join("\n");
-      rows.push(parseLabelFields(text, startPage + n - 1));
-      awbs.push(usable ? (text.match(AWB_RE)?.[0]?.toUpperCase() ?? null) : null);
+      const text = (slipLines ?? lines).join("\n");
+      rows.push(parseLabelFields(text, startPage + n - 1, isSlip ? "packing_slip" : "label"));
+      // Packing slip memang tidak memuat nomor resi — jangan dicari-cari.
+      awbs.push(usable && !isSlip ? (text.match(AWB_RE)?.[0]?.toUpperCase() ?? null) : null);
     }
   } finally {
     try {
