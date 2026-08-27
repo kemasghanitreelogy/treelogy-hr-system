@@ -6,7 +6,16 @@ import { allClocks, removeClock } from "@/lib/clock-queue";
 import { postClock, isFinalClockResponse } from "@/lib/clock-post";
 
 const STALE_MS = 18 * 60 * 60 * 1000; // too old to record accurately → drop
-const FRESH_MS = 8000; // let the widget's own attempt handle very recent items
+/**
+ * Selama ini antrean menganggap sebuah ketukan "ditinggalkan" setelah 8 detik.
+ * Itu terlalu cepat: pengiriman milik widget sendiri mencoba TIGA kali, tiap
+ * percobaan bisa menggantung sampai 12 detik, plus jeda mundur — totalnya
+ * hampir 40 detik. Jadi pada jaringan yang lambat, penguras memutar ulang
+ * ketukan yang MASIH sedang dikirim widget. Dua salinan yang sama lalu mendarat
+ * di urutan yang tak terduga, dan yang datang belakangan membawa stempel waktu
+ * lama — persis bagaimana sebuah absensi bisa tercatat pulang sebelum masuk.
+ */
+const FRESH_MS = 45_000;
 
 let draining = false;
 

@@ -331,9 +331,31 @@ export async function POST(req: Request) {
         .eq("employee_id", profile.employee_id)
         .eq("date", today)
         .not("clock_in", "is", null)
+        // Jam pulang TIDAK BOLEH mendahului jam masuk.
+        //
+        // Jalur clock-in sudah lama menjaga sisi sebaliknya (ia mengosongkan
+        // clock_out), tapi sisi ini dibiarkan terbuka — dan itulah yang membuat
+        // sebuah absensi bisa tercatat "pulang 9 detik sebelum masuk". Kejadian
+        // nyatanya: ketukan pulang yang lambat terkirim (atau diputar ulang dari
+        // antrean offline) mendarat SESUDAH ketukan masuk berikutnya, membawa
+        // stempel waktu lamanya.
+        .lt("clock_in", nowIso)
         .select("id");
       if (error) return NextResponse.json({ error: "attendance_write_failed" }, { status: 403 });
       if (!updated || updated.length === 0) {
+        // Bedakan dua sebab yang berbeda, supaya pesannya tidak menyesatkan
+        // dan supaya antrean tahu mana yang layak dibuang.
+        const { data: row } = await supabase
+          .from("attendance")
+          .select("clock_in")
+          .eq("employee_id", profile.employee_id)
+          .eq("date", today)
+          .maybeSingle();
+        if (row?.clock_in && new Date(String(row.clock_in)).getTime() >= clockAt.getTime()) {
+          // 409 = jawaban FINAL menurut isFinalClockResponse(), jadi salinan di
+          // antrean offline dibuang alih-alih diulang selamanya.
+          return NextResponse.json({ error: "clock_out_before_in" }, { status: 409 });
+        }
         return NextResponse.json({ error: "not_clocked_in" }, { status: 400 });
       }
       recorded = true;
