@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
+import { recordOffDayOvertime } from "@/lib/off-day-overtime";
 import { createClient } from "@/lib/supabase/server";
 import { mapClockApproval } from "@/lib/data";
 import { adjustTabungan } from "@/lib/balance";
 import { pushNotifications } from "@/lib/notify";
-import { contractRatePerHour, overtimePayEstimate, parseContractType } from "@/lib/overtime";
 import { formatDate } from "@/lib/utils";
 import type { RequestStatus } from "@/lib/types";
 
@@ -91,7 +91,14 @@ export async function PATCH(req: Request) {
 
     if (prev.kind === "off_day") {
       // Tulis absensi hari libur (hadir, tanpa telat) + jam pulang bila ada.
-      const clockOutAt = prev.clock_out_at ? String(prev.clock_out_at) : null;
+      let clockOutAt = prev.clock_out_at ? String(prev.clock_out_at) : null;
+      // Jam pulang yang tidak lebih lambat dari jam masuk adalah data mustahil
+      // (database pun menolaknya). Dibuang saja daripada menggagalkan seluruh
+      // persetujuan — absensi masuknya tetap tercatat dan jam pulangnya bisa
+      // dilengkapi HR.
+      if (clockOutAt && new Date(clockOutAt).getTime() <= new Date(requestedAt).getTime()) {
+        clockOutAt = null;
+      }
       const { error: attErr } = await supabase!.from("attendance").upsert(
         {
           employee_id: employeeId,
@@ -126,36 +133,17 @@ export async function PATCH(req: Request) {
         });
         if (!depErr) await adjustTabungan(employeeId, 1);
       } else if (prev.off_day_choice === "overtime" && clockOutAt) {
-        // Lembur → catat ke data lembur (disetujui, tinggal pembayaran).
-        const mins = witaMinutes(clockOutAt) - witaMinutes(requestedAt);
-        if (mins > 0) {
-          const { data: existing } = await supabase!
-            .from("overtime_requests")
-            .select("id")
-            .eq("employee_id", employeeId)
-            .eq("date", date)
-            .maybeSingle();
-          if (!existing) {
-            const hours = Math.round((mins / 60) * 100) / 100;
-            const baseSalary = Number(emp?.base_salary) || 0;
-            const contractType = parseContractType(emp?.contract_type);
-            const ratePerHour = contractRatePerHour(contractType, baseSalary, Number(emp?.hourly_rate) || 0);
-            await supabase!.from("overtime_requests").insert({
-              employee_id: employeeId,
-              date,
-              start_time: witaHHMM(requestedAt),
-              end_time: witaHHMM(clockOutAt),
-              hours,
-              reason: "Kerja di hari libur (disetujui HR)",
-              rate_per_hour: ratePerHour,
-              amount: overtimePayEstimate(ratePerHour, hours, contractType),
-              contract_type: contractType,
-              status: "approved",
-              approver: body.approver?.trim() || null,
-              paid: false,
-            });
-          }
-        }
+        // Logikanya dipakai bersama dengan jalur clock-out karyawan
+        // (lib/off-day-overtime.ts) — dua salinan yang perlahan melenceng
+        // adalah persis bagaimana lembur hari libur dulu tidak pernah terbit.
+        await recordOffDayOvertime({
+          supabase: supabase!,
+          employeeId,
+          date,
+          startIso: requestedAt,
+          endIso: clockOutAt,
+          approver: body.approver?.trim() || null,
+        });
       }
     } else if (prev.direction === "in") {
       const [sh, sm] = String(emp?.work_start ?? "08:00").split(":").map(Number);
@@ -194,10 +182,26 @@ export async function PATCH(req: Request) {
         .update(outFields)
         .eq("employee_id", employeeId)
         .eq("date", date)
+        // Sama seperti jalur clock biasa: jangan pernah menulis jam pulang yang
+        // mendahului jam masuk. Baris yang jam masuknya lebih baru sengaja
+        // TIDAK ikut terpilih.
+        .or(`clock_in.is.null,clock_in.lt.${requestedAt}`)
         .select("id")
         .maybeSingle();
       if (updErr) return NextResponse.json({ error: "attendance_write_failed" }, { status: 500 });
       if (!updated) {
+        // Tidak ada baris terpilih bisa berarti dua hal: belum ada absensi hari
+        // itu (→ sisipkan), atau ada tapi jam masuknya LEBIH BARU dari jam
+        // pulang ini (→ tolak, jangan sisipkan baris kedua yang akan bentrok).
+        const { data: existing } = await supabase!
+          .from("attendance")
+          .select("id")
+          .eq("employee_id", employeeId)
+          .eq("date", date)
+          .maybeSingle();
+        if (existing) {
+          return NextResponse.json({ error: "clock_out_before_in" }, { status: 409 });
+        }
         const { error: insErr } = await supabase!.from("attendance").insert({
           employee_id: employeeId,
           date,

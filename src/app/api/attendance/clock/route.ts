@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordOffDayOvertime } from "@/lib/off-day-overtime";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { distanceMeters } from "@/lib/geo";
@@ -259,15 +260,60 @@ export async function POST(req: Request) {
         });
       }
     } else {
-      // Clock-out di hari libur → lengkapi jam pulang pada pengajuan yang menunggu
-      // (dipakai HR untuk menghitung durasi lembur saat menyetujui).
-      await supabase
+      // Clock-out di hari libur.
+      //
+      // Dulu di sini HANYA pengajuan ber-status `pending` yang diperbarui, lalu
+      // fungsinya tetap menjawab "ok". Padahal begitu HR menyetujui — dan itu
+      // biasanya terjadi lebih dulu — tidak ada lagi baris `pending`, sehingga
+      // ketukan pulang tidak mengubah apa pun SAMBIL tetap terlihat berhasil.
+      // Diam-diam sejak Juni: 13 dari 13 kerja hari libur tidak punya jam pulang.
+      const { data: req } = await supabase
         .from("clock_approval_requests")
-        .update({ clock_out_at: nowIso })
+        .select("id, status, off_day_choice, requested_at")
         .eq("employee_id", profile.employee_id)
         .eq("date", today)
         .eq("kind", "off_day")
-        .eq("status", "pending");
+        .maybeSingle();
+
+      if (!req) return NextResponse.json({ error: "not_clocked_in" }, { status: 400 });
+      if (new Date(nowIso).getTime() <= new Date(String(req.requested_at)).getTime()) {
+        return NextResponse.json({ error: "clock_out_before_in" }, { status: 409 });
+      }
+
+      // Jejaknya disimpan apa pun statusnya.
+      await supabase.from("clock_approval_requests").update({ clock_out_at: nowIso }).eq("id", req.id);
+
+      // Masih menunggu HR → cukup sampai di sini; HR yang mencatat saat menyetujui.
+      if (req.status !== "approved") {
+        return NextResponse.json({ ok: true, pending: true, offDay: true });
+      }
+
+      // Sudah disetujui → absensinya SUDAH ADA, jadi jam pulangnya ditulis
+      // sekarang. Inilah bagian yang selama ini hilang.
+      const startIso = String(req.requested_at);
+      const { data: done, error: outErr } = await supabase
+        .from("attendance")
+        .update({ clock_out: nowIso })
+        .eq("employee_id", profile.employee_id)
+        .eq("date", today)
+        .not("clock_in", "is", null)
+        .lt("clock_in", nowIso)
+        .select("id");
+      if (outErr || !done?.length) {
+        return NextResponse.json({ error: "attendance_write_failed" }, { status: 403 });
+      }
+
+      if (req.off_day_choice === "overtime") {
+        await recordOffDayOvertime({
+          supabase,
+          employeeId: String(profile.employee_id),
+          date: today,
+          startIso,
+          endIso: nowIso,
+          approver: null,
+        });
+      }
+      return NextResponse.json({ ok: true, recorded: true, offDay: true });
     }
     return NextResponse.json({ ok: true, pending: true, offDay: true });
   }
