@@ -19,7 +19,7 @@ import {
 import { createPortal } from "react-dom";
 import { ClockStamp } from "@/components/attendance/clock-stamp";
 import { postClock, isFinalClockResponse } from "@/lib/clock-post";
-import { enqueueClock, removeClock } from "@/lib/clock-queue";
+import { allClocks, enqueueClock, removeClock } from "@/lib/clock-queue";
 import type { AttendanceRecord, TeamGeofence } from "@/lib/types";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,14 @@ import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import type { Locale } from "@/lib/i18n";
 import { CameraCapture } from "./camera-capture";
+
+/** YYYY-MM-DD menurut WITA — dipakai membandingkan tanggal ketukan antrean
+ *  dengan "hari ini", supaya sisa antrean kemarin tidak ikut terhitung. */
+function witaDateOf(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Makassar", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
+}
 
 type Phase = "out" | "in" | "done";
 type Flow = "idle" | "locating" | "camera" | "submitting";
@@ -91,6 +99,8 @@ const STR: Record<
     overtimeSent: string;
     offDayPending: string;
     awaitingHr: string;
+    queuedNotice: string;
+    queuedStatus: string;
   }
 > = {
   id: {
@@ -152,6 +162,8 @@ const STR: Record<
     overtimeSent: "Tercatat sebagai lembur — selesaikan dengan clock-out ✓",
     offDayPending: "Kerja di hari libur diajukan — menunggu konfirmasi HR ✓",
     awaitingHr: "Menunggu konfirmasi HR",
+    queuedNotice: "Ketukanmu tadi belum terkirim — masih tersimpan di HP dan akan dikirim sendiri begitu jaringan pulih. Jangan diketuk lagi supaya tidak dobel.",
+    queuedStatus: "Menunggu terkirim",
   },
   en: {
     loading: "Loading…",
@@ -212,6 +224,8 @@ const STR: Record<
     overtimeSent: "Recorded as overtime — finish by clocking out ✓",
     offDayPending: "Holiday work submitted — awaiting HR confirmation ✓",
     awaitingHr: "Awaiting HR confirmation",
+    queuedNotice: "Your earlier tap hasn\u2019t been sent yet — it\u2019s saved on this phone and will go out once the network recovers. Don\u2019t tap again, or it will double up.",
+    queuedStatus: "Waiting to send",
   },
 };
 
@@ -296,6 +310,36 @@ export function ClockWidget({
   // dir: "in"|"out"; flag: late (in) / overtime (out); minutes: the count.
   const [stamp, setStamp] = useState<{ dir: "in" | "out"; flag: boolean; minutes: number } | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    let batal = false;
+    const periksaAntrean = async () => {
+      try {
+        const items = await allClocks();
+        if (batal) return;
+        // Hanya ketukan hari ini yang relevan; yang lebih tua sudah dibuang
+        // penguras antrean.
+        const hariIni = witaDateOf(new Date());
+        const relevan = items
+          .filter((it) => witaDateOf(new Date(it.at)) === hariIni)
+          .sort((a, b) => b.at - a.at)[0];
+        setQueuedDir(relevan ? relevan.dir : null);
+      } catch {
+        setQueuedDir(null);
+      }
+    };
+    void periksaAntrean();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void periksaAntrean();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+    return () => {
+      batal = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
+    };
+  }, [todayRecord?.clockIn, todayRecord?.clockOut]);
   // Seed from today's server state so a refresh keeps the flow: clocked in (no
   // out yet) → "in"; clocked in AND out → "done"; nothing yet → "out". A clock
   // still PENDING HR (off-day / luar area) has no attendance row yet, so fall
@@ -311,6 +355,16 @@ export function ClockWidget({
   const [clockInAt, setClockInAt] = useState<Date | null>(seedIn ? new Date(seedIn) : null);
   const [clockOutAt, setClockOutAt] = useState<Date | null>(seedOut ? new Date(seedOut) : null);
   const [flow, setFlow] = useState<Flow>("idle");
+  /**
+   * Ketukan hari ini yang MASIH tersangkut di antrean offline.
+   *
+   * Ini yang dulu tidak pernah dilihat widget. Statusnya hanya dibaca dari
+   * server, padahal ketukan yang gagal terkirim tersimpan di IndexedDB dan
+   * belum tercermin di mana pun. Akibatnya saat aplikasi dibuka lagi, tombolnya
+   * kembali berbunyi "Clock In" — dan orangnya menekan lagi, karena dari layar
+   * memang terlihat seolah ketukan paginya tidak pernah terjadi.
+   */
+  const [queuedDir, setQueuedDir] = useState<"in" | "out" | null>(null);
   const [notice, setNotice] = useState<{ tone: "error" | "ok" | "warn"; text: string; retry?: () => void } | null>(null);
   const [geo, setGeo] = useState<{ lat: number; lng: number; distance: number; accuracy: number } | null>(null);
   // Alur "di luar area": modal danger → catatan opsional → kirim sebagai
@@ -577,8 +631,11 @@ export function ClockWidget({
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="text-sm text-muted">{t.status}</p>
-              <p className={cn("font-display text-lg font-semibold", phase === "out" ? "text-faint" : "text-forest-600")}>
-                {phase === "in" ? t.working : phase === "done" ? t.doneToday : t.notClockedIn}
+              <p className={cn("font-display text-lg font-semibold",
+                queuedDir && phase === "out" ? "text-[#8a6512]" : phase === "out" ? "text-faint" : "text-forest-600")}>
+                {queuedDir && phase === "out"
+                  ? t.queuedStatus
+                  : phase === "in" ? t.working : phase === "done" ? t.doneToday : t.notClockedIn}
               </p>
             </div>
             {(phase === "in" || phase === "done") && clockInAt && (
@@ -590,6 +647,16 @@ export function ClockWidget({
               </div>
             )}
           </div>
+
+          {/* Ketukan yang masih tersangkut di HP. Ditampilkan SEBELUM tombol,
+              karena inilah yang dulu membuat orang menekan clock-in dua kali:
+              layarnya bilang "Belum Clock-In" padahal ketukannya ada, hanya
+              belum terkirim. */}
+          {queuedDir && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl bg-gold-soft px-4 py-2.5 text-sm font-medium text-[#8a6512]">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0" /> <span>{t.queuedNotice}</span>
+            </div>
+          )}
 
           {/* Satu indikator menetap: clock hari ini masih menunggu acc HR. */}
           {pendingHr && phase !== "out" && (
@@ -661,7 +728,10 @@ export function ClockWidget({
               size="lg"
               variant={phase === "in" ? "danger" : "primary"}
               className="h-14 w-full text-base"
-              disabled={busy}
+              // Selagi ketukan sebelumnya masih tersangkut di HP, tombolnya
+              // dimatikan: menekannya lagi menghasilkan absensi dobel, dan
+              // itulah yang membuat clock-in pagi berubah jadi clock-in sore.
+              disabled={busy || (queuedDir !== null && phase === "out")}
             >
               {busy ? (
                 <>
