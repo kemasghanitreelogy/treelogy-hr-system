@@ -329,6 +329,24 @@ export async function POST(req: Request) {
       const [sh, sm] = workStart.split(":").map(Number);
       lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
 
+      // Ketukan masuk yang SUDAH tercatat, datang lagi.
+      //
+      // Antrean offline bisa memutar ulang ketukan yang sebenarnya sudah
+      // berhasil (mis. penghapusan salinannya gagal tersimpan). Memperlakukan
+      // pengulangan itu sebagai sesi baru berarti clock_out di bawah ikut
+      // dikosongkan — jam pulang orang lenyap tanpa ada yang menyadarinya.
+      // Ketukan yang tidak lebih baru dari yang tersimpan dianggap pengulangan
+      // dan dijawab "sudah tercatat", bukan ditulis ulang.
+      const { data: sebelumnya } = await supabase
+        .from("attendance")
+        .select("clock_in")
+        .eq("employee_id", profile.employee_id)
+        .eq("date", today)
+        .maybeSingle();
+      if (sebelumnya?.clock_in && new Date(String(sebelumnya.clock_in)).getTime() >= clockAt.getTime()) {
+        return NextResponse.json({ ok: true, recorded: true, duplicate: true, distance, lateMinutes: null, overtimeMinutes: null, timeAdjusted });
+      }
+
       const { error } = await supabase.from("attendance").upsert(
         {
           employee_id: profile.employee_id,

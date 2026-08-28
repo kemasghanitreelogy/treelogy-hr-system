@@ -501,15 +501,29 @@ export function ClockWidget({
       offDayChoice,
       clientTime,
     };
-    // Persist BEFORE sending → if the app is closed mid-submit, ClockSync replays
-    // it on reopen. Removed as soon as the server has answered.
+    // Simpan ke antrean SEBELUM mengirim — dan benar-benar TUNGGU simpanannya.
+    //
+    // Dulu barisnya `void enqueueClock(...)`: komentarnya menjanjikan "persist
+    // before sending", tapi tanpa await penulisan IndexedDB belum tentu selesai
+    // saat permintaan jaringan dimulai. Kalau aplikasinya ditutup paksa selagi
+    // server menggantung — persis yang terjadi 27 Agu — ketukannya tidak
+    // tersimpan di mana pun dan hilang tanpa jejak. Menunggunya beberapa
+    // milidetik jauh lebih murah daripada kehilangan absensi orang.
     const qid = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`;
-    void enqueueClock({ id: qid, dir: pendingDir, payload, at: Date.now() });
+    await enqueueClock({ id: qid, dir: pendingDir, payload, at: Date.now() });
+    setQueuedDir(pendingDir);
     try {
       const res = await postClock(payload);
-      // Drop the queued copy only on a final answer; keep it for auth/transient
-      // (401/408/429/5xx) so ClockSync can retry.
-      if (isFinalClockResponse(res.status)) void removeClock(qid);
+      // Salinan antrean dibuang HANYA pada jawaban final; untuk galat sesaat
+      // (401/408/429/5xx) dibiarkan supaya ClockSync mencobanya lagi.
+      //
+      // Ditunggu juga: penghapusan yang gagal berarti ClockSync kelak memutar
+      // ulang clock-in yang sudah tercatat, dan jalur clock-in mengosongkan
+      // clock_out — jam pulang orang bisa lenyap karenanya.
+      if (isFinalClockResponse(res.status)) {
+        await removeClock(qid);
+        setQueuedDir(null);
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.error === "out_of_range") {
