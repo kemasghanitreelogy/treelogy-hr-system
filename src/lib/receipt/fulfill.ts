@@ -76,10 +76,21 @@ async function shopifyGql(query: string, variables: unknown): Promise<any> {
 async function fulfillOne(item: FulfillInput, notifyCustomer: boolean): Promise<FulfillOutcome> {
   const kurir = courierTracking(item.courier);
   if (!kurir) return { page: item.page, ok: false, reason: "unknown_courier" };
-  if (!item.awb?.trim()) return { page: item.page, ok: false, reason: "missing_awb" };
-  if (!item.legacyId?.trim()) return { page: item.page, ok: false, reason: "missing_order" };
 
-  const orderGid = `gid://shopify/Order/${item.legacyId.trim()}`;
+  // Bentuknya diperiksa ULANG di sini, bukan hanya di layar. Layar bisa keliru,
+  // bisa usang, dan bisa dilewati sama sekali oleh siapa pun yang memanggil
+  // endpoint ini langsung — sementara yang ditulis adalah pesanan sungguhan.
+  const awb = (item.awb ?? "").trim();
+  const legacyId = (item.legacyId ?? "").trim();
+  if (!awb) return { page: item.page, ok: false, reason: "missing_awb" };
+  // Nomor resi kurir: huruf/angka/strip, panjang wajar. Menolak spasi dan
+  // simbol menutup kiriman yang jelas bukan nomor resi.
+  if (!/^[A-Za-z0-9-]{6,40}$/.test(awb)) return { page: item.page, ok: false, reason: "invalid_awb" };
+  if (!legacyId) return { page: item.page, ok: false, reason: "missing_order" };
+  // ID order Shopify selalu angka. Apa pun selain itu akan membentuk GID palsu.
+  if (!/^\d{1,25}$/.test(legacyId)) return { page: item.page, ok: false, reason: "missing_order" };
+
+  const orderGid = `gid://shopify/Order/${legacyId}`;
   const data = await shopifyGql(TARGETS_QUERY, { id: orderGid });
   const order = data?.order;
   if (!order) return { page: item.page, ok: false, reason: "order_not_found" };
@@ -96,11 +107,11 @@ async function fulfillOne(item: FulfillInput, notifyCustomer: boolean): Promise<
     };
   }
 
-  const url = kurir.trackUrl(item.awb.trim());
+  const url = kurir.trackUrl(awb);
   const payload = await shopifyGql(FULFILL_MUTATION, {
     fulfillment: {
       notifyCustomer,
-      trackingInfo: { company: kurir.company, number: item.awb.trim(), url },
+      trackingInfo: { company: kurir.company, number: awb, url },
       lineItemsByFulfillmentOrder: ids.map((id) => ({ fulfillmentOrderId: id })),
     },
   });
@@ -126,9 +137,38 @@ async function fulfillOne(item: FulfillInput, notifyCustomer: boolean): Promise<
 export async function fulfillMany(
   items: FulfillInput[],
   notifyCustomer: boolean,
+  budgetMs = 90_000,
 ): Promise<FulfillOutcome[]> {
   const out: FulfillOutcome[] = [];
+  const mulai = Date.now();
+
+  // Kembaran ditolak di server juga, bukan hanya di layar — sama alasannya
+  // dengan validasi bentuk di atas. AWB kembar berarti satu pembeli akan
+  // melacak paket milik orang lain; order kembar berarti pencocokannya meleset.
+  const hitung = (f: (x: FulfillInput) => string) => {
+    const n = new Map<string, number>();
+    for (const x of items) n.set(f(x), (n.get(f(x)) ?? 0) + 1);
+    return n;
+  };
+  const perAwb = hitung((x) => (x.awb ?? "").trim().toUpperCase());
+  const perOrder = hitung((x) => (x.legacyId ?? "").trim());
+
   for (const item of items) {
+    if ((perAwb.get((item.awb ?? "").trim().toUpperCase()) ?? 0) > 1) {
+      out.push({ page: item.page, ok: false, reason: "duplicate_awb" });
+      continue;
+    }
+    if ((perOrder.get((item.legacyId ?? "").trim()) ?? 0) > 1) {
+      out.push({ page: item.page, ok: false, reason: "duplicate_order" });
+      continue;
+    }
+    // Anggaran waktu: lebih baik berhenti dan MELAPORKAN sisanya daripada
+    // dipotong platform di tengah penulisan — sebagian pesanan sudah berubah
+    // dan sudah mengirim email, tanpa satu pun laporan kembali ke layar.
+    if (Date.now() - mulai > budgetMs) {
+      out.push({ page: item.page, ok: false, reason: "out_of_time" });
+      continue;
+    }
     try {
       out.push(await fulfillOne(item, notifyCustomer));
     } catch (e) {

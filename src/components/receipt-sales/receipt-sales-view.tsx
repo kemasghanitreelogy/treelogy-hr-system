@@ -484,8 +484,20 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         legacyId: r.legacyId ?? "",
         awb: (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim(),
         courier: edits[r.page]?.courier ?? r.fields.courier?.value ?? null,
+        trackingCertain: r.fields.tracking_number?.confidence === "certain",
       }))
-      .filter((x) => x.legacyId && x.awb && courierTracking(x.courier) && !fulfillResult[x.page]?.ok);
+      .filter((x) => x.legacyId && x.awb && courierTracking(x.courier) && !fulfillResult[x.page]?.ok)
+      // Nomor resi yang MASIH TEBAKAN tidak boleh ditulis ke pesanan nyata.
+      //
+      // Yang berasal dari barcode atau lapisan teks PDF bernilai "certain" —
+      // itu dibaca huruf demi huruf, bukan ditafsirkan. Yang berasal dari OCR
+      // bisa keliru satu digit, dan satu digit keliru berarti pembeli melacak
+      // nomor yang tidak ada sementara emailnya sudah terkirim.
+      //
+      // Jalan keluarnya bukan melarang, melainkan menuntut mata manusia:
+      // begitu kartunya dicentang "sudah diperiksa", ia ikut. Orang yang
+      // membaca sendiri labelnya adalah sumber yang lebih baik daripada OCR.
+      .filter((x) => x.trackingCertain || verified[x.page]);
 
     // Dua penjaga terhadap penulisan ke pesanan yang SALAH. Keduanya menghitung
     // ulang dari data yang ada, bukan mengandalkan teks penanda — penanda bisa
@@ -509,7 +521,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     return kandidat.filter(
       (x) => perAwb.get(x.awb.toUpperCase()) === 1 && perOrder.get(x.legacyId) === 1,
     );
-  }, [result, edits, fulfillResult]);
+  }, [result, edits, fulfillResult, verified]);
 
   /** Berapa baris yang ditahan karena kembar — disebut angka, bukan disembunyikan. */
   const fulfillBlocked = useMemo(() => {
@@ -517,10 +529,11 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     const siap = recs.filter((r) => {
       const awb = (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim();
       const kurir = edits[r.page]?.courier ?? r.fields.courier?.value ?? null;
-      return r.legacyId && awb && courierTracking(kurir) && !fulfillResult[r.page]?.ok;
+      const pasti = r.fields.tracking_number?.confidence === "certain" || verified[r.page];
+      return r.legacyId && awb && courierTracking(kurir) && !fulfillResult[r.page]?.ok && pasti;
     }).length;
     return Math.max(0, siap - fulfillItems.length);
-  }, [result, edits, fulfillResult, fulfillItems]);
+  }, [result, edits, fulfillResult, fulfillItems, verified]);
 
   async function jalankanFulfill() {
     setAskFulfill(false);
