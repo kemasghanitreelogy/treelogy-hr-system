@@ -47,7 +47,14 @@ export async function POST(req: Request) {
     const matches: Record<number, unknown> = {};
     for (const [page, m] of map) matches[page] = m;
     return NextResponse.json({ matches });
-  } catch {
-    return NextResponse.json({ error: "shopify_failed" }, { status: 502 });
+  } catch (e) {
+    // Diteruskan apa adanya: "izin token tidak cukup" adalah masalah yang bisa
+    // dibereskan orang, sedangkan "Shopify sedang bermasalah" hanya bisa
+    // ditunggu. Menyamakan keduanya membuat yang pertama tak pernah ketahuan.
+    const forbidden = e instanceof Error && e.message === "shopify_forbidden";
+    return NextResponse.json(
+      { error: forbidden ? "shopify_forbidden" : "shopify_failed" },
+      { status: forbidden ? 403 : 502 },
+    );
   }
 }

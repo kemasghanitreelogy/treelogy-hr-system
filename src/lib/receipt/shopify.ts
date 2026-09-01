@@ -151,7 +151,16 @@ async function fetchShard(
       if (!throttled) break;
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }
-    if (!json || json.errors) throw new Error("shopify_error");
+    if (!json || json.errors) {
+      // Bedakan "tokennya tidak berizin" dari "Shopify sedang bermasalah".
+      // Keduanya menghasilkan nol kecocokan, tapi hanya satu yang bisa
+      // diperbaiki — dan tanpa dibedakan, layarnya terlanjur menyimpulkan
+      // "order tidak ada di Shopify" padahal kita tidak pernah boleh melihat.
+      const ditolak = (json?.errors ?? []).some(
+        (e: any) => e?.extensions?.code === "ACCESS_DENIED" || /access denied/i.test(e?.message ?? ""),
+      );
+      throw new Error(ditolak ? "shopify_forbidden" : "shopify_error");
+    }
 
     const conn = json.data?.orders;
     for (const e of conn?.edges ?? []) {

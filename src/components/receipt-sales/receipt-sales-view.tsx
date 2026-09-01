@@ -326,6 +326,10 @@ export function ReceiptSalesView() {
         }));
 
       let matches: Record<number, MatchResult> = {};
+      // Pencocokan GAGAL total (izin/koneksi) ≠ order tidak ditemukan. Dibedakan
+      // supaya barisnya tidak menuduh order tidak ada padahal kita tidak pernah
+      // sempat mencarinya.
+      let matchFailed = false;
       try {
         const res = await fetch("/api/receipt-sales/match", {
           method: "POST",
@@ -336,11 +340,13 @@ export function ReceiptSalesView() {
         if (!res.ok) {
           // Pencocokan gagal bukan alasan membuang hasil bacaan barcode/OCR —
           // tampilkan apa adanya, tandai semua barisnya manual.
+          matchFailed = true;
           toast.error(apiErrorMessage(data?.error, locale, res.status));
         } else {
           matches = (data.matches ?? {}) as Record<number, MatchResult>;
         }
       } catch {
+        matchFailed = true;
         toast.error(t.connection);
       }
 
@@ -379,8 +385,11 @@ export function ReceiptSalesView() {
             value: null,
             source: "none",
             confidence: "low",
-            flag:
-              locale === "en"
+            flag: matchFailed
+              ? locale === "en"
+                ? "Shopify matching didn't run — this does NOT mean the order is missing. Fix the connection, then read the file again."
+                : "Pencocokan Shopify tidak jalan — ini BUKAN berarti ordernya tidak ada. Perbaiki sambungannya, lalu baca ulang berkasnya."
+              : locale === "en"
                 ? "Not in Shopify — likely a direct/WhatsApp order. Enter the phone manually."
                 : "Tidak ada di Shopify — kemungkinan order langsung/WA. Isi nomornya manual.",
           };

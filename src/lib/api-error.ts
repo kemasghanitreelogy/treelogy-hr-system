@@ -121,6 +121,7 @@ const MESSAGES: Record<string, Msg> = {
   needs_ocr: { id: "Halaman berkas ini berupa gambar. Pembacaannya perlu perangkat yang lebih baru — coba dari komputer.", en: "This file's pages are images. Reading them needs a newer device — try from a computer." },
   local_pdf_unreadable: { id: "Perangkat ini tidak bisa membaca PDF tersebut.", en: "This device couldn't read that PDF." },
   too_many_pages: { id: "Terlalu banyak halaman sekaligus. Pecah berkasnya.", en: "Too many pages at once. Split the file." },
+  shopify_forbidden: { id: "Token Shopify tidak punya izin baca order (read_orders). Pencocokan tidak bisa jalan sampai izinnya ditambahkan — ini BUKAN berarti ordernya tidak ada.", en: "The Shopify token lacks order read access (read_orders). Matching can't run until that scope is granted — this does NOT mean the orders are missing." },
   shopify_failed: { id: "Gagal menghubungi Shopify. Coba lagi.", en: "Couldn't reach Shopify. Try again." },
   jubelio_login_failed: { id: "Gagal masuk ke Jubelio — periksa kredensial API-nya.", en: "Jubelio login failed — check the API credentials." },
 
