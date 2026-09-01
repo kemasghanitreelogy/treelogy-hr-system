@@ -76,6 +76,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfillConfirm: "Tandai terkirim di Shopify?",
     fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
     fulfillNotify: "Kirim email pemberitahuan ke pembeli",
+    fulfillBlocked: "baris ditahan karena nomor resi atau ordernya kembar — perbaiki dulu di panel periksa.",
     fulfillGo: "Ya, tandai terkirim",
     fulfillDone: "order ditandai terkirim ✓",
     fulfillOk: "berhasil",
@@ -145,6 +146,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfillConfirm: "Mark as fulfilled in Shopify?",
     fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
     fulfillNotify: "Send notification email to the customer",
+    fulfillBlocked: "rows held back — duplicate tracking number or order. Fix them in the review panel first.",
     fulfillGo: "Yes, mark fulfilled",
     fulfillDone: "orders marked fulfilled ✓",
     fulfillOk: "succeeded",
@@ -476,7 +478,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
    */
   const fulfillItems = useMemo(() => {
     const recs = result?.records ?? [];
-    return recs
+    const kandidat = recs
       .map((r) => ({
         page: r.page,
         legacyId: r.legacyId ?? "",
@@ -484,7 +486,41 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         courier: edits[r.page]?.courier ?? r.fields.courier?.value ?? null,
       }))
       .filter((x) => x.legacyId && x.awb && courierTracking(x.courier) && !fulfillResult[x.page]?.ok);
+
+    // Dua penjaga terhadap penulisan ke pesanan yang SALAH. Keduanya menghitung
+    // ulang dari data yang ada, bukan mengandalkan teks penanda — penanda bisa
+    // berubah kalimatnya, kembaran tidak.
+    //
+    //  • Resi kembar: dua halaman dengan AWB sama berarti satu di antaranya
+    //    salah baca. Memasang nomor yang sama ke dua pesanan berbeda membuat
+    //    salah satu pembeli melacak paket milik orang lain.
+    //  • Order kembar: dua halaman yang tercocokkan ke order yang sama berarti
+    //    pencocokannya meleset di salah satunya.
+    //
+    // Yang kembar TIDAK dibuang diam-diam — ia keluar dari hitungan tombol,
+    // dan kartunya tetap ada untuk diperbaiki manual di panel periksa.
+    const hitung = (ambil: (x: (typeof kandidat)[number]) => string) => {
+      const n = new Map<string, number>();
+      for (const x of kandidat) n.set(ambil(x), (n.get(ambil(x)) ?? 0) + 1);
+      return n;
+    };
+    const perAwb = hitung((x) => x.awb.toUpperCase());
+    const perOrder = hitung((x) => x.legacyId);
+    return kandidat.filter(
+      (x) => perAwb.get(x.awb.toUpperCase()) === 1 && perOrder.get(x.legacyId) === 1,
+    );
   }, [result, edits, fulfillResult]);
+
+  /** Berapa baris yang ditahan karena kembar — disebut angka, bukan disembunyikan. */
+  const fulfillBlocked = useMemo(() => {
+    const recs = result?.records ?? [];
+    const siap = recs.filter((r) => {
+      const awb = (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim();
+      const kurir = edits[r.page]?.courier ?? r.fields.courier?.value ?? null;
+      return r.legacyId && awb && courierTracking(kurir) && !fulfillResult[r.page]?.ok;
+    }).length;
+    return Math.max(0, siap - fulfillItems.length);
+  }, [result, edits, fulfillResult, fulfillItems]);
 
   async function jalankanFulfill() {
     setAskFulfill(false);
@@ -956,7 +992,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
       <ConfirmDialog
         open={askFulfill}
         title={t.fulfillConfirm}
-        message={`${t.fulfillBody}\n\n${fulfillItems.length} order.`}
+        message={`${t.fulfillBody}\n\n${fulfillItems.length} order.` +
+          (fulfillBlocked > 0 ? `\n${fulfillBlocked} ${t.fulfillBlocked}` : "")}
         confirmLabel={t.fulfillGo}
         busy={fulfilling}
         onCancel={() => setAskFulfill(false)}
