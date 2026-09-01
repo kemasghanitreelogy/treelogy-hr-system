@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, ClipboardCopy, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
-  ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
+  PackageCheck, ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
+import { courierTracking } from "@/lib/receipt/courier-tracking";
 import { extractZip } from "@/lib/receipt/local-extract";
 import {
   ACCEPTED_TYPES, errorDetail, extractFromFiles, isSupportedLabelFile,
@@ -18,6 +19,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
 import { ALL_FIELDS, ReviewPanel, type Edits } from "./review-panel";
@@ -68,6 +70,16 @@ const STR: Record<Locale, Record<string, string>> = {
     xlsx: "Unduh Excel",
     csv: "Unduh CSV",
     copySheet: "Salin untuk Sheet",
+    fulfill: "Tandai terkirim di Shopify",
+    fulfilling: "Mengirim ke Shopify…",
+    fulfillNone: "Belum ada baris yang siap — perlu order Shopify yang cocok, nomor resi, dan kurir yang dikenali (J&T, Lion Parcel, JNE).",
+    fulfillConfirm: "Tandai terkirim di Shopify?",
+    fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
+    fulfillNotify: "Kirim email pemberitahuan ke pembeli",
+    fulfillGo: "Ya, tandai terkirim",
+    fulfillDone: "order ditandai terkirim ✓",
+    fulfillOk: "berhasil",
+    fulfillFail: "gagal — lihat rinciannya di kartu masing-masing.",
     copied: "Tersalin ✓ Buka Google Sheet, klik sel A1, lalu tempel (⌘V).",
     copyFailed: "Tidak bisa menyalin otomatis. Coba Unduh CSV.",
     exported: "Berkas terunduh.",
@@ -127,6 +139,16 @@ const STR: Record<Locale, Record<string, string>> = {
     xlsx: "Download Excel",
     csv: "Download CSV",
     copySheet: "Copy for Sheets",
+    fulfill: "Mark fulfilled in Shopify",
+    fulfilling: "Sending to Shopify…",
+    fulfillNone: "No rows are ready yet — each needs a matched Shopify order, a tracking number, and a recognised courier (J&T, Lion Parcel, JNE).",
+    fulfillConfirm: "Mark as fulfilled in Shopify?",
+    fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
+    fulfillNotify: "Send notification email to the customer",
+    fulfillGo: "Yes, mark fulfilled",
+    fulfillDone: "orders marked fulfilled ✓",
+    fulfillOk: "succeeded",
+    fulfillFail: "failed — see the details on each card.",
     copied: "Copied ✓ Open Google Sheets, click cell A1, then paste (⌘V).",
     copyFailed: "Couldn't copy automatically. Try Download CSV instead.",
     exported: "File downloaded.",
@@ -178,7 +200,7 @@ function initialEdits(records: LabelRecord[]): Edits {
   return init;
 }
 
-export function ReceiptSalesView() {
+export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean }) {
   const locale = useLocale();
   const t = STR[locale];
   const toast = useToast();
@@ -440,6 +462,66 @@ export function ReceiptSalesView() {
   }, []);
 
   /** Baris ekspor selalu mengikuti hasil edit, bukan nilai hasil baca awal. */
+  const [fulfilling, setFulfilling] = useState(false);
+  const [askFulfill, setAskFulfill] = useState(false);
+  const [notifyBuyer, setNotifyBuyer] = useState(false);
+  /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
+  const [fulfillResult, setFulfillResult] = useState<Record<number, { ok: boolean; text: string }>>({});
+
+  /**
+   * Baris yang SIAP di-fulfill. Tiga syarat, semuanya wajib:
+   * order Shopify yang cocok, nomor resi dari barcode, dan kurir yang dikenali.
+   * Baris yang kurang salah satunya sengaja tidak ikut — menebaknya berarti
+   * menulis ke pesanan orang lain.
+   */
+  const fulfillItems = useMemo(() => {
+    const recs = result?.records ?? [];
+    return recs
+      .map((r) => ({
+        page: r.page,
+        legacyId: r.legacyId ?? "",
+        awb: (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim(),
+        courier: edits[r.page]?.courier ?? r.fields.courier?.value ?? null,
+      }))
+      .filter((x) => x.legacyId && x.awb && courierTracking(x.courier) && !fulfillResult[x.page]?.ok);
+  }, [result, edits, fulfillResult]);
+
+  async function jalankanFulfill() {
+    setAskFulfill(false);
+    if (!fulfillItems.length) {
+      toast.error(t.fulfillNone);
+      return;
+    }
+    setFulfilling(true);
+    try {
+      const res = await fetch("/api/receipt-sales/fulfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: fulfillItems, notifyCustomer: notifyBuyer }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(apiErrorMessage(data?.error, locale, res.status));
+        return;
+      }
+      const peta: Record<number, { ok: boolean; text: string }> = {};
+      for (const r of data.results ?? []) {
+        peta[r.page] = r.ok
+          ? { ok: true, text: `${r.orderName ?? ""} · ${r.company}`.trim() }
+          : { ok: false, text: apiErrorMessage(r.reason, locale) + (r.detail ? ` (${r.detail})` : "") };
+      }
+      setFulfillResult((prev) => ({ ...prev, ...peta }));
+      const ok = data.sent ?? 0;
+      const gagal = data.failed ?? 0;
+      if (gagal === 0) toast.success(`${ok} ${t.fulfillDone}`);
+      else toast.toast(`${ok} ${t.fulfillOk}, ${gagal} ${t.fulfillFail}`, "info");
+    } catch {
+      toast.error(t.connection);
+    } finally {
+      setFulfilling(false);
+    }
+  }
+
   const exportRows = useMemo<ReceiptExportRow[]>(() => {
     if (!result) return [];
     return result.records.map((r) => {
@@ -820,9 +902,21 @@ export function ReceiptSalesView() {
                   </button>
                 ))}
               </div>
+              {/* Aksi yang MENULIS ke pesanan sungguhan berdiri terpisah dari
+                  tombol unduhan, dan hanya muncul untuk pemegang receipt.sync. */}
+              {canFulfill && (
+                <Button
+                  onClick={() => setAskFulfill(true)}
+                  disabled={fulfilling || fulfillItems.length === 0}
+                  title={fulfillItems.length === 0 ? t.fulfillNone : undefined}
+                >
+                  {fulfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+                  {fulfilling ? t.fulfilling : `${t.fulfill} (${fulfillItems.length})`}
+                </Button>
+              )}
               {/* Paling depan: satu-satunya jalur yang tidak melewati
                   pengunggah Google Drive, yang kerap gagal di Safari. */}
-              <Button onClick={salinUntukSheet}>
+              <Button variant="outline" onClick={salinUntukSheet}>
                 <ClipboardCopy className="h-4 w-4" /> {t.copySheet}
               </Button>
               <Button variant="outline" onClick={() => unduh("csv")}>
@@ -848,11 +942,36 @@ export function ReceiptSalesView() {
             verified={verified}
             onEdit={onEdit}
             onVerify={onVerify}
+            fulfillResult={fulfillResult}
           />
           )}
 
         </>
       )}
+
+      {/* Konfirmasi dengan bobot yang sepadan: ini menulis ke pesanan sungguhan
+          dan bisa mengirim email ke pembeli. Pilihan emailnya BAWAANNYA MATI —
+          mengirim ke puluhan orang tidak bisa ditarik kembali, jadi ia harus
+          diminta secara sadar, bukan terjadi karena nilai bawaan. */}
+      <ConfirmDialog
+        open={askFulfill}
+        title={t.fulfillConfirm}
+        message={`${t.fulfillBody}\n\n${fulfillItems.length} order.`}
+        confirmLabel={t.fulfillGo}
+        busy={fulfilling}
+        onCancel={() => setAskFulfill(false)}
+        onConfirm={jalankanFulfill}
+      >
+        <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl bg-sand/60 px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={notifyBuyer}
+            onChange={(e) => setNotifyBuyer(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[#3d5a2e]"
+          />
+          <span className="text-sm text-ink">{t.fulfillNotify}</span>
+        </label>
+      </ConfirmDialog>
     </div>
   );
 }

@@ -299,6 +299,7 @@ export function ReviewPanel({
   verified,
   onEdit,
   onVerify,
+  fulfillResult = {},
 }: {
   records: LabelRecord[];
   /** Sumber pratinjau; null saat batch sudah dilepas. */
@@ -307,6 +308,8 @@ export function ReviewPanel({
   verified: Record<number, boolean>;
   onEdit: (page: number, key: string, value: string) => void;
   onVerify: (page: number, value: boolean) => void;
+  /** Hasil fulfill per halaman — ditempel di kartunya masing-masing. */
+  fulfillResult?: Record<number, { ok: boolean; text: string }>;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -351,6 +354,27 @@ export function ReviewPanel({
                 </div>
                 <SourceBadge record={r} locale={locale} />
               </div>
+
+              {/* Hasil fulfill halaman ini. Ditaruh di kartunya sendiri, bukan
+                  hanya sebagai notifikasi sekilas: kalau 3 dari 20 order gagal,
+                  yang dibutuhkan adalah tahu YANG MANA. */}
+              {fulfillResult[r.page] && (
+                <div
+                  className={cn(
+                    "mt-2 flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-medium",
+                    fulfillResult[r.page].ok
+                      ? "bg-[#e9f0d8] text-forest-700"
+                      : "bg-clay-soft text-[#8c3c1f]",
+                  )}
+                >
+                  {fulfillResult[r.page].ok ? (
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span>{fulfillResult[r.page].text}</span>
+                </div>
+              )}
 
               <div className="flex gap-3 p-3">
                 <LazyThumb

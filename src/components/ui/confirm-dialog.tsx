@@ -18,6 +18,7 @@ export function ConfirmDialog({
   busy = false,
   onConfirm,
   onCancel,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -29,6 +30,9 @@ export function ConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Isian tambahan di dalam dialog (mis. centang pilihan) — dirender di
+   *  antara pesan dan tombol, supaya keputusannya dibaca sebelum ditekan. */
+  children?: React.ReactNode;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -71,7 +75,8 @@ export function ConfirmDialog({
           </div>
         )}
         <h2 className="text-center font-display text-lg font-semibold text-ink">{title}</h2>
-        {message && <p className="mt-1.5 text-center text-sm text-muted">{message}</p>}
+        {message && <p className="mt-1.5 whitespace-pre-line text-center text-sm text-muted">{message}</p>}
+        {children}
 
         <div className="mt-6 flex gap-3">
           <Button variant="outline" className="flex-1" onClick={onCancel} disabled={busy}>
