@@ -38,8 +38,11 @@ export async function POST(req: Request) {
   if (!inputs.length) return NextResponse.json({ matches: {} });
   if (inputs.length > 300) return NextResponse.json({ error: "too_many_pages" }, { status: 400 });
 
+  // Kode khusus, bukan `not_configured` yang umum: keadaan ini punya satu
+  // penyebab yang sangat spesifik dan satu tindakan yang jelas, dan pesan
+  // samar membuatnya tertukar dengan "ordernya memang tidak ada".
   if (!process.env.STORE_NAME || !process.env.ADMIN_API_KEY) {
-    return NextResponse.json({ error: "not_configured" }, { status: 503 });
+    return NextResponse.json({ error: "shopify_not_configured" }, { status: 503 });
   }
 
   try {
