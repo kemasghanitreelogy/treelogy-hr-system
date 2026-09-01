@@ -26,15 +26,40 @@ export interface JubelioFind {
   note: string;
 }
 
+/**
+ * Batas waktu satu panggilan ke Jubelio.
+ *
+ * TIDAK ADA sebelumnya, dan itu bentuk cacat yang sama persis dengan yang
+ * menjatuhkan aplikasi 27 Agustus: `fetch` yang MENGGANTUNG tidak pernah
+ * menolak, jadi tidak ada penangkap galat yang jalan dan permintaannya
+ * menunggu selamanya sambil menahan satu slot fungsi.
+ */
+const JUBELIO_TIMEOUT_MS = 20_000;
+
+/**
+ * Jeda saat kena 429, naik bertahap.
+ *
+ * Dulu rata 1,5 detik. Angka 429 berarti "kamu terlalu cepat" — mengulang
+ * dengan jeda yang sama persis tidak memberi ruang bernapas kepada kuota yang
+ * sedang habis. Header `Retry-After` dihormati bila Jubelio mengirimkannya;
+ * itu jawaban dari yang paling tahu, bukan tebakan kita.
+ */
+const BACKOFF_MS = [1_500, 5_000, 15_000];
+
 async function jfetch(token: string, path: string, init?: RequestInit): Promise<Response> {
-  // Satu kali ulang saat 429 (batas Jubelio: 600 permintaan/menit).
   const headers = { Authorization: token, "Content-Type": "application/json", ...(init?.headers || {}) };
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(BASE + path, { ...init, headers });
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < BACKOFF_MS.length; attempt++) {
+    res = await fetch(BASE + path, { ...init, headers, signal: AbortSignal.timeout(JUBELIO_TIMEOUT_MS) });
     if (res.status !== 429) return res;
-    await new Promise((r) => setTimeout(r, 1500));
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const tunggu = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter * 1000, 30_000)
+      : BACKOFF_MS[attempt];
+    await new Promise((r) => setTimeout(r, tunggu));
   }
-  return fetch(BASE + path, { ...init, headers });
+  // Percobaan terakhir; kalau masih 429, biarkan pemanggilnya yang memutuskan.
+  return fetch(BASE + path, { ...init, headers, signal: AbortSignal.timeout(JUBELIO_TIMEOUT_MS) });
 }
 
 export async function jubelioLogin(): Promise<string> {
@@ -45,6 +70,7 @@ export async function jubelioLogin(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
+    signal: AbortSignal.timeout(JUBELIO_TIMEOUT_MS),
   });
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok || !json?.token) throw new Error("jubelio_login_failed");

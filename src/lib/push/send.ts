@@ -27,6 +27,11 @@ const DEFAULT_TTL = 60 * 60 * 24; // 1 hari (approval/umum)
 const TRANSIENT = new Set([429, 500, 502, 503, 504]);
 
 /** Kirim 1 push dengan retry untuk kegagalan sesaat (429/5xx/jaringan). */
+/** Batas waktu satu pengiriman push. Dipilih pendek: notifikasi yang telat
+ *  puluhan detik sudah kehilangan gunanya, sementara menunggunya menahan
+ *  permintaan yang memicunya. */
+const PUSH_TIMEOUT_MS = 8_000;
+
 async function sendWithRetry(
   sub: { endpoint: string; keys: { p256dh: string; auth: string } },
   body: string,
@@ -35,7 +40,17 @@ async function sendWithRetry(
 ): Promise<{ ok: boolean; code?: number }> {
   for (let i = 0; i < attempts; i++) {
     try {
-      await webpush.sendNotification(sub, body, options);
+      // `web-push` memakai modul https Node yang TIDAK punya batas waktu
+      // bawaan. Endpoint push yang menerima koneksi lalu diam membuat
+      // panggilan ini menggantung selamanya — dan ia ditunggu langsung di
+      // dalam permintaan clock-in, jadi yang ikut menggantung adalah absensi
+      // orang. Perlombaan ini yang memberi akhir pada penantian itu.
+      await Promise.race([
+        webpush.sendNotification(sub, body, options),
+        new Promise((_, tolak) =>
+          setTimeout(() => tolak(Object.assign(new Error("push_timeout"), { statusCode: 408 })), PUSH_TIMEOUT_MS),
+        ),
+      ]);
       return { ok: true };
     } catch (err) {
       const code = (err as { statusCode?: number }).statusCode;

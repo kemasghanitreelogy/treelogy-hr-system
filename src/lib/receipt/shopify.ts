@@ -143,6 +143,10 @@ async function fetchShard(
         method: "POST",
         headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
         body: JSON.stringify({ query: POOL_QUERY, variables: { q, c: cursor } }),
+        // Tanpa batas waktu, satu panggilan yang menggantung menahan seluruh
+        // pencocokan — dan halamannya berputar tanpa akhir. Bentuk cacat yang
+        // sama dengan yang menjatuhkan aplikasi 27 Agustus.
+        signal: AbortSignal.timeout(25_000),
       });
       json = await res.json().catch(() => null);
       const throttled =
