@@ -76,6 +76,11 @@ const STR: Record<Locale, Record<string, string>> = {
     retryFailed: "Coba ulang yang gagal",
     checkingLabel: "Memeriksa di Shopify…",
     showBlocked: "Tampilkan & perbaiki yang ditahan",
+    doneTitle: "Semua beres",
+    doneSub: "Seluruh {n} halaman sudah pada tempatnya — tidak ada yang tertinggal.",
+    doneSent: "resi terpasang di Shopify",
+    doneSkipped: "sengaja dilewati — resinya dipakai dari halaman kembarannya",
+    doneOutside: "pesanan di luar Shopify (masuk lewat WhatsApp) — tidak perlu di-fulfill",
     fulfillNone: "Belum ada baris yang siap — perlu order Shopify yang cocok, nomor resi, dan kurir yang dikenali (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Tandai terkirim di Shopify?",
     fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
@@ -150,6 +155,11 @@ const STR: Record<Locale, Record<string, string>> = {
     retryFailed: "Retry failed",
     checkingLabel: "Checking in Shopify…",
     showBlocked: "Show & fix the held rows",
+    doneTitle: "All settled",
+    doneSub: "All {n} pages are accounted for — nothing left behind.",
+    doneSent: "tracking attached in Shopify",
+    doneSkipped: "deliberately skipped — tracking came from its twin page",
+    doneOutside: "orders outside Shopify (came via WhatsApp) — nothing to fulfill",
     fulfillNone: "No rows are ready yet — each needs a matched Shopify order, a tracking number, and a recognised courier (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Mark as fulfilled in Shopify?",
     fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
@@ -609,6 +619,36 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     }
     return info;
   }, [result, edits, fulfillBlockedPages, orderChoice]);
+
+  /**
+   * NERACA PENUTUP — setiap halaman harus punya rumah.
+   *
+   * Rasa "belum beres" muncul bukan dari adanya sisa, melainkan dari sisa yang
+   * TIDAK DIJELASKAN. Dua kategori di bawah ini bukan kekurangan: kembaran
+   * memang sengaja dilewati, dan order WhatsApp memang tidak pernah ada di
+   * Shopify untuk di-fulfill. Menghitung keduanya sebagai "beres" adalah
+   * pernyataan yang jujur, bukan penghiburan.
+   */
+  const tally = useMemo(() => {
+    const recs = result?.records ?? [];
+    const ikut = new Set(fulfillItems.map((x) => x.page));
+    let terkirim = 0, dilewati = 0, luarShopify = 0, sisa = 0;
+    for (const r of recs) {
+      if (fulfillResult[r.page]?.ok) { terkirim++; continue; }
+      // Tanpa order Shopify sama sekali → pesanannya masuk lewat jalur lain
+      // (WhatsApp). Bukan gagal: memang bukan wilayah tombol ini.
+      if (!r.legacyId) { luarShopify++; continue; }
+      // Kembaran yang kalah pilih: ordernya sudah terkirim dari halaman lain.
+      if (blockedInfo[r.page]?.kind === "order" && blockedInfo[r.page]?.chosen != null) { dilewati++; continue; }
+      if (fulfillResult[r.page] && !fulfillResult[r.page].ok) { sisa++; continue; }
+      if (ikut.has(r.page)) sisa++;
+      else dilewati++;
+    }
+    return { terkirim, dilewati, luarShopify, sisa, total: recs.length };
+  }, [result, fulfillResult, fulfillItems, blockedInfo]);
+
+  /** Panel penutup hanya muncul kalau memang TIDAK ADA lagi yang tertinggal. */
+  const semuaBeres = tally.total > 0 && tally.sisa === 0 && tally.terkirim > 0;
 
   function tampilkanDitahan() {
     setAskFulfill(false);
@@ -1167,6 +1207,43 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
               </div>
             )}
           </section>
+
+          {/* PANEL PENUTUP — muncul hanya bila setiap halaman sudah punya rumah.
+              Nada bahasanya menyatakan SELESAI, dan dua kategori non-kirim
+              disebut sebagai keterangan, bukan sebagai sisa pekerjaan. */}
+          {semuaBeres && (
+            <section className="hf-done-panel mb-4 overflow-hidden rounded-2xl border border-forest-300 bg-gradient-to-br from-forest-50 to-cream/40 p-5">
+              <div className="flex items-start gap-4">
+                <svg viewBox="0 0 48 48" className="hf-done-ring h-12 w-12 shrink-0" aria-hidden>
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="var(--forest-600, #3d5a2e)" strokeWidth="2.5" strokeLinecap="round" />
+                  <path d="M15 24.5l6 6 12-12" fill="none" stroke="var(--forest-600, #3d5a2e)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-bold text-forest-800">{t.doneTitle}</h3>
+                  <p className="mt-0.5 text-sm text-ink-soft">
+                    {t.doneSub.replace("{n}", String(tally.total))}
+                  </p>
+
+                  <dl className="mt-3 grid gap-1.5 sm:grid-cols-3">
+                    {[
+                      { n: tally.terkirim, label: t.doneSent, tone: "text-forest-700" },
+                      ...(tally.dilewati ? [{ n: tally.dilewati, label: t.doneSkipped, tone: "text-ink-soft" }] : []),
+                      ...(tally.luarShopify ? [{ n: tally.luarShopify, label: t.doneOutside, tone: "text-ink-soft" }] : []),
+                    ].map((row, i) => (
+                      <div
+                        key={row.label}
+                        className="hf-done-row rounded-xl bg-panel/70 px-3 py-2"
+                        style={{ ["--i" as string]: i }}
+                      >
+                        <dt className={cn("text-xl font-bold tabular-nums", row.tone)}>{row.n}</dt>
+                        <dd className="text-xs leading-snug text-ink-soft">{row.label}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              </div>
+            </section>
+          )}
 
           {shownRecords.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-forest-200 bg-forest-50/60 px-5 py-10 text-center">

@@ -373,6 +373,50 @@ body.camera-open .app-chrome {
   transition: transform 260ms cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 
+/* ═══ PANEL PENUTUP "SEMUA BERES" ═══
+   Doktrin HyperFrames: satu ketukan masuk, cincin menggambar dirinya, baris
+   rincian berjenjang 60 ms (4 baris = 0,24 dtk — jauh di bawah batas 0,5 dtk
+   satu-ketukan), lalu DIAM. Tidak ada yang berdenyut abadi: rasa selesai
+   datang dari gerak yang BERHENTI, bukan dari kerlip yang terus meminta
+   perhatian. */
+@keyframes hf-done-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.hf-done-panel { animation: hf-done-in 420ms cubic-bezier(0.215, 0.61, 0.355, 1) both; }
+
+/* Cincin mengelilingi centang — menyapu sekali, searah jarum jam. */
+@keyframes hf-ring-draw { to { stroke-dashoffset: 0; } }
+.hf-done-ring circle {
+  stroke-dasharray: 126;
+  stroke-dashoffset: 126;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  animation: hf-ring-draw 620ms cubic-bezier(0.19, 1, 0.22, 1) 120ms both;
+}
+.hf-done-ring path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: hf-draw 340ms cubic-bezier(0.215, 0.61, 0.355, 1) 520ms both;
+}
+
+/* Baris rincian: jenjang lewat --i, dibaca dari atas ke bawah. */
+@keyframes hf-row-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.hf-done-row {
+  animation: hf-row-in 300ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+  animation-delay: calc(620ms + var(--i) * 60ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-done-panel, .hf-done-row { animation: none; }
+  .hf-done-ring circle, .hf-done-ring path {
+    animation: none; stroke-dasharray: none; stroke-dashoffset: 0;
+  }
+}
+
 /* Sorotan kartu ditahan — dua denyut cincin lalu diam; kelasnya dicabut
    dari state setelah beberapa detik, kartu kembali polos. */
 @keyframes hf-spotlight {
