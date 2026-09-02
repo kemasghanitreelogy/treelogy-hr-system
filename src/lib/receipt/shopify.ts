@@ -42,6 +42,9 @@ export interface MatchInput {
   shipDate: string;
   /** Isi "KOTA TUJUAN" di label — bukti geografis, dibandingkan ke order. */
   destCity?: string;
+  /** Tanggal DIBUAT yang PASTI (label menulisnya demikian). Kosong = penjaga
+   *  jendela 3 hari tidak berlaku — lebih baik longgar daripada salah. */
+  labelDate?: string;
 }
 
 interface PoolOrder {
@@ -479,8 +482,11 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
       if (p.length >= inp.phoneLast4.length && !p.endsWith(inp.phoneLast4)) { ditolakGate++; continue; }
     }
 
-    // 3. Order harus dibuat sekitar tanggal resi dicetak (3 hari ke belakang).
-    if (inp.shipDate && !withinWindow(o.createdAt, inp.shipDate)) { ditolakGate++; continue; }
+    // 3. Order harus dibuat sekitar tanggal resi DICETAK (3 hari ke belakang).
+    //    Hanya berlaku kalau labelnya betul-betul menulis tanggal DIBUAT;
+    //    format lain (J&T, JNE, foto) tidak punya kata itu, dan menghakimi
+    //    dengan tanggal tebakan lebih berbahaya daripada tidak menghakimi.
+    if (inp.labelDate && !withinWindow(o.createdAt, inp.labelDate)) { ditolakGate++; continue; }
 
     // 4. Kode pos — kunci geografis yang jujur karena bentuknya baku. Dua-duanya
     //    terbaca tapi berbeda jauh (bukan salah ketik satu digit) = wilayah lain.
@@ -613,7 +619,7 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
     flag = hasName || phoneAny || hasZip ? "cocok satu sinyal saja — cek ke label" : "kecocokan lemah — perlu diperiksa";
   }
 
-  if (best.fulfilled && !withinWindow(best.createdAt, inp.shipDate)) {
+  if (best.fulfilled && inp.labelDate && !withinWindow(best.createdAt, inp.labelDate)) {
     // Bendera ini hanya berarti kalau ordernya TUA. Sejak jendela 3 hari
     // dipasang, order yang sudah terkirim di dalam jendela hampir pasti hasil
     // run kita sendiri — menandainya cuma membuat 164 kartu yang sehat tampak

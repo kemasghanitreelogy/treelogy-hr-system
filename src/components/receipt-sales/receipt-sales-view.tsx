@@ -371,6 +371,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
           // bisa memuat resi dari beberapa hari cetak, dan jendela 3 hari hanya
           // berarti kalau titik acuannya tanggal resinya sendiri.
           shipDate: normalizeShipDate(rowByPage.get(r.page)?.ship_date) || shipDate,
+          labelDate: normalizeShipDate(rowByPage.get(r.page)?.created_date),
         }));
 
       let matches: Record<number, MatchResult> = {};

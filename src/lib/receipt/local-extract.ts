@@ -34,6 +34,9 @@ export interface ParsedRow {
   ship_date: string | null;
   /** Isi "KOTA TUJUAN" di label — kota/kecamatan tujuan paket. */
   dest_city: string | null;
+  /** Tanggal DIBUAT yang benar-benar berlabel demikian. Beda dari `ship_date`
+   *  yang boleh menebak dari tanggal mana pun di label. */
+  created_date: string | null;
 }
 
 /** Buang noise satu karakter di ujung baris hasil OCR. */
@@ -147,6 +150,7 @@ function parsePackingSlip(lines: string[], page: number): ParsedRow {
     notes: null,
     ship_date: null,
     dest_city: null,
+    created_date: null,
   };
 }
 
@@ -246,6 +250,14 @@ export function parseLabelFields(rawText: string, page: number, docType: DocType
     // geografis terkuat di label — dan ketiadaannya yang membuat resi Jakarta
     // bisa tercocok ke order Surabaya.
     dest_city: destCity(lines),
+    // Dipisah SENGAJA. `created_date` hanya diisi kalau labelnya benar-benar
+    // menulis DIBUAT/Cetak — itu yang boleh dipakai penjaga jendela 3 hari.
+    // `ship_date` boleh menebak dari tanggal mana pun (untuk tampilan dan
+    // jendela pool yang lebar), dan tebakan tidak boleh menghakimi: label
+    // J&T/JNE tidak memakai kata "DIBUAT", jadi tanggal yang terambil di sana
+    // bisa saja tanggal estimasi — dan penjaga yang mempercayainya akan
+    // membuang order yang benar.
+    created_date: sanitizeDate(dibuatDate(lines)),
     ship_date: sanitizeDate(dibuatDate(lines) || pick(/(\d{1,2}[-/]\d{1,2}[-/]\d{4})/, flat)),
   };
 }
