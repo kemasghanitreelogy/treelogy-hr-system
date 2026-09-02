@@ -73,6 +73,9 @@ const STR: Record<Locale, Record<string, string>> = {
     heldAwb: "Ditahan dari fulfill — nomor resinya kembar dengan",
     heldAwbHint: "Salah satu pasti salah baca: cocokkan dengan gambar labelnya, lalu perbaiki nomor yang keliru.",
     heldOrder: "Ditahan dari fulfill — tercocok ke order Shopify yang SAMA dengan",
+    heldSkipped: "Dilewati — resi untuk order ini dipakai dari",
+    pickThis: "Pakai resi halaman ini",
+    seeTwin: "Lihat",
     heldOrderHint: "Kalau memang satu pesanan dikirim dua paket, fulfill cukup dari salah satu halaman. Kalau bukan, salah satu pencocokannya keliru — bandingkan nama & alamat kedua kartu dengan order-nya.",
     verified: "Sudah diperiksa",
     markVerified: "Tandai sudah diperiksa",
@@ -94,6 +97,9 @@ const STR: Record<Locale, Record<string, string>> = {
     heldAwb: "Held from fulfill — its tracking number duplicates",
     heldAwbHint: "One of them must be misread: compare with the label image and correct the wrong one.",
     heldOrder: "Held from fulfill — matched to the SAME Shopify order as",
+    heldSkipped: "Skipped — this order\u2019s tracking comes from",
+    pickThis: "Use this page\u2019s tracking",
+    seeTwin: "View",
     heldOrderHint: "If one order genuinely shipped as two parcels, fulfilling from either page is enough. If not, one match is wrong — compare both cards\u2019 name & address against the order.",
     verified: "Verified",
     markVerified: "Mark as verified",
@@ -313,6 +319,8 @@ export function ReviewPanel({
   checkingPages,
   spotlightPages,
   blockedInfo = {},
+  onChooseOrder,
+  onJumpTo,
 }: {
   records: LabelRecord[];
   /** Sumber pratinjau; null saat batch sudah dilepas. */
@@ -328,7 +336,11 @@ export function ReviewPanel({
   /** Kartu yang disorot sesaat — tombol "tampilkan yang ditahan" melompat kemari. */
   spotlightPages?: Set<number>;
   /** Alasan kartu ditahan dari fulfill: jenis kembar + halaman pasangannya. */
-  blockedInfo?: Record<number, { kind: "awb" | "order"; partners: number[] }>;
+  blockedInfo?: Record<number, { kind: "awb" | "order"; partners: number[]; legacyId?: string; chosen?: number }>;
+  /** Pilih halaman mana yang resinya dipakai untuk sebuah order kembar. */
+  onChooseOrder?: (legacyId: string, page: number) => void;
+  /** Lompat + sorot kartu lain — untuk membandingkan kembarannya. */
+  onJumpTo?: (page: number) => void;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -384,11 +396,46 @@ export function ReviewPanel({
                   lain, dan keterangan inilah yang menunjuknya. */}
               {blockedInfo[r.page] && !fulfillResult[r.page] && (
                 <div className="mt-2 rounded-xl border border-[#e8d9a8] bg-gold-soft px-3 py-2 text-xs leading-relaxed text-[#8a6512]">
-                  <span className="font-semibold">
-                    {blockedInfo[r.page].kind === "awb" ? t.heldAwb : t.heldOrder}{" "}
-                    {blockedInfo[r.page].partners.map((x) => `${t.page} ${x}`).join(", ")}.
-                  </span>{" "}
-                  {blockedInfo[r.page].kind === "awb" ? t.heldAwbHint : t.heldOrderHint}
+                  {blockedInfo[r.page].kind === "order" && blockedInfo[r.page].chosen != null ? (
+                    // Kembarannya SUDAH dipilih — kartu ini yang dilewati.
+                    <span>
+                      <span className="font-semibold">{t.heldSkipped}</span>{" "}
+                      {t.page} {blockedInfo[r.page].chosen}.
+                    </span>
+                  ) : (
+                    <span>
+                      <span className="font-semibold">
+                        {blockedInfo[r.page].kind === "awb" ? t.heldAwb : t.heldOrder}{" "}
+                        {blockedInfo[r.page].partners.map((x) => `${t.page} ${x}`).join(", ")}.
+                      </span>{" "}
+                      {blockedInfo[r.page].kind === "awb" ? t.heldAwbHint : t.heldOrderHint}
+                    </span>
+                  )}
+
+                  {/* Pilihan untuk kembar-order: manusia yang melihat kedua
+                      labelnya yang memutuskan resi mana dipakai — satu ketuk,
+                      bisa diganti kapan pun sebelum fulfill. */}
+                  {blockedInfo[r.page].kind === "order" && blockedInfo[r.page].legacyId && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onChooseOrder?.(blockedInfo[r.page].legacyId!, r.page)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#8a6512] px-2.5 py-1.5 font-semibold text-white transition-colors hover:bg-[#6e510f]"
+                      >
+                        <Check className="h-3.5 w-3.5" /> {t.pickThis}
+                      </button>
+                      {blockedInfo[r.page].partners.map((x) => (
+                        <button
+                          key={x}
+                          type="button"
+                          onClick={() => onJumpTo?.(x)}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#e8d9a8] bg-panel px-2.5 py-1.5 font-medium text-[#8a6512] transition-colors hover:bg-gold-soft"
+                        >
+                          {t.seeTwin} {t.page} {x}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -481,6 +481,20 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   const [runGlow, setRunGlow] = useState(false);
   /** Kartu yang sedang disorot oleh tombol "tampilkan yang ditahan". */
   const [spotlightPages, setSpotlightPages] = useState<Set<number>>(new Set());
+  /** Untuk order yang tercocok ke DUA halaman: halaman mana yang resinya
+   *  dipakai. Kunci = legacyId order. Dipilih dari kartu, bisa diganti kapan
+   *  pun sebelum fulfill. */
+  const [orderChoice, setOrderChoice] = useState<Record<string, number>>({});
+
+  /** Lompat + sorot satu kartu — dipakai tombol "lihat kembarannya". */
+  function lompatKe(page: number) {
+    setFilter("all");
+    setSpotlightPages(new Set([page]));
+    setTimeout(() => {
+      document.getElementById(`rs-page-${page}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    setTimeout(() => setSpotlightPages(new Set()), 4000);
+  }
   const [askFulfill, setAskFulfill] = useState(false);
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
@@ -535,9 +549,14 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     const perAwb = hitung((x) => x.awb.toUpperCase());
     const perOrder = hitung((x) => x.legacyId);
     return kandidat.filter(
-      (x) => perAwb.get(x.awb.toUpperCase()) === 1 && perOrder.get(x.legacyId) === 1,
+      (x) =>
+        perAwb.get(x.awb.toUpperCase()) === 1 &&
+        // Order kembar tidak lagi jalan buntu: kartu yang DIPILIH pemakai
+        // ikut fulfill, kembarannya dilewati — keputusan manusia yang melihat
+        // kedua labelnya, bukan tebakan sistem.
+        (perOrder.get(x.legacyId) === 1 || orderChoice[x.legacyId] === x.page),
     );
-  }, [result, edits, fulfillResult, verified]);
+  }, [result, edits, fulfillResult, verified, orderChoice]);
 
   /** Berapa baris yang ditahan karena kembar — disebut angka, bukan disembunyikan. */
   /** Halaman yang hasil terakhirnya GAGAL — sasaran tombol coba-ulang. */
@@ -570,7 +589,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
    */
   const blockedInfo = useMemo(() => {
     const recs = result?.records ?? [];
-    const info: Record<number, { kind: "awb" | "order"; partners: number[] }> = {};
+    const info: Record<number, { kind: "awb" | "order"; partners: number[]; legacyId?: string; chosen?: number }> = {};
     const byAwb = new Map<string, number[]>();
     const byOrder = new Map<string, number[]>();
     for (const r of recs) {
@@ -585,10 +604,11 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
       const awbTwins = (byAwb.get(awb) ?? []).filter((x) => x !== page);
       const orderTwins = r.legacyId ? (byOrder.get(r.legacyId) ?? []).filter((x) => x !== page) : [];
       if (awbTwins.length) info[page] = { kind: "awb", partners: awbTwins };
-      else if (orderTwins.length) info[page] = { kind: "order", partners: orderTwins };
+      else if (orderTwins.length)
+        info[page] = { kind: "order", partners: orderTwins, legacyId: r.legacyId ?? undefined, chosen: r.legacyId ? orderChoice[r.legacyId] : undefined };
     }
     return info;
-  }, [result, edits, fulfillBlockedPages]);
+  }, [result, edits, fulfillBlockedPages, orderChoice]);
 
   function tampilkanDitahan() {
     setAskFulfill(false);
@@ -1162,6 +1182,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             checkingPages={checkingPages}
             spotlightPages={spotlightPages}
             blockedInfo={blockedInfo}
+            onChooseOrder={(legacyId, page) => setOrderChoice((prev) => ({ ...prev, [legacyId]: page }))}
+            onJumpTo={lompatKe}
           />
           )}
 
