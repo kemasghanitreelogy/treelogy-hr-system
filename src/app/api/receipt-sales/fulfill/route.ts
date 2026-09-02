@@ -9,13 +9,15 @@ export const maxDuration = 120;
  * Tandai order Shopify terkirim + isi nomor resi & tautan lacak.
  *
  * Ini menulis ke pesanan SUNGGUHAN dan — bila diminta — mengirim email ke
- * pembeli. Karena itu dipagari `receipt.sync`, izin yang sama dengan penulisan
- * ke Jubelio, bukan `receipt.view` yang hanya untuk membaca.
+ * pembeli. Dipagari izinnya SENDIRI (`receipt.fulfill`), bukan menumpang
+ * `receipt.sync` yang berarti menulis ke Jubelio — dua sistem yang berbeda,
+ * dan menyatukannya membuat tim resi tidak bisa memakai fitur yang justru
+ * jadi pekerjaan mereka sehari-hari.
  */
 export async function POST(req: Request) {
   const me = await getSessionUser();
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (!can(me, "receipt.sync")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!can(me, "receipt.fulfill")) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   if (!process.env.STORE_NAME || !process.env.ADMIN_API_KEY) {
     return NextResponse.json({ error: "shopify_not_configured" }, { status: 503 });

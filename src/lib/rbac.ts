@@ -113,6 +113,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     permissions: [
       { id: "receipt.view", label: "Baca resi & cocokkan ke order Shopify" },
       { id: "receipt.sync", label: "Tulis No. Resi ke Jubelio" },
+      { id: "receipt.fulfill", label: "Tandai order terkirim di Shopify" },
     ],
   },
   {
