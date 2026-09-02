@@ -74,6 +74,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfilling: "Mengirim ke Shopify…",
     fulfillAlready: "sudah terkirim sebelumnya ✓",
     retryFailed: "Coba ulang yang gagal",
+    checkingLabel: "Memeriksa di Shopify…",
     fulfillNone: "Belum ada baris yang siap — perlu order Shopify yang cocok, nomor resi, dan kurir yang dikenali (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Tandai terkirim di Shopify?",
     fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
@@ -146,6 +147,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfilling: "Sending to Shopify…",
     fulfillAlready: "was already fulfilled ✓",
     retryFailed: "Retry failed",
+    checkingLabel: "Checking in Shopify…",
     fulfillNone: "No rows are ready yet — each needs a matched Shopify order, a tracking number, and a recognised courier (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Mark as fulfilled in Shopify?",
     fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
@@ -471,6 +473,10 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   const [fulfilling, setFulfilling] = useState(false);
   /** Progres antar-potongan — 57 order dikirim bertahap, layar menghitungnya. */
   const [fulfillProgress, setFulfillProgress] = useState<{ done: number; total: number } | null>(null);
+  /** Halaman yang potongannya SEDANG ditanyakan ke Shopify — fase "memeriksa". */
+  const [checkingPages, setCheckingPages] = useState<Set<number>>(new Set());
+  /** Momen penutup: glow sekali jalan saat semua terverifikasi tanpa gagal. */
+  const [runGlow, setRunGlow] = useState(false);
   const [askFulfill, setAskFulfill] = useState(false);
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
@@ -591,7 +597,9 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         const potongan = antrean.slice(0, FULFILL_CHUNK);
         antrean = antrean.slice(FULFILL_CHUNK);
 
+        setCheckingPages(new Set(potongan.map((x) => x.page)));
         const results = await kirimPotongan(potongan);
+        setCheckingPages(new Set());
         const peta: Record<number, { ok: boolean; text: string; seq?: number }> = {};
         for (const r of results) {
           // Yang layak diantrekan ulang sekali: belum sempat (out_of_time),
@@ -629,6 +637,10 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         setFulfillProgress({ done: selesai, total: daftar.length });
       }
 
+      if (totalGagal === 0 && totalOk > 0) {
+        setRunGlow(true);
+        setTimeout(() => setRunGlow(false), 1000);
+      }
       if (totalGagal === 0) toast.success(`${totalOk} ${t.fulfillDone}`);
       else toast.toast(`${totalOk} ${t.fulfillOk}, ${totalGagal} ${t.fulfillFail}`, "info");
     } catch (e) {
@@ -640,6 +652,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     } finally {
       setFulfilling(false);
       setFulfillProgress(null);
+      setCheckingPages(new Set());
     }
   }
 
@@ -1030,6 +1043,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                   onClick={() => setAskFulfill(true)}
                   disabled={fulfilling || fulfillItems.length === 0}
                   title={fulfillItems.length === 0 ? t.fulfillNone : undefined}
+                  className={cn(runGlow && "hf-glow-done")}
                 >
                   {fulfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
                   {fulfilling
@@ -1061,6 +1075,15 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                 <FileSpreadsheet className="h-4 w-4" /> {t.xlsx}
               </Button>
             </div>
+            {/* Bilah kemajuan: scaleX inline (GPU), muncul hanya selagi run. */}
+            {fulfilling && fulfillProgress && (
+              <div className="hf-progress-track mt-3 h-1 rounded-full bg-forest-100" aria-hidden>
+                <div
+                  className="hf-progress-fill h-full rounded-full bg-forest-600"
+                  style={{ transform: `scaleX(${fulfillProgress.total ? fulfillProgress.done / fulfillProgress.total : 0})` }}
+                />
+              </div>
+            )}
           </section>
 
           {shownRecords.length === 0 ? (
@@ -1078,6 +1101,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             onEdit={onEdit}
             onVerify={onVerify}
             fulfillResult={fulfillResult}
+            checkingPages={checkingPages}
           />
           )}
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Check, ChevronDown, ChevronUp, FileText, Image as ImageIcon,
+  AlertTriangle, Check, ChevronDown, ChevronUp, FileText, Image as ImageIcon, Loader2,
   ScanBarcode, ShoppingBag, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
@@ -69,6 +69,7 @@ const STR: Record<Locale, Record<string, string>> = {
     shopify: "Shopify",
     manual: "Manual / WA",
     orderPdf: "Dari PDF pesanan",
+    checkingLabel: "Memeriksa di Shopify…",
     verified: "Sudah diperiksa",
     markVerified: "Tandai sudah diperiksa",
     more: "Detail lain dari label",
@@ -85,6 +86,7 @@ const STR: Record<Locale, Record<string, string>> = {
     shopify: "Shopify",
     manual: "Manual / WA",
     orderPdf: "From order PDF",
+    checkingLabel: "Checking in Shopify…",
     verified: "Verified",
     markVerified: "Mark as verified",
     more: "Other details from the label",
@@ -300,6 +302,7 @@ export function ReviewPanel({
   onEdit,
   onVerify,
   fulfillResult = {},
+  checkingPages,
 }: {
   records: LabelRecord[];
   /** Sumber pratinjau; null saat batch sudah dilepas. */
@@ -310,6 +313,8 @@ export function ReviewPanel({
   onVerify: (page: number, value: boolean) => void;
   /** Hasil fulfill per halaman — ditempel di kartunya masing-masing. */
   fulfillResult?: Record<number, { ok: boolean; text: string; seq?: number }>;
+  /** Halaman yang sedang ditanyakan ke Shopify — fase "memeriksa". */
+  checkingPages?: Set<number>;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -358,13 +363,24 @@ export function ReviewPanel({
               {/* Hasil fulfill halaman ini. Ditaruh di kartunya sendiri, bukan
                   hanya sebagai notifikasi sekilas: kalau 3 dari 20 order gagal,
                   yang dibutuhkan adalah tahu YANG MANA. */}
+              {/* Fase MEMERIKSA — sheen berjalan selagi potongan halaman ini
+                  sedang ditanyakan ke Shopify; berganti badge begitu hasil
+                  aslinya pulang. */}
+              {!fulfillResult[r.page] && checkingPages?.has(r.page) && (
+                <div className="hf-checking mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-forest-700" role="status">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  <span>{t.checkingLabel}</span>
+                </div>
+              )}
+
               {fulfillResult[r.page] && (
                 <div
-                  // Jenjang dihitung dari urutan DI DALAM potongannya (modulo 20):
-                  // satu gelombang badge tuntas <1,2 dtk, gelombang berikut mulai
+                  // Jenjang dihitung dari urutan DI DALAM potongannya (modulo 20).
+                  // 25 ms × 20 = 0,5 dtk — batas doktrin agar satu gelombang
+                  // terbaca sebagai SATU ketukan, gelombang berikut mulai
                   // begitu potongan berikutnya pulang — sapuan yang mengikuti
                   // verifikasi asli, bukan menunggunya.
-                  style={{ animationDelay: `${((fulfillResult[r.page].seq ?? 0) % 20) * 45}ms` }}
+                  style={{ animationDelay: `${((fulfillResult[r.page].seq ?? 0) % 20) * 25}ms` }}
                   className={cn(
                     "fulfill-pop mt-2 flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-medium",
                     fulfillResult[r.page].ok
@@ -373,7 +389,9 @@ export function ReviewPanel({
                   )}
                 >
                   {fulfillResult[r.page].ok ? (
-                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="hf-check-draw mt-0.5 shrink-0">
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
                   ) : (
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   )}
