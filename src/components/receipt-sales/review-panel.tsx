@@ -70,6 +70,10 @@ const STR: Record<Locale, Record<string, string>> = {
     manual: "Manual / WA",
     orderPdf: "Dari PDF pesanan",
     checkingLabel: "Memeriksa di Shopify…",
+    heldAwb: "Ditahan dari fulfill — nomor resinya kembar dengan",
+    heldAwbHint: "Salah satu pasti salah baca: cocokkan dengan gambar labelnya, lalu perbaiki nomor yang keliru.",
+    heldOrder: "Ditahan dari fulfill — tercocok ke order Shopify yang SAMA dengan",
+    heldOrderHint: "Kalau memang satu pesanan dikirim dua paket, fulfill cukup dari salah satu halaman. Kalau bukan, salah satu pencocokannya keliru — bandingkan nama & alamat kedua kartu dengan order-nya.",
     verified: "Sudah diperiksa",
     markVerified: "Tandai sudah diperiksa",
     more: "Detail lain dari label",
@@ -87,6 +91,10 @@ const STR: Record<Locale, Record<string, string>> = {
     manual: "Manual / WA",
     orderPdf: "From order PDF",
     checkingLabel: "Checking in Shopify…",
+    heldAwb: "Held from fulfill — its tracking number duplicates",
+    heldAwbHint: "One of them must be misread: compare with the label image and correct the wrong one.",
+    heldOrder: "Held from fulfill — matched to the SAME Shopify order as",
+    heldOrderHint: "If one order genuinely shipped as two parcels, fulfilling from either page is enough. If not, one match is wrong — compare both cards\u2019 name & address against the order.",
     verified: "Verified",
     markVerified: "Mark as verified",
     more: "Other details from the label",
@@ -304,6 +312,7 @@ export function ReviewPanel({
   fulfillResult = {},
   checkingPages,
   spotlightPages,
+  blockedInfo = {},
 }: {
   records: LabelRecord[];
   /** Sumber pratinjau; null saat batch sudah dilepas. */
@@ -318,6 +327,8 @@ export function ReviewPanel({
   checkingPages?: Set<number>;
   /** Kartu yang disorot sesaat — tombol "tampilkan yang ditahan" melompat kemari. */
   spotlightPages?: Set<number>;
+  /** Alasan kartu ditahan dari fulfill: jenis kembar + halaman pasangannya. */
+  blockedInfo?: Record<number, { kind: "awb" | "order"; partners: number[] }>;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -368,6 +379,19 @@ export function ReviewPanel({
               {/* Hasil fulfill halaman ini. Ditaruh di kartunya sendiri, bukan
                   hanya sebagai notifikasi sekilas: kalau 3 dari 20 order gagal,
                   yang dibutuhkan adalah tahu YANG MANA. */}
+              {/* Kartu ini DITAHAN dari fulfill. Isinya sendiri bisa tampak
+                  normal — masalahnya relasional: kembarannya ada di halaman
+                  lain, dan keterangan inilah yang menunjuknya. */}
+              {blockedInfo[r.page] && !fulfillResult[r.page] && (
+                <div className="mt-2 rounded-xl border border-[#e8d9a8] bg-gold-soft px-3 py-2 text-xs leading-relaxed text-[#8a6512]">
+                  <span className="font-semibold">
+                    {blockedInfo[r.page].kind === "awb" ? t.heldAwb : t.heldOrder}{" "}
+                    {blockedInfo[r.page].partners.map((x) => `${t.page} ${x}`).join(", ")}.
+                  </span>{" "}
+                  {blockedInfo[r.page].kind === "awb" ? t.heldAwbHint : t.heldOrderHint}
+                </div>
+              )}
+
               {/* Fase MEMERIKSA — sheen berjalan selagi potongan halaman ini
                   sedang ditanyakan ke Shopify; berganti badge begitu hasil
                   aslinya pulang. */}

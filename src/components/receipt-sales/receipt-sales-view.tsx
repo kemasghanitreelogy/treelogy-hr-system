@@ -562,6 +562,34 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   }, [result, edits, fulfillResult, fulfillItems, verified]);
   const fulfillBlocked = fulfillBlockedPages.length;
 
+  /**
+   * ALASAN tiap kartu ditahan — kembar-resi atau kembar-order, plus halaman
+   * pasangannya. Tanpa ini, sorotan menunjuk kartu yang tampak normal-normal
+   * saja: masalahnya memang bukan di kartu itu sendiri, melainkan hubungannya
+   * dengan kembarannya — dan hubungan tidak terlihat dari satu kartu.
+   */
+  const blockedInfo = useMemo(() => {
+    const recs = result?.records ?? [];
+    const info: Record<number, { kind: "awb" | "order"; partners: number[] }> = {};
+    const byAwb = new Map<string, number[]>();
+    const byOrder = new Map<string, number[]>();
+    for (const r of recs) {
+      const awb = (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim().toUpperCase();
+      if (awb) byAwb.set(awb, [...(byAwb.get(awb) ?? []), r.page]);
+      if (r.legacyId) byOrder.set(r.legacyId, [...(byOrder.get(r.legacyId) ?? []), r.page]);
+    }
+    for (const page of fulfillBlockedPages) {
+      const r = recs.find((x) => x.page === page);
+      if (!r) continue;
+      const awb = (edits[page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim().toUpperCase();
+      const awbTwins = (byAwb.get(awb) ?? []).filter((x) => x !== page);
+      const orderTwins = r.legacyId ? (byOrder.get(r.legacyId) ?? []).filter((x) => x !== page) : [];
+      if (awbTwins.length) info[page] = { kind: "awb", partners: awbTwins };
+      else if (orderTwins.length) info[page] = { kind: "order", partners: orderTwins };
+    }
+    return info;
+  }, [result, edits, fulfillBlockedPages]);
+
   function tampilkanDitahan() {
     setAskFulfill(false);
     // Kartu ditahan bisa tersembunyi di saringan "Perlu diperiksa" bila
@@ -1133,6 +1161,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             fulfillResult={fulfillResult}
             checkingPages={checkingPages}
             spotlightPages={spotlightPages}
+            blockedInfo={blockedInfo}
           />
           )}
 
