@@ -3,7 +3,7 @@ import { can, getSessionUser } from "@/lib/auth";
 import { fulfillMany, type FulfillInput } from "@/lib/receipt/fulfill";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
  * Tandai order Shopify terkirim + isi nomor resi & tautan lacak.
@@ -32,17 +32,19 @@ export async function POST(req: Request) {
 
   const items = Array.isArray(body.items) ? body.items : [];
   if (!items.length) return NextResponse.json({ error: "invalid_input" }, { status: 400 });
-  // Batas kewarasan: satu berkas label biasanya puluhan halaman. Angka jauh di
-  // atas itu berarti ada yang salah di sisi klien, dan ini operasi yang
-  // mengirim email ke pembeli — lebih baik ditolak daripada dijalankan.
-  if (items.length > 100) return NextResponse.json({ error: "too_many_pages" }, { status: 400 });
+  // Batas per PERMINTAAN, bukan batas fitur: layar mengirim potongan-potongan
+  // dan terus mengirim sampai semua selesai, jadi pemakainya tidak pernah
+  // menabrak angka ini. Ia hanya pagar untuk pemanggil di luar layar — ini
+  // operasi yang mengirim email ke pembeli, kiriman raksasa sekali tembak
+  // lebih baik ditolak daripada dijalankan.
+  if (items.length > 250) return NextResponse.json({ error: "too_many_pages" }, { status: 400 });
 
   // Bawaannya TIDAK memberi tahu pembeli. Mengirim email ke puluhan orang
   // adalah tindakan yang tidak bisa ditarik kembali, jadi ia harus diminta
   // secara sadar, bukan terjadi karena nilai bawaan.
   const notifyCustomer = body.notifyCustomer === true;
 
-  const results = await fulfillMany(items, notifyCustomer);
+  const results = await fulfillMany(items, notifyCustomer, 240_000);
   return NextResponse.json({
     results,
     sent: results.filter((r) => r.ok).length,

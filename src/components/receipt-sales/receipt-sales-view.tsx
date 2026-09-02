@@ -72,6 +72,7 @@ const STR: Record<Locale, Record<string, string>> = {
     copySheet: "Salin untuk Sheet",
     fulfill: "Tandai terkirim di Shopify",
     fulfilling: "Mengirim ke Shopify…",
+    fulfillAlready: "sudah terkirim sebelumnya ✓",
     fulfillNone: "Belum ada baris yang siap — perlu order Shopify yang cocok, nomor resi, dan kurir yang dikenali (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Tandai terkirim di Shopify?",
     fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
@@ -142,6 +143,7 @@ const STR: Record<Locale, Record<string, string>> = {
     copySheet: "Copy for Sheets",
     fulfill: "Mark fulfilled in Shopify",
     fulfilling: "Sending to Shopify…",
+    fulfillAlready: "was already fulfilled ✓",
     fulfillNone: "No rows are ready yet — each needs a matched Shopify order, a tracking number, and a recognised courier (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Mark as fulfilled in Shopify?",
     fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
@@ -465,6 +467,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
 
   /** Baris ekspor selalu mengikuti hasil edit, bukan nilai hasil baca awal. */
   const [fulfilling, setFulfilling] = useState(false);
+  /** Progres antar-potongan — 57 order dikirim bertahap, layar menghitungnya. */
+  const [fulfillProgress, setFulfillProgress] = useState<{ done: number; total: number } | null>(null);
   const [askFulfill, setAskFulfill] = useState(false);
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
@@ -535,6 +539,25 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     return Math.max(0, siap - fulfillItems.length);
   }, [result, edits, fulfillResult, fulfillItems, verified]);
 
+  /** Berapa order per kiriman. Kecil supaya tiap kiriman selesai dalam
+   *  hitungan detik dan hasilnya menetes ke kartu — bukan satu kiriman raksasa
+   *  yang bertaruh melawan batas waktu platform. */
+  const FULFILL_CHUNK = 20;
+
+  async function kirimPotongan(items: typeof fulfillItems) {
+    const res = await fetch("/api/receipt-sales/fulfill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items, notifyCustomer: notifyBuyer }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error("chunk_failed"), { code: data?.error, status: res.status });
+    return (data.results ?? []) as {
+      page: number; ok: boolean; reason?: string; detail?: string;
+      orderName?: string | null; company?: string; already?: boolean;
+    }[];
+  }
+
   async function jalankanFulfill() {
     setAskFulfill(false);
     if (!fulfillItems.length) {
@@ -542,32 +565,64 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
       return;
     }
     setFulfilling(true);
+    setFulfillProgress({ done: 0, total: fulfillItems.length });
+    let totalOk = 0;
+    let totalGagal = 0;
     try {
-      const res = await fetch("/api/receipt-sales/fulfill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: fulfillItems, notifyCustomer: notifyBuyer }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(apiErrorMessage(data?.error, locale, res.status));
-        return;
+      // Antrean berjalan: mulai dari semua yang siap; baris yang pulang sebagai
+      // `out_of_time` dimasukkan kembali SEKALI — itu artinya "belum sempat",
+      // bukan "ditolak", jadi mengulanginya aman (servernya idempoten: yang
+      // sudah terkirim dijawab `already`, bukan dikirim dobel).
+      let antrean = [...fulfillItems];
+      const sudahDiulang = new Set<number>();
+      let selesai = 0;
+
+      while (antrean.length) {
+        const potongan = antrean.slice(0, FULFILL_CHUNK);
+        antrean = antrean.slice(FULFILL_CHUNK);
+
+        const results = await kirimPotongan(potongan);
+        const peta: Record<number, { ok: boolean; text: string }> = {};
+        for (const r of results) {
+          if (!r.ok && r.reason === "out_of_time" && !sudahDiulang.has(r.page)) {
+            sudahDiulang.add(r.page);
+            const ulang = potongan.find((x) => x.page === r.page);
+            if (ulang) antrean.push(ulang);
+            continue; // belum dihitung selesai — masih dalam antrean
+          }
+          selesai++;
+          if (r.ok) {
+            totalOk++;
+            peta[r.page] = {
+              ok: true,
+              text: r.already
+                ? `${r.orderName ?? ""} · ${t.fulfillAlready}`.trim()
+                : `${r.orderName ?? ""} · ${r.company ?? ""}`.trim(),
+            };
+          } else {
+            totalGagal++;
+            peta[r.page] = {
+              ok: false,
+              text: apiErrorMessage(r.reason, locale) + (r.detail ? ` (${r.detail})` : ""),
+            };
+          }
+        }
+        // Hasil menetes per potongan — kartu-kartu terisi selagi sisanya jalan.
+        setFulfillResult((prev) => ({ ...prev, ...peta }));
+        setFulfillProgress({ done: selesai, total: fulfillItems.length });
       }
-      const peta: Record<number, { ok: boolean; text: string }> = {};
-      for (const r of data.results ?? []) {
-        peta[r.page] = r.ok
-          ? { ok: true, text: `${r.orderName ?? ""} · ${r.company}`.trim() }
-          : { ok: false, text: apiErrorMessage(r.reason, locale) + (r.detail ? ` (${r.detail})` : "") };
+
+      if (totalGagal === 0) toast.success(`${totalOk} ${t.fulfillDone}`);
+      else toast.toast(`${totalOk} ${t.fulfillOk}, ${totalGagal} ${t.fulfillFail}`, "info");
+    } catch (e) {
+      const err = e as { code?: string; status?: number };
+      toast.error(err?.code ? apiErrorMessage(err.code, locale, err.status) : t.connection);
+      if (totalOk || totalGagal) {
+        toast.toast(`${totalOk} ${t.fulfillOk}, ${totalGagal} ${t.fulfillFail}`, "info");
       }
-      setFulfillResult((prev) => ({ ...prev, ...peta }));
-      const ok = data.sent ?? 0;
-      const gagal = data.failed ?? 0;
-      if (gagal === 0) toast.success(`${ok} ${t.fulfillDone}`);
-      else toast.toast(`${ok} ${t.fulfillOk}, ${gagal} ${t.fulfillFail}`, "info");
-    } catch {
-      toast.error(t.connection);
     } finally {
       setFulfilling(false);
+      setFulfillProgress(null);
     }
   }
 
@@ -960,7 +1015,11 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                   title={fulfillItems.length === 0 ? t.fulfillNone : undefined}
                 >
                   {fulfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-                  {fulfilling ? t.fulfilling : `${t.fulfill} (${fulfillItems.length})`}
+                  {fulfilling
+                    ? fulfillProgress
+                      ? `${t.fulfilling} ${fulfillProgress.done}/${fulfillProgress.total}`
+                      : t.fulfilling
+                    : `${t.fulfill} (${fulfillItems.length})`}
                 </Button>
               )}
               {/* Paling depan: satu-satunya jalur yang tidak melewati
