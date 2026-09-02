@@ -96,5 +96,19 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
 export const getSessionUser = cache(resolveSessionUser);
 
 export function can(user: SessionUser | null, permission: string): boolean {
-  return !!user && user.permissions.includes(permission);
+  if (!user) return false;
+  // Super admin menembus SEMUA pemeriksaan izin.
+  //
+  // Sebelumnya ia hanya menerima izin sintetis `superadmin`, yang cukup untuk
+  // memunculkan menu khusus tapi TIDAK membuatnya lolos `can()` untuk izin
+  // lain. Akibatnya "super admin" tidak berarti apa-apa di luar menu itu — ia
+  // tetap terhalang fitur biasa, padahal justru dialah yang harus bisa
+  // membereskan keadaan saat pemegang izin aslinya berhalangan.
+  //
+  // Pasangannya ada di database: has_perm() juga memeriksa profiles
+  // .is_super_admin. Kalau hanya sisi ini yang menembus, super admin lolos
+  // pemeriksaan API lalu ditolak RLS — gagal yang jauh lebih membingungkan
+  // daripada ditolak sejak awal.
+  if (user.isSuperAdmin || user.permissions.includes(SUPERADMIN_PERM)) return true;
+  return user.permissions.includes(permission);
 }
