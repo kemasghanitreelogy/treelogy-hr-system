@@ -645,7 +645,11 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
 
   async function jalankanFulfill(subset?: typeof fulfillItems) {
     setAskFulfill(false);
-    const daftar = subset ?? fulfillItems;
+    // HANYA array yang dianggap subset. onConfirm dialog memanggil handler
+    // dengan EVENT KLIK sebagai argumen pertama — tanpa saringan ini, event
+    // itu menyaru jadi subset, `.length`-nya undefined, dan 165 baris yang
+    // siap dilaporkan "belum ada baris yang siap".
+    const daftar = Array.isArray(subset) ? subset : fulfillItems;
     if (!daftar.length) {
       toast.error(t.fulfillNone);
       return;
@@ -1202,7 +1206,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         confirmLabel={t.fulfillGo}
         busy={fulfilling}
         onCancel={() => setAskFulfill(false)}
-        onConfirm={jalankanFulfill}
+        onConfirm={() => void jalankanFulfill()}
       >
         {fulfillBlocked > 0 && (
           <Button variant="outline" onClick={tampilkanDitahan} className="mt-3 w-full">
