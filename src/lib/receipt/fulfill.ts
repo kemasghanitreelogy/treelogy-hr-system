@@ -182,14 +182,20 @@ async function verifyTracking(
     const body = batch
       .map(
         (it, j) => `v${j}: order(id: "gid://shopify/Order/${it.legacyId}") {
-          fulfillments(first: 10) { trackingInfo { number } }
+          fulfillments(first: 10) { status trackingInfo { number } }
         }`,
       )
       .join("\n");
     const data = await shopifyGql(`query VerifyTracking {\n${body}\n}`);
     batch.forEach((it, j) => {
       const fulfillments = data?.[`v${j}`]?.fulfillments ?? [];
+      // Fulfillment yang DIBATALKAN tetap menyimpan trackingInfo-nya —
+      // ketahuan saat pengujian revert: 155 pembatalan tidak mengubah hasil
+      // audit sedikit pun. Tanpa saringan ini, verifikasi bisa mengaku
+      // "terpasang" atas jejak yang sudah mati, dan kegagalan nyata akan
+      // dilaporkan sukses. Hanya fulfillment hidup yang dihitung.
       const terpasang = fulfillments.some((f: any) =>
+        f?.status !== "CANCELLED" &&
         (f?.trackingInfo ?? []).some(
           (t: any) => String(t?.number ?? "").toUpperCase() === it.awb.toUpperCase(),
         ),
