@@ -359,7 +359,7 @@ function thumbnailOf(canvas: HTMLCanvasElement): string {
 /**
  * Tesseract baru dinyalakan kalau memang ada halaman yang butuh OCR.
  *
- * Memuat mesin + data bahasa `ind+eng` memakan beberapa detik dan belasan MB
+ * Memuat mesin + data bahasa `eng` memakan beberapa detik dan belasan MB
  * unduhan. Batch PDF digital tidak boleh membayar ongkos itu sama sekali.
  */
 let schedulerPromise: Promise<Scheduler> | null = null;
@@ -374,14 +374,33 @@ async function getScheduler(): Promise<Scheduler> {
   if (!schedulerPromise) {
     schedulerPromise = (async () => {
       // Sisakan satu inti untuk UI supaya halaman tidak membeku saat memproses.
+      // Batasnya dinaikkan 4 → 8: satu halaman hanya dikerjakan satu worker,
+      // jadi batch banyak halaman persis sebanyak inti yang tersedia.
       const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
-      const n = Math.max(1, Math.min(4, cores - 1));
+      const n = Math.max(1, Math.min(8, cores - 1));
       // Import dinamis: mesin OCR baru diunduh & diurai kalau memang ada
       // halaman gambar. Batch PDF digital tidak boleh membayar ongkosnya —
       // maupun ikut gagal kalau browsernya tidak sanggup memuatnya.
       const { createScheduler, createWorker } = await import("tesseract.js");
       const scheduler = createScheduler();
-      const workers = await Promise.all(Array.from({ length: n }, () => createWorker("ind+eng")));
+      // Bahasa Inggris SAJA, dan kamus dimatikan sejak inisialisasi.
+      //
+      // Dua model bahasa berarti dua kali kerja LSTM, dan kamus memperlambat
+      // penerjemahan hasil — padahal isi label adalah nama orang, alamat, dan
+      // deret angka: justru hal-hal yang tidak ada di kamus mana pun. Diukur
+      // pada label sungguhan yang dirender jadi gambar: 2.257 ms → 1.422 ms,
+      // dan KELIMA kata jangkar berbahasa Indonesia (PENERIMA, PENGIRIM, KOTA
+      // TUJUAN, DIBUAT, ESTIMASI) tetap terbaca utuh — itu syarat yang diuji
+      // lebih dulu, karena seluruh parser bergantung padanya. Bonusnya, hanya
+      // satu berkas model yang diunduh saat pertama kali dipakai.
+      const workers = await Promise.all(
+        Array.from({ length: n }, async () => {
+          const w = await createWorker("eng", 1, {}, { load_system_dawg: "0", load_freq_dawg: "0" });
+          // Tanpa ini Tesseract menebak-nebak DPI gambar dan kadang menskala ulang.
+          await w.setParameters({ user_defined_dpi: "200" });
+          return w;
+        }),
+      );
       for (const w of workers) scheduler.addWorker(w);
       return scheduler;
     })();
@@ -401,12 +420,18 @@ async function disposeScheduler() {
 }
 
 /** Ubah canvas jadi blob sekali saja: tesseract.js menerima Blob apa adanya,
- *  sementara canvas akan dikodekan ulang jadi PNG di dalam sana. */
+ *  sementara canvas akan dikodekan ulang di dalam sana.
+ *
+ *  JPEG, bukan PNG. PNG memampatkan tanpa rugi dan itu mahal untuk kanvas
+ *  seukuran label; JPEG mutu 0,85 menghasilkan berkas ~6× lebih kecil, jauh
+ *  lebih cepat dikodekan, dan tidak menurunkan hasil bacaan — huruf label
+ *  besar dan kontras tinggi, bukan pindaian dokumen halus. */
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("encode_failed"))),
-      "image/png",
+      "image/jpeg",
+      0.85,
     );
   });
 }
