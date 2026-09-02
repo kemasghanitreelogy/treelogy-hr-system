@@ -584,7 +584,12 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         const results = await kirimPotongan(potongan);
         const peta: Record<number, { ok: boolean; text: string }> = {};
         for (const r of results) {
-          if (!r.ok && r.reason === "out_of_time" && !sudahDiulang.has(r.page)) {
+          // Yang layak diantrekan ulang sekali: belum sempat (out_of_time),
+          // gangguan sesaat (shopify_error), dan yang paling penting —
+          // verify_missing: Shopify mengaku sukses tapi pemeriksaan ulang
+          // tidak menemukan resinya. Aman diulang karena servernya idempoten.
+          const ULANGI = r.reason === "out_of_time" || r.reason === "shopify_error" || r.reason === "verify_missing";
+          if (!r.ok && ULANGI && !sudahDiulang.has(r.page)) {
             sudahDiulang.add(r.page);
             const ulang = potongan.find((x) => x.page === r.page);
             if (ulang) antrean.push(ulang);

@@ -16,3 +16,9 @@ next-env.d.ts
 
 # Label resi berisi data pribadi pelanggan — jangan pernah ikut ke repo
 /label-samples/
+
+# Berkas pelanggan/karyawan — label resi & packing slip berisi nama, alamat,
+# dan nomor HP orang sungguhan. TIDAK BOLEH masuk git, sekecil apa pun.
+*.pdf
+*.mov
+OFFICE_EMPLOYEE MASTER FILE*.xlsx
