@@ -170,7 +170,12 @@ export function parseLabelFields(rawText: string, page: number, docType: DocType
   //   • Lion  — "PENERIMA: NAMA ****1234, alamat lengkap … 15419" dalam satu baris.
   // Blok dibangun dari baris Penerima + baris setelahnya sampai kata batas,
   // lalu dipotong di masker telepon: kiri = nama, kanan = alamat.
-  const penIdx = lines.findIndex((l) => /penerima/i.test(l));
+  // Jangkar penerima yang tahan OCR. Foto label sering mengubah huruf jadi
+  // angka mirip (PEN3RIMA, PENERlMA) atau menempelkan titik dua; kalau
+  // jangkarnya kaku, satu huruf rusak membuat nama, alamat, DAN nomor HP
+  // gagal terbaca sekaligus — bukan sebagian, melainkan seluruhnya.
+  const PENERIMA_RE = /p[e3][n1l][e3]r[il1][mn][aä]/i;
+  const penIdx = lines.findIndex((l) => PENERIMA_RE.test(l));
   let recipient_name: string | null = null;
   let recipient_address: string | null = null;
   let recipient_phone_last4: string | null = null;
@@ -179,9 +184,13 @@ export function parseLabelFields(rawText: string, page: number, docType: DocType
     // Masker telepon selalu ada DI BARIS "Penerima" itu sendiri (tepat setelah
     // nama) pada kedua template — jadi jangan pernah mencarinya di baris alamat,
     // karena nomor rumah / kodepos akan salah dianggap digit telepon.
-    const penLine = lines[penIdx].replace(/.*penerima\s*:?/i, "").trim();
-    const pm = penLine.match(/\d{3,4}/);
-    if (pm) recipient_phone_last4 = pm[0].slice(-4);
+    const penLine = lines[penIdx].replace(new RegExp(`.*${PENERIMA_RE.source}\\s*:?`, "i"), "").trim();
+    // Foto label kadang mencetak nomor UTUH di samping nama, bukan masker
+    // "****1234". Nomor utuh diambil ekornya; kalau tidak ada, baru pola
+    // masker 3–4 digit yang dipakai seperti pada PDF.
+    const utuh = penLine.match(/\b0\d[\d\s.-]{7,13}\d\b/);
+    const pm = utuh ?? penLine.match(/\d{3,4}/);
+    if (pm) recipient_phone_last4 = pm[0].replace(/\D/g, "").slice(-4);
 
     // Nama = teks sebelum masker ("****" atau kelompok digit pertama). Token
     // terakhir hanya dibuang sebagai sisa masker kalau maskernya ter-OCR jadi
