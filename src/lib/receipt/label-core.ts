@@ -67,6 +67,7 @@ export const FIELD_KEYS = [
   "tracking_number", "order_code", "service_code",
   "recipient_name", "recipient_address", "sender_name", "sender_address",
   "shipping_cost", "weight", "payment_method", "item", "notes", "ship_date",
+  "dest_city",
 ] as const;
 
 function mkField(

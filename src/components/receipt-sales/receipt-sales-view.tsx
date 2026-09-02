@@ -364,7 +364,13 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
           name: r.fields.recipient_name?.value || "",
           zip: extractZip(r.fields.recipient_address?.value || "") || "",
           phoneLast4: r.phoneLast4 || "",
-          shipDate,
+          // KOTA TUJUAN label — bukti geografis yang mendiskualifikasi order
+          // dari kota lain.
+          destCity: r.fields.dest_city?.value || "",
+          // Tanggal DIBUAT milik HALAMAN INI, bukan tanggal batch. Satu unggahan
+          // bisa memuat resi dari beberapa hari cetak, dan jendela 3 hari hanya
+          // berarti kalau titik acuannya tanggal resinya sendiri.
+          shipDate: normalizeShipDate(rowByPage.get(r.page)?.ship_date) || shipDate,
         }));
 
       let matches: Record<number, MatchResult> = {};

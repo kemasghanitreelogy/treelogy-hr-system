@@ -40,6 +40,8 @@ export interface MatchInput {
   phoneLast4: string;
   /** ISO date; kosong = pakai hari ini. */
   shipDate: string;
+  /** Isi "KOTA TUJUAN" di label — bukti geografis, dibandingkan ke order. */
+  destCity?: string;
 }
 
 interface PoolOrder {
@@ -53,6 +55,8 @@ interface PoolOrder {
   phone: string;
   /** Order ini sudah pernah di-fulfill di Shopify. */
   fulfilled: boolean;
+  /** Kota + provinsi tujuan order, untuk diadu dengan KOTA TUJUAN label. */
+  place: string;
 }
 
 const API_VERSION = "2026-07";
@@ -74,13 +78,20 @@ const POOL_SHARDS = 8;
 const MAX_PAGES_PER_SHARD = 3;
 
 const digits = (s: string | null) => (s || "").replace(/\D/g, "");
+/**
+ * Gelar/sapaan di label bukan bagian dari nama. "IBU SYLVI" menyisakan satu
+ * token nyata (sylvi) — dan token tunggal itulah yang dulu cukup untuk
+ * memenangkan order milik orang lain yang nama depannya kebetulan sama.
+ */
+const TITLES = new Set(["ibu", "bu", "bapak", "bpk", "pak", "mr", "mrs", "ms", "sdr", "sdri", "kak", "mba", "mbak", "mas", "tuan", "nyonya", "tn"]);
+
 const nameTokens = (s: string) =>
   new Set(
     (s || "")
       .toLowerCase()
       .replace(/[^a-z ]/g, " ")
       .split(/\s+/)
-      .filter((w) => w.length >= 3),
+      .filter((w) => w.length >= 3 && !TITLES.has(w)),
   );
 
 function lev(a: string, b: string): number {
@@ -106,6 +117,85 @@ function lev(a: string, b: string): number {
  * tengah — supaya kecocokan kebetulan (label "3555" vs "…3155 88" milik orang
  * lain) tidak terlihat seperti kecocokan telepon.
  */
+/** Token tempat: huruf saja, ≥3 huruf, tanpa kata perekat administratif. */
+const PLACE_STOP = new Set(["kota", "kab", "kabupaten", "kec", "kecamatan", "kel", "kelurahan", "desa", "jalan", "jl", "udik", "indonesia", "id", "raya", "barat", "timur", "utara", "selatan", "tengah", "pusat"]);
+
+/**
+ * Nama tempat ditulis sesuka pembeli. Sinonim ini menyamakan yang paling
+ * sering ditemui, dan sisanya ditolong perbandingan fuzzy — alamat memang
+ * tidak perlu sama persis, cukup mirip.
+ */
+const PLACE_SYN: Record<string, string> = {
+  jogja: "yogyakarta", jogjakarta: "yogyakarta", yogya: "yogyakarta", diy: "yogyakarta",
+  tangsel: "tangerangselatan", tangerangselatan: "tangerangselatan",
+  jakut: "jakarta", jaksel: "jakarta", jakbar: "jakarta", jaktim: "jakarta", jakpus: "jakarta", dki: "jakarta",
+  bekasi: "bekasi", depok: "depok", tangerang: "tangerang",
+  denpasar: "bali", badung: "bali", gianyar: "bali", kuta: "bali",
+  sby: "surabaya", bdg: "bandung", smg: "semarang", mdn: "medan", mks: "makassar",
+};
+const canonPlace = (w: string) => PLACE_SYN[w] ?? w;
+
+function placeTokens(s: string): Set<string> {
+  return new Set(
+    (s || "")
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !PLACE_STOP.has(w))
+      .map(canonPlace),
+  );
+}
+
+/** Dua kumpulan tempat dianggap sepakat kalau ada token yang sama ATAU mirip
+ *  (selisih satu huruf) — "Slemam" tetap bertemu "Sleman". */
+function placeAgrees(a: Set<string>, b: Set<string>): boolean {
+  for (const x of a) for (const y of b) {
+    if (x === y) return true;
+    if (Math.abs(x.length - y.length) <= 1 && Math.max(x.length, y.length) >= 5 && lev(x, y) <= 1) return true;
+  }
+  return false;
+}
+
+/**
+ * NAMA PENERIMA — satu-satunya bukti yang harus benar-benar sama.
+ *
+ * Diukur pada 166 label sungguhan: 164 sudah identik, dan satu-satunya yang
+ * berbeda adalah label lengkap "NURHIDAYATI ENDAH PUSPITA SARI" lawan order
+ * yang disingkat "NURHIDAYATI ENDAH" — sah. Maka aturannya: seluruh token
+ * nama yang LEBIH PENDEK harus ada di yang lebih panjang, dan yang lebih
+ * pendek wajib punya ≥2 token kecuali keduanya identik. Syarat terakhir itu
+ * yang menutup "IBU SYLVI" (satu token) agar tidak pernah lagi mengambil alih
+ * "Sylvi Karyono" milik orang lain.
+ */
+function nameAgrees(aRaw: string, bRaw: string): boolean {
+  const a = [...nameTokens(aRaw)], b = [...nameTokens(bRaw)];
+  if (!a.length || !b.length) return false;
+  const [pendek, panjang] = a.length <= b.length ? [a, b] : [b, a];
+  const cocok = (t: string) =>
+    panjang.some((u) => u === t || (Math.max(t.length, u.length) >= 5 && Math.abs(t.length - u.length) <= 1 && lev(t, u) <= 1));
+  if (!pendek.every(cocok)) return false;
+  return pendek.length >= 2 || pendek.length === panjang.length;
+}
+
+/**
+ * Resi dicetak saat paket berangkat, jadi ordernya dibuat SEBELUM itu — dan
+ * dalam hitungan hari, bukan minggu. Jendela ini yang menutup pintu bagi order
+ * lama pembeli yang sama.
+ */
+const MATCH_BEFORE_DAYS = 3;
+const MATCH_AFTER_DAYS = 1;
+function withinWindow(orderIso: string, shipIso: string): boolean {
+  // HANYA ISO ketat yang dipercaya. "08/09/2026" dibaca JavaScript sebagai
+  // 9 AGUSTUS (format Amerika), bukan 8 September — dan penjaga yang memakai
+  // tanggal salah akan membuang semua kandidat yang benar. Kalau bentuknya
+  // bukan ISO, penjaga ini memilih diam daripada salah menghakimi.
+  if (!/^\d{4}-\d{2}-\d{2}/.test(shipIso)) return true;
+  const o = +new Date(orderIso), b = +new Date(shipIso);
+  if (!Number.isFinite(o) || !Number.isFinite(b)) return true;
+  const d = (b - o) / 86400000;
+  return d >= -MATCH_AFTER_DAYS && d <= MATCH_BEFORE_DAYS + 1;
+}
+
 function phoneTail(phone: string, last4: string): "exact" | "fuzzy" | null {
   if (!phone || last4.length < 3) return null;
   const p = digits(phone);
@@ -176,6 +266,7 @@ async function fetchShard(
         legacyId: String(e.node.legacyResourceId ?? ""),
         createdAt: e.node.createdAt,
         fulfilled: e.node.displayFulfillmentStatus === "FULFILLED",
+        place: [a?.city, a?.province].filter(Boolean).join(" "),
         shipName: a.name ?? "",
         address: [a.address1, a.city, a.province, a.zip].filter(Boolean).join(", "),
         city: a.city ?? "",
@@ -367,7 +458,48 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
   let bestScore = -Infinity;
   let bestReasons: string[] = [];
 
+  const inPlace = placeTokens(inp.destCity ?? "");
+  let ditolakGate = 0;
+
   for (const o of candidatesFor(inp, idx, inTokens)) {
+    // ── EMPAT PENJAGA KERAS ──────────────────────────────────
+    // Satu kecocokan keliru lebih mahal daripada satu kecocokan yang hilang:
+    // yang hilang muncul sebagai "perlu dicek", yang keliru memasang resi
+    // orang lain ke pesanan yang salah. Jadi penjaga di bawah MEMBUANG
+    // kandidat, bukan sekadar mengurangi skornya.
+
+    // 1. NAMA PENERIMA harus sama. Ini bukti yang paling tidak boleh meleset:
+    //    alamat boleh ditulis semaunya, nama tidak.
+    if (inp.name && o.shipName && !nameAgrees(inp.name, o.shipName)) { ditolakGate++; continue; }
+
+    // 2. Empat digit yang TIDAK termasker harus sama PERSIS. Toleransi
+    //    satu digit dulu meloloskan 5309 → 5399 (dua orang berbeda).
+    if (inp.phoneLast4.length >= 3 && o.phone) {
+      const p = digits(o.phone);
+      if (p.length >= inp.phoneLast4.length && !p.endsWith(inp.phoneLast4)) { ditolakGate++; continue; }
+    }
+
+    // 3. Order harus dibuat sekitar tanggal resi dicetak (3 hari ke belakang).
+    if (inp.shipDate && !withinWindow(o.createdAt, inp.shipDate)) { ditolakGate++; continue; }
+
+    // 4. Kode pos — kunci geografis yang jujur karena bentuknya baku. Dua-duanya
+    //    terbaca tapi berbeda jauh (bukan salah ketik satu digit) = wilayah lain.
+    const zipCocok = Boolean(inp.zip && o.zip && (inp.zip === o.zip || lev(inp.zip, o.zip) <= 1));
+    if (inp.zip && o.zip && !zipCocok) { ditolakGate++; continue; }
+
+    // 5. Kota tujuan — HANYA menghakimi kalau kode pos tidak bisa memastikan
+    //    geografinya. Nama kota diketik bebas oleh pembeli dan penulisannya
+    //    berantakan: "Tangsel" untuk Tangerang Selatan, "Slemam" salah ketik,
+    //    "Bali" diisi provinsi, sementara label mencetak kecamatan. Menolak
+    //    berdasarkan itu membuang order yang HP dan kode posnya cocok persis —
+    //    lima kali dalam satu batch waktu diuji. Jadi: kalau kode pos sudah
+    //    setuju, kota tidak berhak membatalkan; kalau kode pos bungkam, kota
+    //    jadi penjaga terakhir.
+    if (!zipCocok && inPlace.size && o.place) {
+      const oPlace = placeTokens(o.place);
+      if (oPlace.size && !placeAgrees(inPlace, oPlace)) { ditolakGate++; continue; }
+    }
+
     let score = 0;
     const reasons: string[] = [];
 
@@ -387,6 +519,15 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
       } else if (lev(o.zip, inp.zip) <= 1) {
         score += 1.5;
         reasons.push("kodepos ~");
+      }
+    }
+
+    if (inPlace.size && o.place) {
+      const oPlace = placeTokens(o.place);
+      const sama = [...inPlace].filter((t) => oPlace.has(t)).length || (placeAgrees(inPlace, oPlace) ? 1 : 0);
+      if (sama) {
+        score += sama >= 2 ? 2.5 : 1.5;
+        reasons.push("kota" + (sama >= 2 ? "×" + sama : ""));
       }
     }
 
@@ -418,7 +559,17 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
     }
   }
 
-  if (!best || bestScore <= 0) return emptyResult("tidak ada order yang cocok", pool.length);
+  if (!best || bestScore <= 0) {
+    // Disebut apa adanya: "dibuang penjaga" berarti ADA order mirip tapi
+    // bukti kerasnya bertentangan — itu keterangan yang berbeda dari
+    // "memang tidak ada", dan orang yang membaca perlu tahu bedanya.
+    return emptyResult(
+      ditolakGate
+        ? `tidak ada order yang lolos pemeriksaan ketat (${ditolakGate} kandidat mirip ditolak: nama/HP/tanggal/kodepos)`
+        : "tidak ada order yang cocok",
+      pool.length,
+    );
+  }
 
   const phoneExact = bestReasons.includes("HP-4 ✓");
   const phoneAny = bestReasons.some((r) => r.startsWith("HP-4"));
@@ -437,8 +588,10 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
   if (phoneContradicts) {
     confidence = "low";
     flag = "4 digit HP berbeda dari order ini — cek ke label";
-  } else if (hasName && phoneAny) {
-    // Nama + 4 digit HP (persis atau selisih 1): nomor HP nyaris unik → pasti.
+  } else if (hasName && phoneExact) {
+    // Nama + 4 digit HP PERSIS. "Selisih satu digit" tidak lagi diterima di
+    // sini — dua nomor berbeda satu digit adalah dua orang berbeda, dan
+    // penjaga di atas sudah membuang kandidat semacam itu.
     confidence = "certain";
   } else if (phoneExact && hasZip) {
     // HP persis + kodepos persis: bukti angka sangat kuat meski nama kacau.
@@ -460,10 +613,12 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
     flag = hasName || phoneAny || hasZip ? "cocok satu sinyal saja — cek ke label" : "kecocokan lemah — perlu diperiksa";
   }
 
-  if (best.fulfilled) {
-    // Menang PADAHAL sudah terkirim berarti tidak ada kandidat belum-terkirim
-    // yang menyainginya — label lama tercetak ulang, atau ordernya memang tak
-    // ada di jendela. Apa pun itu, mata manusia harus tahu.
+  if (best.fulfilled && !withinWindow(best.createdAt, inp.shipDate)) {
+    // Bendera ini hanya berarti kalau ordernya TUA. Sejak jendela 3 hari
+    // dipasang, order yang sudah terkirim di dalam jendela hampir pasti hasil
+    // run kita sendiri — menandainya cuma membuat 164 kartu yang sehat tampak
+    // bermasalah, dan langkah fulfill sudah melaporkannya sebagai "sudah
+    // terkirim sebelumnya".
     flag = flag
       ? `${flag} · order ini sudah pernah terkirim di Shopify`
       : "order ini sudah pernah terkirim di Shopify — kemungkinan label lama, cek dulu";

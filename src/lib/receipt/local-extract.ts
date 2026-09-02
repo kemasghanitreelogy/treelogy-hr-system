@@ -32,6 +32,8 @@ export interface ParsedRow {
   item: string | null;
   notes: string | null;
   ship_date: string | null;
+  /** Isi "KOTA TUJUAN" di label — kota/kecamatan tujuan paket. */
+  dest_city: string | null;
 }
 
 /** Buang noise satu karakter di ujung baris hasil OCR. */
@@ -144,6 +146,7 @@ function parsePackingSlip(lines: string[], page: number): ParsedRow {
     item: null,
     notes: null,
     ship_date: null,
+    dest_city: null,
   };
 }
 
@@ -239,11 +242,66 @@ export function parseLabelFields(rawText: string, page: number, docType: DocType
     payment_method: pick(/\b(TUNAI|NON TUNAI|COD)\b/i, flat),
     item: pick(/Barang\s*:?\s*([A-Za-z]+(?:\s[A-Za-z]+)?)/i, flat),
     notes: pick(/Notes?\s*:?\s*([A-Za-z]{2,})/i, flat),
-    ship_date: sanitizeDate(
-      pick(/(?:Ship|Cetak|Dibuat)\s*:?\s*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})/i, flat) ||
-        pick(/(\d{1,2}[-/]\d{1,2}[-/]\d{4})/, flat),
-    ),
+    // KOTA TUJUAN: dulu cuma penanda batas alamat, padahal isinya bukti
+    // geografis terkuat di label — dan ketiadaannya yang membuat resi Jakarta
+    // bisa tercocok ke order Surabaya.
+    dest_city: destCity(lines),
+    ship_date: sanitizeDate(dibuatDate(lines) || pick(/(\d{1,2}[-/]\d{1,2}[-/]\d{4})/, flat)),
   };
+}
+
+/**
+ * Tanggal DIBUAT — bukan ESTIMASI.
+ *
+ * Di PDF Lion Parcel kedua tanggal berdampingan, dan tanggal DIBUAT sering
+ * pecah jadi fragmen terpisah ("Dibuat:" / "/09/2026" / "02") sementara
+ * ESTIMASI tercetak utuh. Regex lama karena itu selalu mengambil ESTIMASI —
+ * tanggal yang enam hari terlalu jauh ke depan, cukup untuk membuat jendela
+ * pencarian order meleset sepenuhnya. Fungsi ini merakit ulang fragmennya.
+ */
+function dibuatDate(lines: string[]): string | null {
+  for (let i = 0; i < lines.length; i++) {
+    if (!/dibuat|cetak/i.test(lines[i])) continue;
+    const win = lines.slice(i, i + 4).join(" ");
+    // Baris ESTIMASI kadang ikut terjaring — jangan sampai nilainya terpakai.
+    const bersih = win.replace(/estimasi\s*:?\s*\d{1,2}[-/]\d{1,2}[-/]\d{2,4}/gi, " ");
+
+    const utuh = bersih.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})/);
+    if (utuh) return `${utuh[1]}/${utuh[2]}/${utuh[3]}`;
+
+    // Harinya terlepas: ambil bulan+tahun dari fragmen "/MM/YYYY", lalu cari
+    // angka hari yang berdiri sendiri di sekitarnya (Lion mencetaknya dua
+    // digit, "02" — itu yang didahulukan supaya "1 kg" tidak tertukar).
+    const sebagian = bersih.match(/[-/](\d{1,2})[-/](\d{2,4})/);
+    if (!sebagian) continue;
+    const sisa = bersih.replace(sebagian[0], " ");
+    const angka = [...sisa.matchAll(/\b(\d{1,2})\b/g)].map((m) => m[1]);
+    const hari = angka.find((a) => a.length === 2 && +a >= 1 && +a <= 31)
+      ?? angka.find((a) => +a >= 1 && +a <= 31);
+    if (hari) return `${hari}/${sebagian[1]}/${sebagian[2]}`;
+  }
+  return null;
+}
+
+/**
+ * Baca blok "KOTA TUJUAN" — barisnya sendiri kalau nilainya menyusul di baris
+ * berikutnya, atau sisa baris kalau ditulis sebaris. Berhenti di kata batas
+ * supaya tidak menelan kolom sebelahnya (Total Biaya, DIBUAT, dst).
+ */
+function destCity(lines: string[]): string | null {
+  const i = lines.findIndex((l) => /kota\s*tujuan/i.test(l));
+  if (i < 0) return null;
+  const parts: string[] = [];
+  const sisa = lines[i].replace(/.*kota\s*tujuan\s*:?\s*/i, "").trim();
+  if (sisa) parts.push(sisa);
+  for (let j = i + 1; j < lines.length && parts.length < 3; j++) {
+    if (/pengirim|penerima|biaya|total|syarat|bayar|lacak|estimasi|dibuat|berat|ditagihkan|lebih praktis/i.test(lines[j])) break;
+    const t = lines[j].trim();
+    if (!t) continue;
+    parts.push(t);
+  }
+  const out = parts.join(", ").replace(/\s+/g, " ").replace(/(,\s*)+/g, ", ").replace(/[,\s]+$/, "").trim();
+  return out || null;
 }
 
 export { extractZip };
