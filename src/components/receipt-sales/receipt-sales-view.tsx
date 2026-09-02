@@ -75,6 +75,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfillAlready: "sudah terkirim sebelumnya ✓",
     retryFailed: "Coba ulang yang gagal",
     checkingLabel: "Memeriksa di Shopify…",
+    showBlocked: "Tampilkan & perbaiki yang ditahan",
     fulfillNone: "Belum ada baris yang siap — perlu order Shopify yang cocok, nomor resi, dan kurir yang dikenali (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Tandai terkirim di Shopify?",
     fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
@@ -148,6 +149,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfillAlready: "was already fulfilled ✓",
     retryFailed: "Retry failed",
     checkingLabel: "Checking in Shopify…",
+    showBlocked: "Show & fix the held rows",
     fulfillNone: "No rows are ready yet — each needs a matched Shopify order, a tracking number, and a recognised courier (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Mark as fulfilled in Shopify?",
     fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
@@ -477,6 +479,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   const [checkingPages, setCheckingPages] = useState<Set<number>>(new Set());
   /** Momen penutup: glow sekali jalan saat semua terverifikasi tanpa gagal. */
   const [runGlow, setRunGlow] = useState(false);
+  /** Kartu yang sedang disorot oleh tombol "tampilkan yang ditahan". */
+  const [spotlightPages, setSpotlightPages] = useState<Set<number>>(new Set());
   const [askFulfill, setAskFulfill] = useState(false);
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
@@ -542,16 +546,35 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     [fulfillItems, fulfillResult],
   );
 
-  const fulfillBlocked = useMemo(() => {
+  /** Halaman yang ditahan karena kembar — DAFTARNYA, supaya tombol di dialog
+   *  bisa melompat ke kartunya, bukan cuma menyebut angka. */
+  const fulfillBlockedPages = useMemo(() => {
     const recs = result?.records ?? [];
-    const siap = recs.filter((r) => {
-      const awb = (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim();
-      const kurir = edits[r.page]?.courier ?? r.fields.courier?.value ?? null;
-      const pasti = r.fields.tracking_number?.confidence === "certain" || verified[r.page];
-      return r.legacyId && awb && courierTracking(kurir) && !fulfillResult[r.page]?.ok && pasti;
-    }).length;
-    return Math.max(0, siap - fulfillItems.length);
+    const ikut = new Set(fulfillItems.map((x) => x.page));
+    return recs
+      .filter((r) => {
+        const awb = (edits[r.page]?.tracking_number ?? r.fields.tracking_number?.value ?? "").trim();
+        const kurir = edits[r.page]?.courier ?? r.fields.courier?.value ?? null;
+        const pasti = r.fields.tracking_number?.confidence === "certain" || verified[r.page];
+        return Boolean(r.legacyId && awb && courierTracking(kurir) && !fulfillResult[r.page]?.ok && pasti && !ikut.has(r.page));
+      })
+      .map((r) => r.page);
   }, [result, edits, fulfillResult, fulfillItems, verified]);
+  const fulfillBlocked = fulfillBlockedPages.length;
+
+  function tampilkanDitahan() {
+    setAskFulfill(false);
+    // Kartu ditahan bisa tersembunyi di saringan "Perlu diperiksa" bila
+    // kembar-ordernya tidak berbendera — buka saringan penuh dulu.
+    setFilter("all");
+    setSpotlightPages(new Set(fulfillBlockedPages));
+    const pertama = fulfillBlockedPages[0];
+    // Tunggu dialog menutup & daftar ter-render sebelum menggulir.
+    setTimeout(() => {
+      document.getElementById(`rs-page-${pertama}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    setTimeout(() => setSpotlightPages(new Set()), 4000);
+  }
 
   /** Berapa order per kiriman. Kecil supaya tiap kiriman selesai dalam
    *  hitungan detik dan hasilnya menetes ke kartu — bukan satu kiriman raksasa
@@ -1109,6 +1132,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             onVerify={onVerify}
             fulfillResult={fulfillResult}
             checkingPages={checkingPages}
+            spotlightPages={spotlightPages}
           />
           )}
 
@@ -1129,6 +1153,11 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         onCancel={() => setAskFulfill(false)}
         onConfirm={jalankanFulfill}
       >
+        {fulfillBlocked > 0 && (
+          <Button variant="outline" onClick={tampilkanDitahan} className="mt-3 w-full">
+            <PackageSearch className="h-4 w-4" /> {t.showBlocked} ({fulfillBlocked})
+          </Button>
+        )}
         <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-xl bg-sand/60 px-3 py-2.5">
           <input
             type="checkbox"

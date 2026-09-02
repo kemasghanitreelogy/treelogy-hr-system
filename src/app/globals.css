@@ -373,8 +373,17 @@ body.camera-open .app-chrome {
   transition: transform 260ms cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 
+/* Sorotan kartu ditahan — dua denyut cincin lalu diam; kelasnya dicabut
+   dari state setelah beberapa detik, kartu kembali polos. */
+@keyframes hf-spotlight {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(138, 101, 18, 0); }
+  30%      { box-shadow: 0 0 0 4px rgba(138, 101, 18, 0.45); }
+}
+.hf-spotlight { animation: hf-spotlight 1s cubic-bezier(0.215, 0.61, 0.355, 1) 2 both; }
+
 @media (prefers-reduced-motion: reduce) {
   .fulfill-pop, .hf-checking, .hf-glow-done { animation: none; }
+  .hf-spotlight { animation: none; box-shadow: 0 0 0 3px rgba(138, 101, 18, 0.45); }
   .hf-check-draw path { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
   .hf-progress-fill { transition: none; }
 }

@@ -303,6 +303,7 @@ export function ReviewPanel({
   onVerify,
   fulfillResult = {},
   checkingPages,
+  spotlightPages,
 }: {
   records: LabelRecord[];
   /** Sumber pratinjau; null saat batch sudah dilepas. */
@@ -315,6 +316,8 @@ export function ReviewPanel({
   fulfillResult?: Record<number, { ok: boolean; text: string; seq?: number }>;
   /** Halaman yang sedang ditanyakan ke Shopify — fase "memeriksa". */
   checkingPages?: Set<number>;
+  /** Kartu yang disorot sesaat — tombol "tampilkan yang ditahan" melompat kemari. */
+  spotlightPages?: Set<number>;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -332,10 +335,12 @@ export function ReviewPanel({
           return (
             <section
               key={r.page}
+              id={`rs-page-${r.page}`}
               style={{ ["--i" as string]: Math.min(i, 8) }}
               className={cn(
                 "stagger-item overflow-hidden rounded-2xl border bg-panel transition-colors",
                 isVerified ? "border-forest-300" : flagged ? "border-gold" : "border-line",
+                spotlightPages?.has(r.page) && "hf-spotlight",
               )}
               aria-label={`${t.page} ${r.page}`}
             >
