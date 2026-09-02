@@ -51,6 +51,8 @@ interface PoolOrder {
   city: string;
   zip: string;
   phone: string;
+  /** Order ini sudah pernah di-fulfill di Shopify. */
+  fulfilled: boolean;
 }
 
 const API_VERSION = "2026-07";
@@ -116,7 +118,7 @@ function phoneTail(phone: string, last4: string): "exact" | "fuzzy" | null {
 const POOL_QUERY = `query Pool($q: String!, $c: String) {
   orders(first: 100, after: $c, query: $q, sortKey: CREATED_AT, reverse: true) {
     pageInfo { hasNextPage endCursor }
-    edges { node { name legacyResourceId createdAt shippingAddress { name address1 city province zip phone } } }
+    edges { node { name legacyResourceId createdAt displayFulfillmentStatus shippingAddress { name address1 city province zip phone } } }
   }
 }`;
 
@@ -173,6 +175,7 @@ async function fetchShard(
         orderName: e.node.name,
         legacyId: String(e.node.legacyResourceId ?? ""),
         createdAt: e.node.createdAt,
+        fulfilled: e.node.displayFulfillmentStatus === "FULFILLED",
         shipName: a.name ?? "",
         address: [a.address1, a.city, a.province, a.zip].filter(Boolean).join(", "),
         city: a.city ?? "",
@@ -216,6 +219,12 @@ async function buildPool(store: string, token: string, shipDate: string): Promis
       pool.push(o);
     }
   }
+  // TERBARU DULU. Shard dirakit dari potongan tanggal tertua, dan pemilih
+  // kandidat memenangkan skor-seri untuk yang DULUAN diperiksa — kombinasi
+  // yang membuat pembeli langganan tercocok ke order LAMA-nya: sembilan label
+  // batch reg1 jatuh ke order Agustus yang sudah terkirim, gagal deterministik
+  // di verifikasi, dan retry pun gagal identik. Urutan ini membalik nasib seri.
+  pool.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
   return pool;
 }
 
@@ -393,6 +402,15 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
     const days = Math.abs((+new Date(o.createdAt) - +new Date(inp.shipDate)) / 86400000);
     if (days <= 4) score += 1;
 
+    // Label resi yang SEDANG dipindai adalah paket yang baru mau berangkat —
+    // ordernya hampir pasti belum ter-fulfill. Bobot ini yang memisahkan dua
+    // order pembeli langganan yang sinyal HP/kodepos/namanya identik persis:
+    // tanpa ini keduanya seri, dan seri pernah dimenangkan order lama.
+    if (!o.fulfilled) {
+      score += 2;
+      reasons.push("belum terkirim");
+    }
+
     if (score > bestScore) {
       bestScore = score;
       best = o;
@@ -440,6 +458,15 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
   } else {
     confidence = "low";
     flag = hasName || phoneAny || hasZip ? "cocok satu sinyal saja — cek ke label" : "kecocokan lemah — perlu diperiksa";
+  }
+
+  if (best.fulfilled) {
+    // Menang PADAHAL sudah terkirim berarti tidak ada kandidat belum-terkirim
+    // yang menyainginya — label lama tercetak ulang, atau ordernya memang tak
+    // ada di jendela. Apa pun itu, mata manusia harus tahu.
+    flag = flag
+      ? `${flag} · order ini sudah pernah terkirim di Shopify`
+      : "order ini sudah pernah terkirim di Shopify — kemungkinan label lama, cek dulu";
   }
 
   return {
