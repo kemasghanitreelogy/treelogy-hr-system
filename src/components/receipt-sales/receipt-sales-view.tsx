@@ -1040,7 +1040,14 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                   tombol unduhan, dan hanya muncul untuk pemegang receipt.sync. */}
               {canFulfill && (
                 <Button
-                  onClick={() => setAskFulfill(true)}
+                  onClick={() => {
+                    // Email ke pembeli WAJIB dicentang sadar SETIAP kali dialog
+                    // dibuka. Tanpa reset ini, centang dari run sebelumnya
+                    // menempel diam-diam — dan "Ya" berikutnya mengirim ratusan
+                    // email yang tidak pernah diminta di run itu.
+                    setNotifyBuyer(false);
+                    setAskFulfill(true);
+                  }}
                   disabled={fulfilling || fulfillItems.length === 0}
                   title={fulfillItems.length === 0 ? t.fulfillNone : undefined}
                   className={cn(runGlow && "hf-glow-done")}
