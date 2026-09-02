@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2, ClipboardCopy, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
-  PackageCheck, ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
+  PackageCheck, RotateCcw, ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
@@ -73,6 +73,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfill: "Tandai terkirim di Shopify",
     fulfilling: "Mengirim ke Shopify…",
     fulfillAlready: "sudah terkirim sebelumnya ✓",
+    retryFailed: "Coba ulang yang gagal",
     fulfillNone: "Belum ada baris yang siap — perlu order Shopify yang cocok, nomor resi, dan kurir yang dikenali (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Tandai terkirim di Shopify?",
     fulfillBody: "Ini menulis ke pesanan sungguhan: statusnya jadi terkirim, dan nomor resi serta tautan lacaknya terisi. Tidak bisa dibatalkan dari sini.",
@@ -144,6 +145,7 @@ const STR: Record<Locale, Record<string, string>> = {
     fulfill: "Mark fulfilled in Shopify",
     fulfilling: "Sending to Shopify…",
     fulfillAlready: "was already fulfilled ✓",
+    retryFailed: "Retry failed",
     fulfillNone: "No rows are ready yet — each needs a matched Shopify order, a tracking number, and a recognised courier (J&T, Lion Parcel, JNE).",
     fulfillConfirm: "Mark as fulfilled in Shopify?",
     fulfillBody: "This writes to real orders: their status becomes fulfilled, and the tracking number and link are filled in. It can't be undone from here.",
@@ -472,7 +474,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   const [askFulfill, setAskFulfill] = useState(false);
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
-  const [fulfillResult, setFulfillResult] = useState<Record<number, { ok: boolean; text: string }>>({});
+  const [fulfillResult, setFulfillResult] = useState<Record<number, { ok: boolean; text: string; seq?: number }>>({});
 
   /**
    * Baris yang SIAP di-fulfill. Tiga syarat, semuanya wajib:
@@ -528,6 +530,12 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   }, [result, edits, fulfillResult, verified]);
 
   /** Berapa baris yang ditahan karena kembar — disebut angka, bukan disembunyikan. */
+  /** Halaman yang hasil terakhirnya GAGAL — sasaran tombol coba-ulang. */
+  const fulfillFailed = useMemo(
+    () => fulfillItems.filter((x) => fulfillResult[x.page] && !fulfillResult[x.page].ok),
+    [fulfillItems, fulfillResult],
+  );
+
   const fulfillBlocked = useMemo(() => {
     const recs = result?.records ?? [];
     const siap = recs.filter((r) => {
@@ -558,14 +566,15 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     }[];
   }
 
-  async function jalankanFulfill() {
+  async function jalankanFulfill(subset?: typeof fulfillItems) {
     setAskFulfill(false);
-    if (!fulfillItems.length) {
+    const daftar = subset ?? fulfillItems;
+    if (!daftar.length) {
       toast.error(t.fulfillNone);
       return;
     }
     setFulfilling(true);
-    setFulfillProgress({ done: 0, total: fulfillItems.length });
+    setFulfillProgress({ done: 0, total: daftar.length });
     let totalOk = 0;
     let totalGagal = 0;
     try {
@@ -573,7 +582,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
       // `out_of_time` dimasukkan kembali SEKALI — itu artinya "belum sempat",
       // bukan "ditolak", jadi mengulanginya aman (servernya idempoten: yang
       // sudah terkirim dijawab `already`, bukan dikirim dobel).
-      let antrean = [...fulfillItems];
+      let antrean = [...daftar];
+      let urutan = 0;
       const sudahDiulang = new Set<number>();
       let selesai = 0;
 
@@ -582,7 +592,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
         antrean = antrean.slice(FULFILL_CHUNK);
 
         const results = await kirimPotongan(potongan);
-        const peta: Record<number, { ok: boolean; text: string }> = {};
+        const peta: Record<number, { ok: boolean; text: string; seq?: number }> = {};
         for (const r of results) {
           // Yang layak diantrekan ulang sekali: belum sempat (out_of_time),
           // gangguan sesaat (shopify_error), dan yang paling penting —
@@ -600,6 +610,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             totalOk++;
             peta[r.page] = {
               ok: true,
+              seq: urutan++,
               text: r.already
                 ? `${r.orderName ?? ""} · ${t.fulfillAlready}`.trim()
                 : `${r.orderName ?? ""} · ${r.company ?? ""}`.trim(),
@@ -608,13 +619,14 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             totalGagal++;
             peta[r.page] = {
               ok: false,
+              seq: urutan++,
               text: apiErrorMessage(r.reason, locale) + (r.detail ? ` (${r.detail})` : ""),
             };
           }
         }
         // Hasil menetes per potongan — kartu-kartu terisi selagi sisanya jalan.
         setFulfillResult((prev) => ({ ...prev, ...peta }));
-        setFulfillProgress({ done: selesai, total: fulfillItems.length });
+        setFulfillProgress({ done: selesai, total: daftar.length });
       }
 
       if (totalGagal === 0) toast.success(`${totalOk} ${t.fulfillDone}`);
@@ -1025,6 +1037,16 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                       ? `${t.fulfilling} ${fulfillProgress.done}/${fulfillProgress.total}`
                       : t.fulfilling
                     : `${t.fulfill} (${fulfillItems.length})`}
+                </Button>
+              )}
+              {/* Coba-ulang HANYA yang gagal — pengaman preventif, bukan jalur
+                  utama: sistemnya sendiri sudah mengulang di dalam run dan
+                  memverifikasi balik ke Shopify. Aman ditekan berulang karena
+                  idempoten. */}
+              {canFulfill && !fulfilling && fulfillFailed.length > 0 && (
+                <Button variant="outline" onClick={() => void jalankanFulfill(fulfillFailed)}
+                  className="border-[#e6c9bd] text-[#8c3c1f] hover:bg-clay-soft">
+                  <RotateCcw className="h-4 w-4" /> {t.retryFailed} ({fulfillFailed.length})
                 </Button>
               )}
               {/* Paling depan: satu-satunya jalur yang tidak melewati

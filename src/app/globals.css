@@ -312,3 +312,18 @@ body.camera-open .app-chrome {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── Receipt Sales: sapuan cross-check hasil fulfill ──────────────
+   Badge hasil muncul berjenjang PERSIS saat verifikasi tiap potongan pulang
+   dari Shopify — animasinya mengikuti data sungguhan, bukan teater sesudahnya.
+   Hanya transform/opacity (GPU), 220 ms per badge, jenjang ≤45 ms; dengan
+   potongan 20 satu gelombang tuntas <1,2 dtk selagi potongan berikut masih
+   di jaringan — terasa hidup tanpa pernah menahan siapa pun. */
+@keyframes fulfill-pop {
+  from { opacity: 0; transform: translateY(4px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+.fulfill-pop { animation: fulfill-pop 220ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+@media (prefers-reduced-motion: reduce) {
+  .fulfill-pop { animation: none; }
+}

@@ -309,7 +309,7 @@ export function ReviewPanel({
   onEdit: (page: number, key: string, value: string) => void;
   onVerify: (page: number, value: boolean) => void;
   /** Hasil fulfill per halaman — ditempel di kartunya masing-masing. */
-  fulfillResult?: Record<number, { ok: boolean; text: string }>;
+  fulfillResult?: Record<number, { ok: boolean; text: string; seq?: number }>;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -360,8 +360,13 @@ export function ReviewPanel({
                   yang dibutuhkan adalah tahu YANG MANA. */}
               {fulfillResult[r.page] && (
                 <div
+                  // Jenjang dihitung dari urutan DI DALAM potongannya (modulo 20):
+                  // satu gelombang badge tuntas <1,2 dtk, gelombang berikut mulai
+                  // begitu potongan berikutnya pulang — sapuan yang mengikuti
+                  // verifikasi asli, bukan menunggunya.
+                  style={{ animationDelay: `${((fulfillResult[r.page].seq ?? 0) % 20) * 45}ms` }}
                   className={cn(
-                    "mt-2 flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-medium",
+                    "fulfill-pop mt-2 flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-medium",
                     fulfillResult[r.page].ok
                       ? "bg-[#e9f0d8] text-forest-700"
                       : "bg-clay-soft text-[#8c3c1f]",
