@@ -89,7 +89,16 @@ export function ProductMapSheet({
                 </span>
                 <span className="tabular-nums">{p.productId}</span>
                 <Link2 className="h-3 w-3" />
-                <span className="text-forest-700">{p.shopifyHandle}</span>
+                {p.shopifyHandle ? (
+                  <span className="text-forest-700">{p.shopifyHandle}</span>
+                ) : (
+                  // Hasil penemuan yang tidak yakin: dicatat tapi non-aktif.
+                  // Ditampilkan tegas supaya jelas apa yang harus dikerjakan —
+                  // baris kosong hanya terlihat seperti kesalahan tampilan.
+                  <span className="rounded-md bg-gold-soft px-1.5 py-0.5 text-[11px] font-medium text-[#8a6512]">
+                    {t.mapNeedsHandle}
+                  </span>
+                )}
               </p>
 
               <div className="mt-2 flex flex-wrap items-center gap-1.5">

@@ -51,9 +51,12 @@ export const STR: Record<Locale, Record<string, string>> = {
     // — angka ringkas —
     allSources: "Semua",
     mapSource: "Marketplace",
+    mapNeedsHandle: "handle belum diisi",
     sourceTabs: "Pilih sumber review",
-    shopeeHint:
-      "Shopee menolak permintaan dari server (403). Tarik dari laptop: node scripts/marketplace-pull.mjs --source=shopee",
+    shopeeStep1: "1. Temukan produk tokonya (sekali saja) — nama toko dari URL Shopee:",
+    shopeeStep2: "2. Tarik reviewnya:",
+    shopeeWhy:
+      "Shopee menolak permintaan dari server (403), jadi kedua perintah ini dijalankan dari laptop di folder proyek. Produk dicocokkan otomatis ke katalog Shopify; yang tidak yakin ditandai untuk diperiksa di peta produk.",
     inLedger: "Review di ledger",
     inLedgerSub: "seluruh yang pernah tertarik",
     pending: "Belum diekspor",
@@ -215,10 +218,13 @@ export const STR: Record<Locale, Record<string, string>> = {
     serverTry: "Try via the server",
     serverTryHint: "Proven to fail from Vercel. Kept here in case the block is ever lifted.",
     allSources: "All",
+    mapNeedsHandle: "handle not set",
     mapSource: "Marketplace",
     sourceTabs: "Choose review source",
-    shopeeHint:
-      "Shopee rejects server-side requests (403). Pull from your laptop: node scripts/marketplace-pull.mjs --source=shopee",
+    shopeeStep1: "1. Discover the shop\u2019s products (once) \u2014 shop name from the Shopee URL:",
+    shopeeStep2: "2. Pull the reviews:",
+    shopeeWhy:
+      "Shopee rejects server-side requests (403), so both commands run from your laptop in the project folder. Products are matched to the Shopify catalogue automatically; uncertain ones are flagged for review in the product map.",
     inLedger: "Reviews in ledger",
     inLedgerSub: "everything ever pulled",
     pending: "Not exported",

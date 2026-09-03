@@ -204,9 +204,17 @@ export function TokopediaReviewsView({
           hanya akan menghasilkan kegagalan yang membingungkan — perintahnya
           yang ditampilkan, bukan tombol palsu. */}
       {tab === "shopee" && (
-        <div className="rounded-2xl border border-[#e8d9a8] bg-gold-soft px-4 py-3 text-sm leading-relaxed text-[#8a6512]">
-          {t.shopeeHint}
-        </div>
+        <section className="rounded-2xl border border-[#e8d9a8] bg-gold-soft px-4 py-3.5 text-sm text-[#8a6512]">
+          <p className="mb-2.5 leading-relaxed">{t.shopeeWhy}</p>
+          <p className="font-semibold">{t.shopeeStep1}</p>
+          <pre className="mt-1 mb-3 overflow-x-auto rounded-lg bg-panel/70 px-3 py-2 font-mono text-xs text-ink">
+node scripts/marketplace-pull.mjs --source=shopee --discover=treelogy.moringa
+          </pre>
+          <p className="font-semibold">{t.shopeeStep2}</p>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-panel/70 px-3 py-2 font-mono text-xs text-ink">
+node scripts/marketplace-pull.mjs --source=shopee
+          </pre>
+        </section>
       )}
 
       <PullCard

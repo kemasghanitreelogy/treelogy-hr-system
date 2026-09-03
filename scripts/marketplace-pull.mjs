@@ -52,6 +52,8 @@ if (!INGEST_URL || !SECRET) {
 }
 
 const SOURCE = (process.argv.find((a) => a.startsWith("--source="))?.split("=")[1] ?? "tokopedia").toLowerCase();
+/** --discover=<username-toko> → temukan produk toko, lalu daftarkan. */
+const DISCOVER = process.argv.find((a) => a.startsWith("--discover="))?.split("=")[1]?.trim() ?? null;
 if (!["tokopedia", "shopee"].includes(SOURCE)) {
   console.error(`\n  Sumber tidak dikenal: ${SOURCE}. Pilih tokopedia atau shopee.\n`);
   process.exit(1);
@@ -227,8 +229,107 @@ const shopee = {
 
 const ADAPTER = SOURCE === "shopee" ? shopee : tokopedia;
 
+/* ═══════════════ PENEMUAN PRODUK (Shopee) ═══════════════ */
+/**
+ * Mengetik ID produk satu per satu adalah pekerjaan yang seharusnya dikerjakan
+ * mesin — dan ID yang salah ketik baru ketahuan berjam-jam kemudian.
+ *
+ * Dijalankan dari laptop karena endpoint daftar produk Shopee menolak IP pusat
+ * data (403, error 90309999) sama seperti endpoint ulasannya. Menariknya:
+ * `get_shop_base` JUSTRU lolos dari server — tapi menyandarkan fitur ini pada
+ * satu endpoint yang kebetulan lebih longgar hanya akan patah diam-diam kelak.
+ *
+ * Pencocokan ke produk Shopify dikerjakan SERVER, bukan di sini: token Admin
+ * Shopify tidak boleh keluar dari server.
+ */
+async function temukanProdukShopee(username) {
+  console.log(`\n  Mencari toko "${username}"…`);
+  const base = await fetch(
+    `${SHOPEE_ORIGIN}/api/v4/shop/get_shop_base?username=${encodeURIComponent(username)}`,
+    { headers: { "User-Agent": UA, Accept: "application/json", Referer: `${SHOPEE_ORIGIN}/${username}` },
+      signal: AbortSignal.timeout(30_000) },
+  ).then((r) => r.json()).catch(() => null);
+
+  const shopid = base?.data?.shopid;
+  if (base?.error || !shopid) throw new Error(`toko tidak ditemukan (error ${base?.error ?? "?"})`);
+  console.log(`  ${base.data.name} · shopid ${shopid} · ${base.data.follower_count ?? "?"} pengikut`);
+
+  const produk = [];
+  for (let halaman = 0; halaman < 8; halaman++) {
+    if (halaman) await jeda(...shopee.jeda);
+    const url =
+      `${SHOPEE_ORIGIN}/api/v4/search/search_items?by=pop&limit=30&newest=${halaman * 30}` +
+      `&order=desc&page_type=shop&scenario=PAGE_OTHERS&version=2&match_id=${shopid}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": UA, Accept: "application/json",
+        Referer: `${SHOPEE_ORIGIN}/${username}`,
+        "X-Requested-With": "XMLHttpRequest", "X-API-SOURCE": "pc",
+        ...(shopeeCookie ? { Cookie: shopeeCookie } : {}),
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.error) throw new Rejected(res.status === 200 ? 403 : res.status);
+    const items = data?.items ?? [];
+    if (!items.length) break;
+    for (const it of items) {
+      const b = it?.item_basic ?? it;
+      if (b?.itemid && b?.name) produk.push({ productId: `${shopid}_${b.itemid}`, name: String(b.name) });
+    }
+    if (items.length < 30) break;
+  }
+  return produk;
+}
+
+async function jalankanPenemuan() {
+  if (SOURCE !== "shopee") {
+    console.error("\n  --discover baru tersedia untuk Shopee.\n");
+    process.exit(1);
+  }
+  // Pemanasan sesi lebih dulu, sama seperti saat menarik ulasan.
+  await shopee.priming("");
+  let produk;
+  try {
+    produk = await temukanProdukShopee(DISCOVER);
+  } catch (e) {
+    console.error(`\n  Gagal: ${e.message}\n`);
+    process.exit(1);
+  }
+  if (!produk.length) {
+    console.error("\n  Tidak ada produk yang terbaca dari toko itu.\n");
+    process.exit(1);
+  }
+  console.log(`\n  ${produk.length} produk ditemukan. Mencocokkan ke katalog Shopify…`);
+
+  const url = INGEST_URL.replace(/\/ingest\/?$/, "/products/discover");
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
+    body: JSON.stringify({ source: "shopee", products: produk }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error(`\n  Server menolak: ${data.error ?? res.status}\n`);
+    process.exit(1);
+  }
+
+  console.log(`  Katalog Shopify: ${data.katalog} produk aktif\n`);
+  for (const h of data.hasil ?? []) {
+    const tanda = h.status === "cocok" ? "✓" : h.status === "sudah ada" ? "·" : "!";
+    const ket = h.status === "cocok" ? `→ ${h.handle} (${h.skor})` : h.status === "sudah ada" ? "sudah dipetakan" : `tebakan terbaik: ${h.handle || "—"} (${h.skor}) — perlu diperiksa`;
+    console.log(`   ${tanda} ${h.name.slice(0, 58).padEnd(58)} ${ket}`);
+  }
+  console.log(
+    `\n  ${data.aktif} produk siap ditarik, ${(data.ditambahkan ?? 0) - (data.aktif ?? 0)} menunggu diperiksa di layar.\n` +
+    `  Buka Review Marketplace → peta produk untuk memeriksanya, lalu:\n` +
+    `    node scripts/marketplace-pull.mjs --source=shopee\n`,
+  );
+}
+
 /* ───────────────────────── jalannya ───────────────────────── */
 async function main() {
+  if (DISCOVER) return jalankanPenemuan();
   console.log(`\n  ${ADAPTER.label} — meminta izin ke server…`);
   let start;
   try {
