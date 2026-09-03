@@ -57,6 +57,8 @@ export const STR: Record<Locale, Record<string, string>> = {
     shopeeStep2: "2. Tarik reviewnya:",
     shopeeWhy:
       "Shopee menolak permintaan dari server (403), jadi kedua perintah ini dijalankan dari laptop di folder proyek. Produk dicocokkan otomatis ke katalog Shopify; yang tidak yakin ditandai untuk diperiksa di peta produk.",
+    shopeeCookie:
+      "Kalau ditolak 403: Shopee butuh sesi browser sungguhan. Buka shopee.co.id yang sudah login → F12 → Network → salin baris cookie, lalu tempel ke .env.local sebagai SHOPEE_COOKIE. Cookie itu tinggal di laptop Anda, tidak pernah dikirim ke server.",
     inLedger: "Review di ledger",
     inLedgerSub: "seluruh yang pernah tertarik",
     pending: "Belum diekspor",
@@ -225,6 +227,8 @@ export const STR: Record<Locale, Record<string, string>> = {
     shopeeStep2: "2. Pull the reviews:",
     shopeeWhy:
       "Shopee rejects server-side requests (403), so both commands run from your laptop in the project folder. Products are matched to the Shopify catalogue automatically; uncertain ones are flagged for review in the product map.",
+    shopeeCookie:
+      "If you get a 403: Shopee wants a real browser session. Open a logged-in shopee.co.id \u2192 F12 \u2192 Network \u2192 copy the cookie line, then paste it into .env.local as SHOPEE_COOKIE. That cookie stays on your laptop and is never sent to the server.",
     inLedger: "Reviews in ledger",
     inLedgerSub: "everything ever pulled",
     pending: "Not exported",

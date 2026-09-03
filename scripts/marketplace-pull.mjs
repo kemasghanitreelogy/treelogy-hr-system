@@ -34,7 +34,9 @@ import { readFileSync } from "node:fs";
 /* ───────────────────────── env ───────────────────────── */
 function loadEnv() {
   const env = { ...process.env };
-  if (env.TOKOPEDIA_INGEST_URL && env.TOKOPEDIA_INGEST_SECRET) return env;
+  // .env.local SELALU dibaca. Berhenti lebih awal ketika dua env ingest
+  // kebetulan sudah ada di shell akan membuat SHOPEE_COOKIE tidak pernah
+  // terbaca — dan gejalanya cuma "403" yang membingungkan.
   try {
     for (const line of readFileSync(new URL("../.env.local", import.meta.url), "utf8").split("\n")) {
       const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
@@ -50,6 +52,18 @@ if (!INGEST_URL || !SECRET) {
   console.error("\n  Kurang konfigurasi. Tambahkan TOKOPEDIA_INGEST_URL & TOKOPEDIA_INGEST_SECRET ke .env.local\n");
   process.exit(1);
 }
+
+/**
+ * Cookie sesi Shopee dari browser Anda sendiri (opsional tapi sangat membantu).
+ *
+ * Pelajaran dari scraper Shopee yang beredar: yang membuka pintu bukan header
+ * yang dirapikan, melainkan SESI BROWSER SUNGGUHAN — mereka memakai Selenium
+ * dengan login manual dan CAPTCHA. Menambah browser otomatis (~300 MB) demi
+ * satu marketplace itu berat, dan CAPTCHA-nya tetap harus dikerjakan orang.
+ * Jadi intinya saja yang diambil: pakai sesi yang SUDAH ada di browser Anda.
+ * Anda pemilik tokonya; cookie-nya cukup disalin sekali ke .env.local.
+ */
+const SHOPEE_COOKIE_ENV = "SHOPEE_COOKIE";
 
 const SOURCE = (process.argv.find((a) => a.startsWith("--source="))?.split("=")[1] ?? "tokopedia").toLowerCase();
 /** --discover=<username-toko> → temukan produk toko, lalu daftarkan. */
@@ -156,7 +170,9 @@ const tokopedia = {
  * seperti orang yang membuka halaman itu sebelum menggulir ke bagian ulasan.
  */
 const SHOPEE_ORIGIN = "https://shopee.co.id";
-let shopeeCookie = "";
+// Cookie dari .env.local dipakai sejak awal; kalau kosong, pemanasan sesi
+// anonim yang mengisinya (dan itu belum tentu cukup — lihat pesan 403).
+let shopeeCookie = (ENV[SHOPEE_COOKIE_ENV] ?? "").trim();
 
 const shopee = {
   label: "Shopee",
@@ -167,7 +183,7 @@ const shopee = {
   jeda: [4000, 8000],
 
   async priming(productId) {
-    if (shopeeCookie) return;
+    if (shopeeCookie) return; // sudah punya sesi — tidak perlu mengetuk lagi
     const [shopid, itemid] = String(productId).split("_");
     const halaman = shopid && itemid ? `${SHOPEE_ORIGIN}/product/${shopid}/${itemid}` : SHOPEE_ORIGIN;
     try {
@@ -228,6 +244,30 @@ const shopee = {
 };
 
 const ADAPTER = SOURCE === "shopee" ? shopee : tokopedia;
+
+/**
+ * Ditolak 403 berarti Shopee tidak mengenali sesinya — bukan berarti datanya
+ * tidak ada. Yang dibutuhkan sesi browser sungguhan, dan Anda sudah punya.
+ */
+function petunjukCookieShopee() {
+  if (shopeeCookie) {
+    console.error(
+      `\n  Cookie ${SHOPEE_COOKIE_ENV} sudah dipakai tapi tetap ditolak — kemungkinan sudah kedaluwarsa.\n` +
+        "  Buka shopee.co.id di browser (pastikan masih login), lalu salin ulang cookie-nya.\n",
+    );
+    return;
+  }
+  console.error(
+    `\n  Shopee menolak sesi anonim. Pakai sesi browser Anda sendiri — sekali saja:\n\n` +
+      "    1. Buka https://shopee.co.id di Chrome, pastikan sudah login\n" +
+      "    2. F12 → tab Network → muat ulang halaman → klik permintaan mana pun\n" +
+      "    3. Di Request Headers, salin SELURUH baris setelah \"cookie:\"\n" +
+      `    4. Tempel ke .env.local:\n\n` +
+      `         ${SHOPEE_COOKIE_ENV}=\"<tempel di sini>\"\n\n` +
+      "  Cookie itu milik Anda sendiri dan tidak pernah dikirim ke server —\n" +
+      "  hanya dipakai skrip ini di laptop Anda.\n",
+  );
+}
 
 /* ═══════════════ PENEMUAN PRODUK (Shopee) ═══════════════ */
 /**
@@ -293,7 +333,9 @@ async function jalankanPenemuan() {
   try {
     produk = await temukanProdukShopee(DISCOVER);
   } catch (e) {
-    console.error(`\n  Gagal: ${e.message}\n`);
+    console.error(`\n  Gagal: ${e.message}`);
+    if (e instanceof Rejected && e.status === 403) petunjukCookieShopee();
+    else console.error("");
     process.exit(1);
   }
   if (!produk.length) {
@@ -404,6 +446,7 @@ async function main() {
     const status = e instanceof Unreachable ? "unreachable" : e instanceof Rejected ? "rejected" : "failed";
     const pesan = e instanceof Rejected ? `ditolak ${e.message}` : e.message;
     console.error(`\n  Berhenti: ${pesan}`);
+    if (SOURCE === "shopee" && e instanceof Rejected && e.status === 403) petunjukCookieShopee();
     if (reviews.length) console.error(`  ${reviews.length} review yang terlanjur terkumpul tetap dikirim.`);
     try {
       await ingest({ action: "finish", runId, status: reviews.length ? "partial" : status, requests, reviews, error: pesan });

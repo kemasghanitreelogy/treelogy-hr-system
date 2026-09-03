@@ -214,6 +214,7 @@ node scripts/marketplace-pull.mjs --source=shopee --discover=treelogy.moringa
           <pre className="mt-1 overflow-x-auto rounded-lg bg-panel/70 px-3 py-2 font-mono text-xs text-ink">
 node scripts/marketplace-pull.mjs --source=shopee
           </pre>
+          <p className="mt-3 leading-relaxed">{t.shopeeCookie}</p>
         </section>
       )}
 
