@@ -498,7 +498,12 @@ async function main() {
   console.log(`\n  ${ADAPTER.label} — meminta izin ke server…`);
   let start;
   try {
-    start = await ingest({ action: "start" });
+    // Penyegaran foto memang harus bisa berjalan di luar jadwal: tautan foto
+    // mati dalam hitungan jam, jadi menunggu jeda tarik berikutnya berarti
+    // fotonya sudah lama hilang saat gilirannya tiba. Disebutkan terang-
+    // terangan supaya tidak terasa seperti penjaga yang bocor.
+    if (REFRESH_PHOTOS) console.log("  (menembus jeda tarik — penyegaran foto)");
+    start = await ingest({ action: "start", force: REFRESH_PHOTOS });
   } catch (e) {
     if (e.status === 429) {
       const at = e.payload?.nextPullAt ? new Date(e.payload.nextPullAt).toLocaleString("id-ID") : "?";

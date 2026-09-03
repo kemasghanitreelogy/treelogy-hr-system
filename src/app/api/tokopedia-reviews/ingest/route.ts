@@ -70,7 +70,12 @@ export async function POST(req: Request) {
       .order("started_at", { ascending: false })
       .limit(5);
     const gate = pullGate((runRows ?? []).map(mapRun));
-    if (!gate.allowed) {
+    // Penyegaran foto boleh menembus JEDA, tapi tidak pernah menembus "ada run
+    // yang sedang berjalan" (overridable=false di sana) — dua penarik serentak
+    // akan saling melihat ledger yang belum lengkap. Wewenangnya setara tombol
+    // paksa di layar: sama-sama menuntut pemegang kunci.
+    const paksa = (body as unknown as { force?: unknown })?.force === true && gate.overridable;
+    if (!gate.allowed && !paksa) {
       return NextResponse.json(
         { error: gate.reason ?? "cooldown", nextPullAt: gate.nextPullAt },
         { status: 429 },
