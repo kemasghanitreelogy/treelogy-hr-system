@@ -174,7 +174,21 @@ const tokopedia = {
 const SHOPEE_ORIGIN = "https://shopee.co.id";
 // Cookie dari .env.local dipakai sejak awal; kalau kosong, pemanasan sesi
 // anonim yang mengisinya (dan itu belum tentu cukup — lihat pesan 403).
-let shopeeCookie = (ENV[SHOPEE_COOKIE_ENV] ?? "").trim();
+let shopeeCookie = bersihkanCookie(ENV[SHOPEE_COOKIE_ENV]);
+
+/**
+ * Menyalin dari DevTools hampir selalu ikut membawa sampah: awalan "cookie:",
+ * tanda kutip, atau baris yang terlipat. Dibersihkan di sini supaya salah
+ * salin tidak menyamar jadi "403" yang membingungkan.
+ */
+function bersihkanCookie(raw) {
+  return (raw ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^\s*cookie\s*:\s*/i, "")
+    .replace(/\s*\n\s*/g, " ")
+    .trim();
+}
 
 const shopee = {
   label: "Shopee",
