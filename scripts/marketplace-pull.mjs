@@ -68,6 +68,8 @@ const SHOPEE_COOKIE_ENV = "SHOPEE_COOKIE";
 const SOURCE = (process.argv.find((a) => a.startsWith("--source="))?.split("=")[1] ?? "tokopedia").toLowerCase();
 /** --discover=<username-toko> → temukan produk toko, lalu daftarkan. */
 const DISCOVER = process.argv.find((a) => a.startsWith("--discover="))?.split("=")[1]?.trim() ?? null;
+/** --check → periksa sesi Shopee saja, tanpa menarik apa pun. */
+const CHECK = process.argv.includes("--check");
 if (!["tokopedia", "shopee"].includes(SOURCE)) {
   console.error(`\n  Sumber tidak dikenal: ${SOURCE}. Pilih tokopedia atau shopee.\n`);
   process.exit(1);
@@ -249,17 +251,55 @@ const ADAPTER = SOURCE === "shopee" ? shopee : tokopedia;
  * Ditolak 403 berarti Shopee tidak mengenali sesinya — bukan berarti datanya
  * tidak ada. Yang dibutuhkan sesi browser sungguhan, dan Anda sudah punya.
  */
+/**
+ * Cookie Shopee datang dari DUA domain yang berbeda, dan keduanya tidak
+ * pernah saling mengirim cookie:
+ *
+ *   shopee.co.id         → situs belanja. API ulasan publik ada di sini.
+ *   seller.shopee.co.id  → Seller Centre. Domain lain, cookie lain.
+ *
+ * Login di Seller Centre karena itu TIDAK berpengaruh pada API ulasan — dan
+ * itu jebakan yang sangat masuk akal untuk dilangkahi. Nama cookienya
+ * membedakan keduanya: Seller Centre memakai awalan SPC_SC_*, situs belanja
+ * memakai SPC_EC / SPC_ST / SPC_U. Diperiksa supaya diagnosanya tepat, bukan
+ * sekadar "403".
+ */
+function periksaAsalCookie(cookie) {
+  if (!cookie) return "kosong";
+  const sellerCentre = /\bSPC_SC_/.test(cookie);
+  const belanja = /\bSPC_(EC|ST|U)\b/.test(cookie) || /\bSPC_EC=/.test(cookie);
+  if (sellerCentre && !belanja) return "seller";
+  if (belanja) return "belanja";
+  return "tidak dikenali";
+}
+
 function petunjukCookieShopee() {
+  const asal = periksaAsalCookie(shopeeCookie);
+  if (asal === "seller") {
+    console.error(
+      "\n  Cookie yang dipakai berasal dari SELLER CENTRE (seller.shopee.co.id).\n" +
+        "  Cookie bersifat per-domain: yang dari Seller Centre tidak pernah dikirim\n" +
+        "  ke shopee.co.id, tempat API ulasan berada. Jadi login Seller Centre\n" +
+        "  memang tidak berpengaruh di sini.\n\n" +
+        "  Ambil dari situs BELANJA-nya:\n" +
+        "    1. Buka https://shopee.co.id  (bukan seller.shopee.co.id)\n" +
+        "    2. Pastikan sudah login di sana juga — akunnya boleh sama\n" +
+        "    3. F12 → Network → muat ulang → klik permintaan mana pun\n" +
+        `    4. Salin baris "cookie:" di Request Headers → .env.local sebagai ${SHOPEE_COOKIE_ENV}\n`,
+    );
+    return;
+  }
   if (shopeeCookie) {
     console.error(
-      `\n  Cookie ${SHOPEE_COOKIE_ENV} sudah dipakai tapi tetap ditolak — kemungkinan sudah kedaluwarsa.\n` +
+      `\n  Cookie ${SHOPEE_COOKIE_ENV} (${asal}) sudah dipakai tapi tetap ditolak — kemungkinan sudah kedaluwarsa.\n` +
         "  Buka shopee.co.id di browser (pastikan masih login), lalu salin ulang cookie-nya.\n",
     );
     return;
   }
   console.error(
     `\n  Shopee menolak sesi anonim. Pakai sesi browser Anda sendiri — sekali saja:\n\n` +
-      "    1. Buka https://shopee.co.id di Chrome, pastikan sudah login\n" +
+      "    1. Buka https://shopee.co.id di Chrome — situs BELANJA-nya,\n" +
+      "       BUKAN seller.shopee.co.id (domain berbeda, cookie berbeda)\n" +
       "    2. F12 → tab Network → muat ulang halaman → klik permintaan mana pun\n" +
       "    3. Di Request Headers, salin SELURUH baris setelah \"cookie:\"\n" +
       `    4. Tempel ke .env.local:\n\n` +
@@ -267,6 +307,59 @@ function petunjukCookieShopee() {
       "  Cookie itu milik Anda sendiri dan tidak pernah dikirim ke server —\n" +
       "  hanya dipakai skrip ini di laptop Anda.\n",
   );
+}
+
+/**
+ * Uji sesi tanpa menarik apa pun.
+ *
+ *   node scripts/marketplace-pull.mjs --source=shopee --check
+ *
+ * Menguji lewat run penuh itu lambat dan hasilnya bercampur dengan kegagalan
+ * lain. Pemeriksaan ini menyentuh dua endpoint saja dan menyebut PERSIS yang
+ * mana yang menolak — sehingga jelas apakah masalahnya cookie, IP, atau
+ * memang tokonya.
+ */
+async function periksaSesi() {
+  const asal = periksaAsalCookie(shopeeCookie);
+  console.log(`\n  Cookie: ${shopeeCookie ? `${asal}, ${shopeeCookie.length} karakter` : "belum diisi (mencoba sesi anonim)"}`);
+  if (asal === "seller") {
+    console.log("  ⚠ Ini cookie Seller Centre — domainnya berbeda dari API ulasan.");
+  }
+
+  const H = {
+    "User-Agent": UA, Accept: "application/json",
+    Referer: `${SHOPEE_ORIGIN}/`, "X-Requested-With": "XMLHttpRequest", "X-API-SOURCE": "pc",
+    ...(shopeeCookie ? { Cookie: shopeeCookie } : {}),
+  };
+
+  const nama = DISCOVER || "treelogy.moringa";
+  let shopid = null;
+  try {
+    const r = await fetch(`${SHOPEE_ORIGIN}/api/v4/shop/get_shop_base?username=${encodeURIComponent(nama)}`, { headers: H, signal: AbortSignal.timeout(25_000) });
+    const d = await r.json().catch(() => null);
+    shopid = d?.data?.shopid ?? null;
+    console.log(`  [1/2] info toko          : ${d?.error ? `DITOLAK (error ${d.error})` : `OK — ${d?.data?.name} · shopid ${shopid}`}`);
+  } catch (e) {
+    console.log(`  [1/2] info toko          : GAGAL — ${e.message}`);
+  }
+
+  if (shopid) {
+    await jeda(1500, 3000);
+    try {
+      const url = `${SHOPEE_ORIGIN}/api/v4/search/search_items?by=pop&limit=5&newest=0&order=desc&page_type=shop&scenario=PAGE_OTHERS&version=2&match_id=${shopid}`;
+      const r = await fetch(url, { headers: { ...H, Referer: `${SHOPEE_ORIGIN}/${nama}` }, signal: AbortSignal.timeout(25_000) });
+      const d = await r.json().catch(() => null);
+      const n = (d?.items ?? []).length;
+      console.log(`  [2/2] daftar produk      : ${d?.error || !r.ok ? `DITOLAK (HTTP ${r.status}, error ${d?.error ?? "?"})` : `OK — ${n} produk terbaca`}`);
+      if (!d?.error && r.ok) {
+        console.log("\n  Sesi bekerja. Lanjutkan:\n    node scripts/marketplace-pull.mjs --source=shopee --discover=" + nama + "\n");
+        return;
+      }
+    } catch (e) {
+      console.log(`  [2/2] daftar produk      : GAGAL — ${e.message}`);
+    }
+  }
+  petunjukCookieShopee();
 }
 
 /* ═══════════════ PENEMUAN PRODUK (Shopee) ═══════════════ */
@@ -371,6 +464,10 @@ async function jalankanPenemuan() {
 
 /* ───────────────────────── jalannya ───────────────────────── */
 async function main() {
+  if (CHECK) {
+    if (SOURCE !== "shopee") { console.error("\n  --check baru tersedia untuk Shopee.\n"); process.exit(1); }
+    return periksaSesi();
+  }
   if (DISCOVER) return jalankanPenemuan();
   console.log(`\n  ${ADAPTER.label} — meminta izin ke server…`);
   let start;

@@ -57,8 +57,9 @@ export const STR: Record<Locale, Record<string, string>> = {
     shopeeStep2: "2. Tarik reviewnya:",
     shopeeWhy:
       "Shopee menolak permintaan dari server (403), jadi kedua perintah ini dijalankan dari laptop di folder proyek. Produk dicocokkan otomatis ke katalog Shopify; yang tidak yakin ditandai untuk diperiksa di peta produk.",
+    shopeeCheck: "Uji sesinya dulu (cepat, tidak menarik apa pun):",
     shopeeCookie:
-      "Kalau ditolak 403: Shopee butuh sesi browser sungguhan. Buka shopee.co.id yang sudah login → F12 → Network → salin baris cookie, lalu tempel ke .env.local sebagai SHOPEE_COOKIE. Cookie itu tinggal di laptop Anda, tidak pernah dikirim ke server.",
+      "Kalau ditolak 403: Shopee butuh sesi browser sungguhan. Ambil cookie dari shopee.co.id — situs BELANJA-nya, BUKAN seller.shopee.co.id. Cookie bersifat per-domain, jadi login Seller Centre tidak berpengaruh pada API ulasan. F12 → Network → muat ulang → salin baris cookie → tempel ke .env.local sebagai SHOPEE_COOKIE. Cookie itu tinggal di laptop Anda, tidak pernah dikirim ke server.",
     inLedger: "Review di ledger",
     inLedgerSub: "seluruh yang pernah tertarik",
     pending: "Belum diekspor",
@@ -227,8 +228,9 @@ export const STR: Record<Locale, Record<string, string>> = {
     shopeeStep2: "2. Pull the reviews:",
     shopeeWhy:
       "Shopee rejects server-side requests (403), so both commands run from your laptop in the project folder. Products are matched to the Shopify catalogue automatically; uncertain ones are flagged for review in the product map.",
+    shopeeCheck: "Test the session first (fast, pulls nothing):",
     shopeeCookie:
-      "If you get a 403: Shopee wants a real browser session. Open a logged-in shopee.co.id \u2192 F12 \u2192 Network \u2192 copy the cookie line, then paste it into .env.local as SHOPEE_COOKIE. That cookie stays on your laptop and is never sent to the server.",
+      "If you get a 403: Shopee wants a real browser session. Take the cookie from shopee.co.id \u2014 the SHOPPING site, NOT seller.shopee.co.id. Cookies are per-domain, so a Seller Centre login has no effect on the reviews API. F12 \u2192 Network \u2192 reload \u2192 copy the cookie line \u2192 paste into .env.local as SHOPEE_COOKIE. That cookie stays on your laptop and is never sent to the server.",
     inLedger: "Reviews in ledger",
     inLedgerSub: "everything ever pulled",
     pending: "Not exported",
