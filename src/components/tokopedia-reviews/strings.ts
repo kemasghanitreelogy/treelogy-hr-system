@@ -49,6 +49,11 @@ export const STR: Record<Locale, Record<string, string>> = {
     serverTry: "Coba lewat server",
     serverTryHint: "Terbukti gagal dari Vercel. Ada di sini kalau suatu saat blokirnya dicabut.",
     // — angka ringkas —
+    allSources: "Semua",
+    mapSource: "Marketplace",
+    sourceTabs: "Pilih sumber review",
+    shopeeHint:
+      "Shopee menolak permintaan dari server (403). Tarik dari laptop: node scripts/marketplace-pull.mjs --source=shopee",
     inLedger: "Review di ledger",
     inLedgerSub: "seluruh yang pernah tertarik",
     pending: "Belum diekspor",
@@ -209,6 +214,11 @@ export const STR: Record<Locale, Record<string, string>> = {
     localAfter: "When it finishes, reload this page to see the results.",
     serverTry: "Try via the server",
     serverTryHint: "Proven to fail from Vercel. Kept here in case the block is ever lifted.",
+    allSources: "All",
+    mapSource: "Marketplace",
+    sourceTabs: "Choose review source",
+    shopeeHint:
+      "Shopee rejects server-side requests (403). Pull from your laptop: node scripts/marketplace-pull.mjs --source=shopee",
     inLedger: "Reviews in ledger",
     inLedgerSub: "everything ever pulled",
     pending: "Not exported",

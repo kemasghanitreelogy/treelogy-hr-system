@@ -118,10 +118,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     module: "reviews",
-    label: "Review Tokopedia",
+    label: "Review Marketplace",
     permissions: [
-      { id: "reviews.view", label: "Lihat review Tokopedia & unduh CSV Judge.me" },
-      { id: "reviews.pull", label: "Tarik review baru dari Tokopedia" },
+      { id: "reviews.view", label: "Lihat review marketplace & unduh CSV Judge.me" },
+      { id: "reviews.pull", label: "Tarik review baru dari marketplace" },
       { id: "reviews.manage", label: "Kelola peta produk Tokopedia → Shopify" },
     ],
   },
@@ -255,7 +255,7 @@ export const roles: Role[] = [
     // Peran turunan, bukan menambah receipt.view ke "Karyawan" — kalau tidak,
     // SEMUA karyawan ikut melihat nomor telepon pelanggan. receipt.sync sengaja
     // tidak ikut: menulis ke Jubelio mengubah data pesanan sungguhan.
-    // Review Tokopedia ikut karena tim yang sama mengurus toko; `reviews.manage`
+    // Review Marketplace ikut karena tim yang sama mengurus toko; `reviews.manage`
     // tidak, supaya peta produk hanya diubah HR/admin.
     permissionIds: [...EMPLOYEE_PERMS, "receipt.view", "reviews.view", "reviews.pull"],
   },

@@ -132,7 +132,7 @@ export async function exportReviewsXlsx(
   const buf = await wb.xlsx.writeBuffer();
   saveBlobAsFile(
     new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-    `review-tokopedia-${witaToday()}.xlsx`,
+    `review-marketplace-${witaToday()}.xlsx`,
   );
   return reviews.length;
 }

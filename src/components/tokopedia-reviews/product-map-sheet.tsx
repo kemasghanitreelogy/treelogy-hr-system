@@ -7,6 +7,7 @@ import { apiErrorMessage } from "@/lib/api-error";
 import { cn } from "@/lib/utils";
 import type { TokopediaProduct, TokopediaState } from "@/lib/tokopedia/types";
 import { Badge } from "@/components/ui/badge";
+import { SOURCE_ID_HINT, SOURCE_LABEL, SOURCES, type MarketplaceSource } from "@/lib/marketplace/sources";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input } from "@/components/ui/field";
@@ -32,7 +33,9 @@ export function ProductMapSheet({
 
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ productId: "", shopifyHandle: "", name: "" });
+  const [form, setForm] = useState<{ productId: string; shopifyHandle: string; name: string; source: MarketplaceSource }>({
+    productId: "", shopifyHandle: "", name: "", source: "tokopedia",
+  });
   const [removing, setRemoving] = useState<TokopediaProduct | null>(null);
 
   async function send(init: RequestInit, url = "/api/tokopedia-reviews/products") {
@@ -81,6 +84,9 @@ export function ProductMapSheet({
               </div>
 
               <p className="mt-1 flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-faint">
+                <span className="rounded-md bg-cream px-1.5 py-0.5 text-[11px] font-medium text-ink-soft">
+                  {SOURCE_LABEL[p.source]}
+                </span>
                 <span className="tabular-nums">{p.productId}</span>
                 <Link2 className="h-3 w-3" />
                 <span className="text-forest-700">{p.shopifyHandle}</span>
@@ -97,7 +103,7 @@ export function ProductMapSheet({
                   onClick={() =>
                     send({
                       method: "PATCH",
-                      body: JSON.stringify({ productId: p.productId, active: !p.active }),
+                      body: JSON.stringify({ source: p.source, productId: p.productId, active: !p.active }),
                     })
                   }
                   title={p.active ? t.mapDeactivateHint : undefined}
@@ -126,13 +132,35 @@ export function ProductMapSheet({
 
         {adding ? (
           <div className="space-y-3 rounded-xl border border-line bg-panel p-3">
-            <Field label={t.mapId} htmlFor="tp-id" hint={t.mapIdHint} required>
+            {/* Sumber dipilih LEBIH DULU: bentuk ID produknya berbeda, dan
+                petunjuk di bawah ikut berubah mengikutinya. */}
+            <Field label={t.mapSource} htmlFor="tp-source" required>
+              <div className="flex gap-1.5">
+                {SOURCES.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, source: k }))}
+                    className={cn(
+                      "cursor-pointer rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+                      form.source === k
+                        ? "bg-forest-700 text-white"
+                        : "border border-line bg-panel text-ink-soft hover:bg-cream",
+                    )}
+                  >
+                    {SOURCE_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label={t.mapId} htmlFor="tp-id" hint={SOURCE_ID_HINT[form.source]} required>
               <Input
                 id="tp-id"
-                inputMode="numeric"
+                inputMode="text"
                 value={form.productId}
                 onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value.trim() }))}
-                placeholder="1731010208236603355"
+                placeholder={form.source === "shopee" ? "1234567_890123456" : "1731010208236603355"}
                 className="font-mono"
               />
             </Field>
@@ -159,7 +187,7 @@ export function ProductMapSheet({
                 onClick={async () => {
                   const ok = await send({ method: "POST", body: JSON.stringify(form) });
                   if (ok) {
-                    setForm({ productId: "", shopifyHandle: "", name: "" });
+                    setForm((f) => ({ productId: "", shopifyHandle: "", name: "", source: f.source }));
                     setAdding(false);
                   }
                 }}
@@ -194,7 +222,7 @@ export function ProductMapSheet({
           if (p) {
             await send(
               { method: "DELETE" },
-              `/api/tokopedia-reviews/products?productId=${encodeURIComponent(p.productId)}`,
+              `/api/tokopedia-reviews/products?source=${p.source}&productId=${encodeURIComponent(p.productId)}`,
             );
           }
         }}

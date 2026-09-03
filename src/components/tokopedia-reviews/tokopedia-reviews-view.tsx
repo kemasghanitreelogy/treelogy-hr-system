@@ -7,6 +7,8 @@ import {
 import { apiErrorMessage } from "@/lib/api-error";
 import { hasBody } from "@/lib/tokopedia/judgeme";
 import type { TokopediaState } from "@/lib/tokopedia/types";
+import { SOURCE_LABEL, SOURCES, type MarketplaceSource } from "@/lib/marketplace/sources";
+import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/layout/locale-context";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/ui/stat-card";
@@ -44,19 +46,37 @@ export function TokopediaReviewsView({
   const toast = useToast();
 
   const [state, setState] = useState(initialState);
+  /** Tab sumber. "all" = satu layar untuk semuanya, sesuai tujuan modul ini. */
+  const [tab, setTab] = useState<MarketplaceSource | "all">("all");
   const [busy, setBusy] = useState(false);
   const [marking, setMarking] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
 
+  /** Isi yang sedang ditampilkan — satu-satunya tempat tab diterjemahkan. */
+  const tampil = useMemo(
+    () => (tab === "all" ? state.reviews : state.reviews.filter((r) => r.source === tab)),
+    [state.reviews, tab],
+  );
+  const runsTampil = useMemo(
+    () => (tab === "all" ? state.runs : state.runs.filter((r) => r.source === tab)),
+    [state.runs, tab],
+  );
+  /** Berapa review per sumber — dipakai lencana angka di tab. */
+  const perSumber = useMemo(() => {
+    const n: Record<string, number> = {};
+    for (const r of state.reviews) n[r.source] = (n[r.source] ?? 0) + 1;
+    return n;
+  }, [state.reviews]);
+
   const stats = useMemo(() => {
-    const pending = state.reviews.filter((r) => !r.exportedAt);
+    const pending = tampil.filter((r) => !r.exportedAt);
     return {
-      total: state.reviews.length,
+      total: tampil.length,
       pending: pending.length,
       importable: pending.filter(hasBody).length,
       starOnly: pending.filter((r) => !hasBody(r)).length,
     };
-  }, [state.reviews]);
+  }, [tampil]);
 
   async function pull(force: boolean) {
     setBusy(true);
@@ -153,11 +173,47 @@ export function TokopediaReviewsView({
 
   return (
     <div className="space-y-4">
+      {/* Satu menu, banyak sumber. Tab hanya MENYARING tampilan — ledger,
+          jeda antar-run, dan ekspor Judge.me tetap satu, karena itulah alasan
+          modul ini digabung. */}
+      <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label={t.sourceTabs}>
+        {(["all", ...SOURCES] as const).map((k) => {
+          const aktif = tab === k;
+          const jumlah = k === "all" ? state.reviews.length : (perSumber[k] ?? 0);
+          return (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={aktif}
+              onClick={() => setTab(k)}
+              className={cn(
+                "cursor-pointer rounded-xl px-3 py-1.5 text-sm font-medium transition-colors",
+                aktif ? "bg-forest-700 text-white" : "border border-line bg-panel text-ink-soft hover:bg-cream",
+              )}
+            >
+              {k === "all" ? t.allSources : SOURCE_LABEL[k]}
+              <span className={cn("ml-1.5 tabular-nums", aktif ? "text-white/70" : "text-ink-soft/70")}>{jumlah}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tombol tarik di layar hanya bekerja untuk Tokopedia. Shopee menjawab
+          403 dari IP pusat data (diuji langsung), jadi menawarkan tombolnya
+          hanya akan menghasilkan kegagalan yang membingungkan — perintahnya
+          yang ditampilkan, bukan tombol palsu. */}
+      {tab === "shopee" && (
+        <div className="rounded-2xl border border-[#e8d9a8] bg-gold-soft px-4 py-3 text-sm leading-relaxed text-[#8a6512]">
+          {t.shopeeHint}
+        </div>
+      )}
+
       <PullCard
         locale={locale}
-        runs={state.runs}
+        runs={runsTampil}
         nextPullAt={state.nextPullAt}
-        canPull={canPull && state.ready}
+        canPull={canPull && state.ready && tab !== "shopee"}
         canForce={canManage}
         busy={busy}
         onPull={pull}

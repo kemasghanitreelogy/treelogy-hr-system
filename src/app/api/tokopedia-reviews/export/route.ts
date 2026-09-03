@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   let marked = 0;
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error } = await supabase
-      .from("tokopedia_reviews")
+      .from("marketplace_reviews")
       .update({ exported_at: now })
       .in("feedback_id", ids.slice(i, i + 200))
       .is("exported_at", null)
@@ -68,7 +68,7 @@ export async function DELETE(req: Request) {
 
   for (let i = 0; i < ids.length; i += 200) {
     const { error } = await supabase
-      .from("tokopedia_reviews")
+      .from("marketplace_reviews")
       .update({ exported_at: null })
       .in("feedback_id", ids.slice(i, i + 200));
     if (error) return NextResponse.json({ error: "save_failed" }, { status: 500 });

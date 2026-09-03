@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSource, validProductId, type MarketplaceSource } from "@/lib/marketplace/sources";
 import { can, getSessionUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { readState } from "../state";
@@ -15,7 +16,6 @@ export const runtime = "nodejs";
  */
 
 /** ID produk Tokopedia: deretan angka (19 digit gaya TikTok, atau ID klasik). */
-const ID_RE = /^\d{6,25}$/;
 /** Handle Shopify: huruf kecil, angka, tanda hubung. */
 const HANDLE_RE = /^[a-z0-9][a-z0-9-]{1,120}$/;
 
@@ -29,37 +29,46 @@ async function guard(perm: string) {
 }
 
 export async function POST(req: Request) {
+  // Sumber menyertai setiap operasi: ID produk Shopee dan Tokopedia sama-sama
+  // angka, jadi tanpa ini satu bisa menimpa peta milik yang lain.
   const { supabase, error } = await guard("reviews.manage");
   if (error) return error;
 
   const body = (await req.json().catch(() => ({}))) as {
-    productId?: string; shopifyHandle?: string; name?: string;
+    productId?: string; shopifyHandle?: string; name?: string; source?: string;
   };
+  const source: MarketplaceSource = isSource(body.source) ? body.source : "tokopedia";
   const productId = (body.productId ?? "").trim();
   const handle = (body.shopifyHandle ?? "").trim().toLowerCase();
   const name = (body.name ?? "").trim();
 
-  if (!ID_RE.test(productId)) return NextResponse.json({ error: "invalid_product_id" }, { status: 400 });
+  // Bentuk ID diperiksa MENURUT SUMBERNYA — Shopee butuh "shopid_itemid".
+  // Kalau tidak, salah bentuk baru ketahuan berjam-jam kemudian saat penarik
+  // di laptop gagal, dan saat itu orangnya sudah pergi.
+  if (!validProductId(source, productId)) return NextResponse.json({ error: "invalid_product_id" }, { status: 400 });
   if (!HANDLE_RE.test(handle)) return NextResponse.json({ error: "invalid_handle" }, { status: 400 });
   if (!name) return NextResponse.json({ error: "name_required" }, { status: 400 });
 
   const { error: dbError } = await supabase!
-    .from("tokopedia_products")
-    .upsert({ product_id: productId, shopify_handle: handle, name, active: true }, { onConflict: "product_id" });
+    .from("marketplace_products")
+    .upsert({ source, product_id: productId, shopify_handle: handle, name, active: true }, { onConflict: "source,product_id" });
   if (dbError) return NextResponse.json({ error: "save_failed" }, { status: 500 });
 
   return NextResponse.json({ state: await readState() }, { status: 201 });
 }
 
 export async function PATCH(req: Request) {
+  // Sumber menyertai setiap operasi: ID produk Shopee dan Tokopedia sama-sama
+  // angka, jadi tanpa ini satu bisa menimpa peta milik yang lain.
   const { supabase, error } = await guard("reviews.manage");
   if (error) return error;
 
-  const body = (await req.json().catch(() => ({}))) as {
+  const body = (await req.json().catch(() => ({}))) as { source?: string;
     productId?: string; shopifyHandle?: string; name?: string; active?: boolean;
   };
+  const source: MarketplaceSource = isSource(body.source) ? body.source : "tokopedia";
   const productId = (body.productId ?? "").trim();
-  if (!ID_RE.test(productId)) return NextResponse.json({ error: "invalid_product_id" }, { status: 400 });
+  if (!validProductId(source, productId)) return NextResponse.json({ error: "invalid_product_id" }, { status: 400 });
 
   const patch: Record<string, unknown> = {};
   if (typeof body.shopifyHandle === "string") {
@@ -76,7 +85,7 @@ export async function PATCH(req: Request) {
   if (!Object.keys(patch).length) return NextResponse.json({ error: "nothing_to_update" }, { status: 400 });
 
   const { error: dbError } = await supabase!
-    .from("tokopedia_products").update(patch).eq("product_id", productId);
+    .from("marketplace_products").update(patch).eq("source", source).eq("product_id", productId);
   if (dbError) return NextResponse.json({ error: "save_failed" }, { status: 500 });
 
   return NextResponse.json({ state: await readState() });
@@ -90,15 +99,21 @@ export async function PATCH(req: Request) {
  * menonaktifkannya (`active: false`) — berhenti ditarik, riwayatnya tetap ada.
  */
 export async function DELETE(req: Request) {
+  // Sumber menyertai setiap operasi: ID produk Shopee dan Tokopedia sama-sama
+  // angka, jadi tanpa ini satu bisa menimpa peta milik yang lain.
   const { supabase, error } = await guard("reviews.manage");
   if (error) return error;
 
-  const productId = new URL(req.url).searchParams.get("productId")?.trim() ?? "";
-  if (!ID_RE.test(productId)) return NextResponse.json({ error: "invalid_product_id" }, { status: 400 });
+  const q = new URL(req.url).searchParams;
+  const sumberMentah = q.get("source");
+  const source: MarketplaceSource = isSource(sumberMentah) ? sumberMentah : "tokopedia";
+  const productId = q.get("productId")?.trim() ?? "";
+  if (!validProductId(source, productId)) return NextResponse.json({ error: "invalid_product_id" }, { status: 400 });
 
   const { count, error: countError } = await supabase!
-    .from("tokopedia_reviews")
+    .from("marketplace_reviews")
     .select("feedback_id", { count: "exact", head: true })
+    .eq("source", source)
     .eq("product_id", productId);
   // `count` null berarti pertanyaannya tidak terjawab — bukan berarti nol.
   // Menganggapnya nol akan menghapus produk BESERTA seluruh ledger-nya.
@@ -107,7 +122,7 @@ export async function DELETE(req: Request) {
   }
 
   const { error: dbError } = await supabase!
-    .from("tokopedia_products").delete().eq("product_id", productId);
+    .from("marketplace_products").delete().eq("source", source).eq("product_id", productId);
   if (dbError) return NextResponse.json({ error: "remove_failed" }, { status: 500 });
 
   return NextResponse.json({ state: await readState() });

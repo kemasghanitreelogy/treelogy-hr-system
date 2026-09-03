@@ -10,6 +10,13 @@ import type { TokopediaState } from "@/lib/tokopedia/types";
  * review. Dijadikan satu fungsi supaya halaman (render server) dan route
  * penyegar (setelah tarik) memakai sumber yang sama.
  */
+/**
+ * Semua sumber dimuat sekaligus, lalu LAYAR yang menyaring.
+ *
+ * Menaruh saringan di sini berarti berpindah tab = satu perjalanan ke server
+ * lagi; padahal seluruh isinya sudah muat dalam satu muatan. Angka ringkasan
+ * per sumber juga jadi bisa ditampilkan tanpa permintaan tambahan.
+ */
 export async function readState(): Promise<TokopediaState> {
   const supabase = await createClient();
   const empty: TokopediaState = {
@@ -19,11 +26,11 @@ export async function readState(): Promise<TokopediaState> {
   if (!supabase) return empty;
 
   const [productsRes, runsRes, reviewsRes] = await Promise.all([
-    supabase.from("tokopedia_products").select("*").order("sort_order", { ascending: true }),
-    supabase.from("tokopedia_review_runs").select("*").order("started_at", { ascending: false }).limit(20),
+    supabase.from("marketplace_products").select("*").order("sort_order", { ascending: true }),
+    supabase.from("marketplace_review_runs").select("*").order("started_at", { ascending: false }).limit(20),
     // Ledger toko ini berukuran ratusan baris; dibaca utuh supaya penyaringan,
     // pratinjau, dan pembuatan CSV semuanya jalan tanpa bolak-balik ke server.
-    supabase.from("tokopedia_reviews").select("*").order("review_at", { ascending: false }).limit(5000),
+    supabase.from("marketplace_reviews").select("*").order("review_at", { ascending: false }).limit(5000),
   ]);
 
   const products = (productsRes.data ?? []).map(mapProduct);

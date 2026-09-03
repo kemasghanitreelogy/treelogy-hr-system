@@ -1,5 +1,7 @@
 /** Bentuk data yang dipakai bersama server & layar. */
 
+import type { MarketplaceSource } from "@/lib/marketplace/sources";
+
 export type TokopediaRunStatus =
   | "running"
   | "ok"
@@ -11,6 +13,7 @@ export type TokopediaRunStatus =
   | "unreachable";
 
 export interface TokopediaProduct {
+  source: MarketplaceSource;
   productId: string;
   shopifyHandle: string;
   name: string;
@@ -21,6 +24,7 @@ export interface TokopediaProduct {
 }
 
 export interface TokopediaReview {
+  source: MarketplaceSource;
   feedbackId: string;
   productId: string;
   shopifyHandle: string;
@@ -41,6 +45,7 @@ export interface TokopediaReview {
 }
 
 export interface TokopediaRun {
+  source: MarketplaceSource;
   id: string;
   startedAt: string;
   finishedAt: string | null;

@@ -1,3 +1,4 @@
+import type { MarketplaceSource } from "@/lib/marketplace/sources";
 import type { TokopediaProduct, TokopediaReview, TokopediaRun } from "./types";
 
 /* Baris database → bentuk yang dipakai layar. Ditaruh terpisah supaya route
@@ -11,6 +12,7 @@ const iso = (v: unknown) => (v ? new Date(String(v)).toISOString() : null);
 
 export function mapProduct(r: Row): TokopediaProduct {
   return {
+    source: (r.source ?? "tokopedia") as MarketplaceSource,
     productId: str(r.product_id),
     shopifyHandle: str(r.shopify_handle),
     name: str(r.name),
@@ -21,6 +23,7 @@ export function mapProduct(r: Row): TokopediaProduct {
 
 export function mapReview(r: Row, productName = ""): TokopediaReview {
   return {
+    source: (r.source ?? "tokopedia") as MarketplaceSource,
     feedbackId: str(r.feedback_id),
     productId: str(r.product_id),
     shopifyHandle: str(r.shopify_handle),
@@ -41,6 +44,7 @@ export function mapReview(r: Row, productName = ""): TokopediaReview {
 
 export function mapRun(r: Row): TokopediaRun {
   return {
+    source: (r.source ?? "tokopedia") as MarketplaceSource,
     id: str(r.id),
     startedAt: iso(r.started_at) ?? new Date(0).toISOString(),
     finishedAt: iso(r.finished_at),

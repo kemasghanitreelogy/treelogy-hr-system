@@ -1,7 +1,8 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { picturesExpireAt, type PulledReview } from "./gql";
+import type { MarketplaceSource } from "@/lib/marketplace/sources";
+import { normalize, toRow, validRating as ratingSah } from "@/lib/marketplace/normalize";
 
 /* ============================================================
    Penyimpan hasil tarik.
@@ -29,41 +30,19 @@ export interface StoreResult {
  * tidak pernah diberikan siapa pun — dan sekali terimport, Judge.me hanya bisa
  * membatalkannya sebatch, bukan sebaris.
  */
-export function validRating(r: PulledReview): boolean {
-  const n = Number(r.productRating);
-  return Number.isInteger(n) && n >= 1 && n <= 5;
-}
 
-export function toReviewRow(r: PulledReview, pulledAt: string) {
-  const urls = (r.imageAttachments ?? []).map((a) => a?.imageUrl).filter((u): u is string => Boolean(u));
-  const expires = picturesExpireAt(urls);
-  const ts = Number(r.reviewCreateTime ?? 0);
-  return {
-    feedback_id: r.feedbackID,
-    product_id: r._productId,
-    shopify_handle: r._shopifyHandle,
-    rating: Number(r.productRating),
-    body: (r.message ?? "").trim(),
-    // Tanpa stempel waktu yang sah, dipakai waktu penarikan — BUKAN epoch.
-    // `review_date` adalah satu-satunya jalur Judge.me yang bisa backdate, jadi
-    // tanggal 01/01/1970 akan benar-benar terpasang di review itu.
-    review_at: Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000).toISOString() : pulledAt,
-    reviewer_name: (r.user?.fullName ?? "").trim(),
-    is_anonymous: r.isAnonymous === true,
-    variant_name: r.variantName || null,
-    reply: (r.reviewResponse?.message ?? "").trim() || null,
-    picture_urls: urls,
-    pictures_expire_at: expires ? expires.toISOString() : null,
-  };
-}
 
 /** Seluruh feedbackID yang sudah ada di ledger — kunci dedup & berhenti-awal. */
-export async function readSeen(admin: SupabaseClient): Promise<Set<string>> {
+export async function readSeen(admin: SupabaseClient, source: MarketplaceSource): Promise<Set<string>> {
   const seen = new Set<string>();
   // Dipaginasi: batas bawaan PostgREST 1000 baris akan diam-diam memotong
   // ledger, dan ledger yang terpotong membuat review lama terlihat "baru".
   for (let from = 0; ; from += 1000) {
-    const { data } = await admin.from("tokopedia_reviews").select("feedback_id").range(from, from + 999);
+    const { data } = await admin
+      .from("marketplace_reviews")
+      .select("feedback_id")
+      .eq("source", source)
+      .range(from, from + 999);
     if (!data?.length) break;
     for (const row of data) seen.add(String(row.feedback_id));
     if (data.length < 1000) break;
@@ -73,40 +52,50 @@ export async function readSeen(admin: SupabaseClient): Promise<Set<string>> {
 
 export async function storeReviews(
   admin: SupabaseClient,
+  source: MarketplaceSource,
   runId: string,
-  pulled: PulledReview[],
+  pulled: unknown[],
   seen: Set<string>,
 ): Promise<StoreResult> {
   const pulledAt = new Date().toISOString();
 
-  const fresh = new Map<string, PulledReview>();
-  for (const r of pulled) if (r?.feedbackID && !fresh.has(r.feedbackID)) fresh.set(r.feedbackID, r);
+  // Diseragamkan lebih dulu: sesudah titik ini tidak ada lagi bentuk khas
+  // marketplace mana pun, sehingga aturan di bawah berlaku sama untuk semua.
+  const fresh = new Map<string, ReturnType<typeof normalize>>();
+  for (const raw of pulled) {
+    const n = normalize(source, raw);
+    if (n && !fresh.has(n.feedbackId)) fresh.set(n.feedbackId, n);
+  }
 
-  const usable = [...fresh.values()].filter(validRating);
-  const newOnes = usable.filter((r) => !seen.has(r.feedbackID));
-  const revisited = usable.filter((r) => seen.has(r.feedbackID));
+  const usable = [...fresh.values()].filter((n): n is NonNullable<typeof n> => Boolean(n) && ratingSah(n!));
+  const newOnes = usable.filter((n) => !seen.has(n.feedbackId));
+  const revisited = usable.filter((n) => seen.has(n.feedbackId));
+
+  // Kunci konflik ikut menyertakan `source`: ID review Shopee dan Tokopedia
+  // sama-sama angka dan BISA bertabrakan — tanpa ini, satu bisa menimpa yang
+  // lain diam-diam.
+  const KUNCI = "source,feedback_id";
 
   if (newOnes.length) {
-    const rows = newOnes.map((r) => ({ ...toReviewRow(r, pulledAt), first_run_id: runId }));
+    const rows = newOnes.map((n) => ({ ...toRow(source, n, pulledAt), first_run_id: runId }));
     for (let i = 0; i < rows.length; i += 200) {
-      const { error } = await admin
-        .from("tokopedia_reviews")
-        .upsert(rows.slice(i, i + 200), { onConflict: "feedback_id" });
+      const { error } = await admin.from("marketplace_reviews").upsert(rows.slice(i, i + 200), { onConflict: KUNCI });
       if (error) throw new Error(error.message);
     }
   }
 
   // Halaman pertama tiap produk hampir selalu berisi review yang sudah dimiliki.
   // Tautan fotonya yang baru ikut disimpan — gratis, dan itulah yang membuat
-  // ekspor ulang batch lama tetap membawa foto yang hidup.
+  // ekspor ulang batch lama tetap membawa foto yang hidup (penting untuk
+  // Tokopedia, yang tautannya mati dalam hitungan jam).
   if (revisited.length) {
-    const rows = revisited.map((r) => toReviewRow(r, pulledAt)).filter((r) => r.picture_urls.length > 0);
+    const rows = revisited.map((n) => toRow(source, n, pulledAt)).filter((r) => r.picture_urls.length > 0);
     for (let i = 0; i < rows.length; i += 200) {
-      await admin.from("tokopedia_reviews").upsert(rows.slice(i, i + 200), { onConflict: "feedback_id" });
+      await admin.from("marketplace_reviews").upsert(rows.slice(i, i + 200), { onConflict: KUNCI });
     }
   }
 
-  const withBody = newOnes.filter((r) => (r.message ?? "").trim()).length;
+  const withBody = newOnes.filter((n) => n.body).length;
   return {
     seenCount: fresh.size,
     newCount: newOnes.length,

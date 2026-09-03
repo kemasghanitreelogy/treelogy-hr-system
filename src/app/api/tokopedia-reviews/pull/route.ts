@@ -1,4 +1,14 @@
 import { NextResponse } from "next/server";
+import type { MarketplaceSource } from "@/lib/marketplace/sources";
+
+/**
+ * Tombol tarik di layar hanya melayani Tokopedia.
+ *
+ * Shopee menjawab 403 untuk permintaan dari IP pusat data (diuji langsung:
+ * error 90309999), jadi menawarkan tombolnya di server hanya akan menghasilkan
+ * kegagalan yang membingungkan. Shopee ditarik dari laptop lewat /ingest.
+ */
+const SUMBER: MarketplaceSource = "tokopedia";
 import { can, getSessionUser } from "@/lib/auth";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -49,7 +59,7 @@ export async function POST(req: Request) {
 
   // ---- pagar jeda ------------------------------------------------
   const { data: runRows } = await admin
-    .from("tokopedia_review_runs")
+    .from("marketplace_review_runs")
     .select("*")
     .order("started_at", { ascending: false })
     .limit(5);
@@ -67,7 +77,7 @@ export async function POST(req: Request) {
 
   // ---- target ----------------------------------------------------
   const { data: productRows } = await admin
-    .from("tokopedia_products")
+    .from("marketplace_products")
     .select("product_id, shopify_handle, name, sort_order")
     .eq("active", true)
     .order("sort_order", { ascending: true });
@@ -80,11 +90,11 @@ export async function POST(req: Request) {
   if (!targets.length) return NextResponse.json({ error: "no_products" }, { status: 400 });
 
   // ---- ledger yang sudah dimiliki (kunci berhenti-awal) ----------
-  const seen = await readSeen(admin);
+  const seen = await readSeen(admin, SUMBER);
 
   // ---- buka baris run --------------------------------------------
   const { data: runRow, error: runErr } = await admin
-    .from("tokopedia_review_runs")
+    .from("marketplace_review_runs")
     .insert({ status: "running", started_by: authUserId, started_by_name: me.name })
     .select("*")
     .single();
@@ -93,7 +103,7 @@ export async function POST(req: Request) {
 
   const closeRun = async (patch: Record<string, unknown>) => {
     await admin
-      .from("tokopedia_review_runs")
+      .from("marketplace_review_runs")
       .update({ finished_at: new Date().toISOString(), ...patch })
       .eq("id", runId);
   };
@@ -129,7 +139,7 @@ export async function POST(req: Request) {
   // ---- simpan -----------------------------------------------------
   let stored;
   try {
-    stored = await storeReviews(admin, runId, pulled.reviews, seen);
+    stored = await storeReviews(admin, SUMBER, runId, pulled.reviews, seen);
   } catch (e) {
     const detail = e instanceof Error ? e.message : "unknown";
     await closeRun({ status: "failed" satisfies TokopediaRunStatus, error: detail.slice(0, 300) });

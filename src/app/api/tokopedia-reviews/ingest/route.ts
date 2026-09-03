@@ -4,6 +4,7 @@ import type { PulledReview } from "@/lib/tokopedia/gql";
 import { mapRun } from "@/lib/tokopedia/map";
 import { pullGate } from "@/lib/tokopedia/schedule";
 import { readSeen, storeReviews } from "@/lib/tokopedia/store";
+import { isSource, type MarketplaceSource } from "@/lib/marketplace/sources";
 import type { TokopediaRunStatus } from "@/lib/tokopedia/types";
 
 export const runtime = "nodejs";
@@ -51,11 +52,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  // Sumbernya menentukan produk mana yang dikerjakan, jeda mana yang berlaku,
+  // dan ledger bagian mana yang dianggap "sudah punya". Ditolak kalau tidak
+  // dikenali — menebaknya jadi "tokopedia" akan menulis review Shopee ke
+  // bagian ledger yang salah, dan itu tidak kelihatan sampai ekspor.
+  const sumberMentah = (body as unknown as { source?: unknown })?.source;
+  const source: MarketplaceSource = isSource(sumberMentah) ? sumberMentah : "tokopedia";
+
   // ---- start: minta izin, buka run, serahkan daftar kerja --------
   if (body?.action === "start") {
     const { data: runRows } = await admin
-      .from("tokopedia_review_runs")
+      .from("marketplace_review_runs")
       .select("*")
+      .eq("source", source)
       .order("started_at", { ascending: false })
       .limit(5);
     const gate = pullGate((runRows ?? []).map(mapRun));
@@ -67,8 +76,9 @@ export async function POST(req: Request) {
     }
 
     const { data: productRows } = await admin
-      .from("tokopedia_products")
+      .from("marketplace_products")
       .select("product_id, shopify_handle, name")
+      .eq("source", source)
       .eq("active", true)
       .order("sort_order", { ascending: true });
     const products = (productRows ?? []).map((p) => ({
@@ -79,8 +89,8 @@ export async function POST(req: Request) {
     if (!products.length) return NextResponse.json({ error: "no_products" }, { status: 400 });
 
     const { data: runRow, error } = await admin
-      .from("tokopedia_review_runs")
-      .insert({ status: "running", started_by_name: "penarik lokal" })
+      .from("marketplace_review_runs")
+      .insert({ status: "running", source, started_by_name: "penarik lokal" })
       .select("id")
       .single();
     if (error || !runRow) return NextResponse.json({ error: "run_start_failed" }, { status: 500 });
@@ -88,7 +98,7 @@ export async function POST(req: Request) {
     // `seen` dikirim ke skrip supaya berhenti-awal bisa diputuskan di sana —
     // skrip harus tahu kapan berhenti membuka halaman berikutnya, dan itu tidak
     // bisa ditunda sampai hasilnya dikirim balik.
-    const seen = await readSeen(admin);
+    const seen = await readSeen(admin, source);
     return NextResponse.json({ runId: String(runRow.id), products, seen: [...seen] });
   }
 
@@ -104,15 +114,15 @@ export async function POST(req: Request) {
     // Dibaca ULANG di sini, bukan memakai `seen` yang dikirim skrip: yang
     // menentukan sebuah review "baru" harus keadaan ledger saat menyimpan,
     // bukan potret yang bisa jadi sudah usang beberapa menit.
-    const seen = await readSeen(admin);
+    const seen = await readSeen(admin, source);
 
     let stored;
     try {
-      stored = await storeReviews(admin, body.runId, reviews, seen);
+      stored = await storeReviews(admin, source, body.runId, reviews, seen);
     } catch (e) {
       const detail = e instanceof Error ? e.message : "unknown";
       await admin
-        .from("tokopedia_review_runs")
+        .from("marketplace_review_runs")
         .update({ finished_at: new Date().toISOString(), status: "failed", error: detail.slice(0, 300) })
         .eq("id", body.runId);
       return NextResponse.json({ error: "save_failed", detail }, { status: 500 });
@@ -120,7 +130,7 @@ export async function POST(req: Request) {
 
     const status: TokopediaRunStatus = body.partial ? "partial" : "ok";
     await admin
-      .from("tokopedia_review_runs")
+      .from("marketplace_review_runs")
       .update({
         finished_at: new Date().toISOString(),
         status,
@@ -145,7 +155,7 @@ export async function POST(req: Request) {
     const status: TokopediaRunStatus =
       body.kind === "rejected" ? "rejected" : body.kind === "unreachable" ? "unreachable" : "failed";
     await admin
-      .from("tokopedia_review_runs")
+      .from("marketplace_review_runs")
       .update({
         finished_at: new Date().toISOString(),
         status,

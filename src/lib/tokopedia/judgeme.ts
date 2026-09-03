@@ -95,7 +95,10 @@ export function toJudgeMeRow(review: TokopediaReview, style: NameStyle): JudgeMe
     reply: (review.reply ?? "").trim(),
     curated: "ok",
     cf_variant: review.variantName ?? "",
-    cf_source: `tokopedia:${review.feedbackId}`,
+    // Asal DAN ID-nya — inilah satu-satunya jalan menelusuri balik sebuah
+    // review di Judge.me ke barisnya di ledger. Menuliskan "tokopedia" untuk
+    // review Shopee akan membuat penelusuran itu menuntun ke tempat yang salah.
+    cf_source: `${review.source}:${review.feedbackId}`,
   };
 }
 
