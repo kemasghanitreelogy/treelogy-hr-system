@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MarketplaceSource } from "@/lib/marketplace/sources";
 import { normalize, toRow, validRating as ratingSah } from "@/lib/marketplace/normalize";
+import { salinFoto, sudahDisalin } from "@/lib/marketplace/photos";
 
 /* ============================================================
    Penyimpan hasil tarik.
@@ -21,6 +22,12 @@ export interface StoreResult {
   noBody: number;
   /** Dibuang karena bintangnya tidak sah — bukan diperbaiki diam-diam. */
   discarded: number;
+  /** Foto yang berhasil disalin ke penyimpanan sendiri pada run ini. */
+  fotoDisalin: number;
+  /** Gagal disalin — tautan aslinya dipertahankan, dicoba lagi run berikutnya. */
+  fotoGagal: number;
+  /** Belum sempat disalin karena anggaran waktu habis. */
+  fotoTertunda: number;
 }
 
 /**
@@ -95,6 +102,35 @@ export async function storeReviews(
     }
   }
 
+  // ── Foto disalin ke penyimpanan sendiri, SESUDAH barisnya tersimpan ──
+  //
+  // Urutannya disengaja: kalau penyalinan gagal atau kehabisan waktu, review
+  // barunya sudah aman di ledger dan hanya fotonya yang tertinggal — run
+  // berikutnya melanjutkan. Kebalikannya (menyalin dulu) membuat kegagalan
+  // foto ikut menjatuhkan review yang sah.
+  const berfoto = [...newOnes, ...revisited]
+    .filter((n) => n.pictureUrls.length && n.pictureUrls.some((u) => !sudahDisalin(u)))
+    .map((n) => ({ feedbackId: n.feedbackId, urls: n.pictureUrls }));
+
+  let fotoDisalin = 0, fotoGagal = 0, fotoTertunda = 0;
+  if (berfoto.length) {
+    const hasil = await salinFoto(admin, source, berfoto);
+    fotoDisalin = hasil.disalin;
+    fotoGagal = hasil.gagal;
+    fotoTertunda = hasil.dilewati;
+    for (const [feedbackId, urls] of hasil.peta) {
+      await admin
+        .from("marketplace_reviews")
+        .update({
+          picture_urls: urls,
+          // Sudah tersalin seluruhnya = tidak ada lagi yang kedaluwarsa.
+          pictures_expire_at: urls.every(sudahDisalin) ? null : undefined,
+        })
+        .eq("source", source)
+        .eq("feedback_id", feedbackId);
+    }
+  }
+
   const withBody = newOnes.filter((n) => n.body).length;
   return {
     seenCount: fresh.size,
@@ -102,5 +138,8 @@ export async function storeReviews(
     withBody,
     noBody: newOnes.length - withBody,
     discarded: fresh.size - usable.length,
+    fotoDisalin,
+    fotoGagal,
+    fotoTertunda,
   };
 }

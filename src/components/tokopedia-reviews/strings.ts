@@ -52,6 +52,10 @@ export const STR: Record<Locale, Record<string, string>> = {
     allSources: "Semua",
     mapSource: "Marketplace",
     mapNeedsHandle: "handle belum diisi",
+    filesComing: "{n} berkas akan terunduh — satu per produk",
+    photoDropped: "{n} foto tidak ikut ke CSV.",
+    photoDroppedHint:
+      "Tautan foto dari marketplace hanya hidup sekitar 3 jam, sementara Judge.me mengunduh foto saat import diproses. Tarik ulang review-nya: fotonya akan disalin ke penyimpanan sendiri dan tautannya jadi permanen.",
     sourceTabs: "Pilih sumber review",
     shopeeStep1: "1. Temukan produk tokonya (sekali saja) — nama toko dari URL Shopee:",
     shopeeStep2: "2. Tarik reviewnya:",

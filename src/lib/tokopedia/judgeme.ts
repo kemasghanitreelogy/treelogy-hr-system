@@ -91,7 +91,9 @@ export function toJudgeMeRow(review: TokopediaReview, style: NameStyle): JudgeMe
     // alamat email untuk mengirim permintaan foto/balasan ke orangnya.
     reviewer_email: "",
     product_handle: review.shopifyHandle,
-    picture_urls: review.pictureUrls.slice(0, MAX_PICTURES).join(","),
+    // HANYA foto permanen. Tautan marketplace yang belum disalin sengaja
+    // dibuang di sini — lihat fotoPermanen() untuk alasannya.
+    picture_urls: review.pictureUrls.filter(fotoPermanen).slice(0, MAX_PICTURES).join(","),
     reply: (review.reply ?? "").trim(),
     curated: "ok",
     cf_variant: review.variantName ?? "",
@@ -114,6 +116,25 @@ export function hasBody(review: TokopediaReview): boolean {
  * bukan saat CSV dibuat. Tautan yang sudah lewat masa berlakunya akan gagal
  * diam-diam: reviewnya masuk, fotonya tidak, tanpa pesan galat.
  */
+/**
+ * Foto yang aman diimport = yang sudah disalin ke penyimpanan sendiri.
+ *
+ * Tautan bertanda tangan dari marketplace hidup sekitar tiga jam, sementara
+ * Judge.me mengunduh foto saat import DIPROSES — bukan saat CSV dibuat. Jadi
+ * tautan yang belum disalin adalah janji yang mungkin tidak ditepati, dan
+ * memasukkannya ke CSV lebih buruk daripada mengosongkannya: import berjalan
+ * "sukses" dengan foto yang hilang diam-diam, dan tidak ada yang tahu.
+ */
+const PENYIMPANAN_SENDIRI = "/storage/v1/object/public/review-photos/";
+export function fotoPermanen(url: string): boolean {
+  return typeof url === "string" && url.includes(PENYIMPANAN_SENDIRI);
+}
+
+/** Berapa foto yang TIDAK akan terbawa ke CSV karena belum disalin. */
+export function fotoTidakTerbawa(reviews: TokopediaReview[]): number {
+  return reviews.reduce((n, r) => n + r.pictureUrls.filter((u) => !fotoPermanen(u)).length, 0);
+}
+
 export function picturesExpired(review: TokopediaReview, now = new Date()): boolean {
   if (!review.picturesExpireAt) return false;
   return new Date(review.picturesExpireAt).getTime() <= now.getTime();

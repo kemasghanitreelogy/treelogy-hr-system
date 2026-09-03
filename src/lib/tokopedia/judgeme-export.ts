@@ -12,14 +12,47 @@ import type { TokopediaReview } from "./types";
 /* Unduhan hasil tarik review. Semua lewat saveBlobAsFile() — satu jalur yang
    sudah menutup dua celah unduhan khas Safari; jangan buat tautan sendiri. */
 
-/** CSV siap unggah ke wizard import Judge.me. */
-export function exportJudgeMeCsv(reviews: TokopediaReview[], style: NameStyle): number {
+/** Nama berkas yang aman dipakai sistem berkas mana pun. */
+function slug(s: string): string {
+  return (s || "produk").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "produk";
+}
+
+/**
+ * CSV siap unggah ke wizard import Judge.me — SATU BERKAS PER PRODUK.
+ *
+ * Wizard Judge.me mengimport satu berkas sebagai satu batch, dan pembatalan
+ * hanya bisa se-batch. Memisahkan per produk berarti kesalahan pada satu
+ * produk tidak menyeret produk lain ikut dibatalkan — dan berkasnya bisa
+ * diunggah bertahap, satu per satu, sambil diperiksa hasilnya.
+ *
+ * Berkas diunduh berurutan dengan jeda: browser memperlakukan beberapa
+ * unduhan beruntun sebagai perilaku mencurigakan dan diam-diam membatalkan
+ * sebagiannya kalau dipicu serentak.
+ */
+export async function exportJudgeMeCsv(reviews: TokopediaReview[], style: NameStyle): Promise<number> {
   if (!reviews.length) return 0;
-  saveBlobAsFile(
-    new Blob([buildJudgeMeCsv(reviews, style)], { type: "text/csv;charset=utf-8" }),
-    `judgeme-import-${witaToday()}.csv`,
-  );
+
+  const perProduk = new Map<string, TokopediaReview[]>();
+  for (const r of reviews) {
+    const kunci = r.shopifyHandle || r.productId;
+    perProduk.set(kunci, [...(perProduk.get(kunci) ?? []), r]);
+  }
+
+  const tgl = witaToday();
+  let ke = 0;
+  for (const [handle, baris] of perProduk) {
+    if (ke++) await new Promise((r) => setTimeout(r, 450));
+    saveBlobAsFile(
+      new Blob([buildJudgeMeCsv(baris, style)], { type: "text/csv;charset=utf-8" }),
+      `judgeme-${slug(handle)}-${tgl}.csv`,
+    );
+  }
   return reviews.length;
+}
+
+/** Berapa berkas yang akan terunduh — dipakai layar untuk memberi tahu dulu. */
+export function jumlahBerkasEkspor(reviews: TokopediaReview[]): number {
+  return new Set(reviews.map((r) => r.shopifyHandle || r.productId)).size;
 }
 
 /** Review bintang-saja: tidak bisa diimport, disimpan sebagai catatan. */

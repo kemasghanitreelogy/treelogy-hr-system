@@ -6,9 +6,9 @@ import {
 } from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { hasBody, namedCount, picturesExpired, type NameStyle } from "@/lib/tokopedia/judgeme";
+import { fotoTidakTerbawa, hasBody, namedCount, picturesExpired, type NameStyle } from "@/lib/tokopedia/judgeme";
 import { buildJudgeMeTsv } from "@/lib/tokopedia/judgeme";
-import { exportJudgeMeCsv, exportReviewsXlsx, exportSkippedCsv } from "@/lib/tokopedia/judgeme-export";
+import { exportJudgeMeCsv, exportReviewsXlsx, exportSkippedCsv, jumlahBerkasEkspor } from "@/lib/tokopedia/judgeme-export";
 import type { TokopediaReview } from "@/lib/tokopedia/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -109,7 +109,12 @@ export function ExportCard({
 
   async function doCsv() {
     if (!guard()) return;
-    exportJudgeMeCsv(importable, nameStyle);
+    const berkas = jumlahBerkasEkspor(importable);
+    // Beberapa unduhan beruntun mudah disalahpahami browser sebagai gangguan,
+    // jadi jumlahnya disebut LEBIH DULU — supaya yang muncul kemudian terbaca
+    // sebagai hal yang diharapkan, bukan kejanggalan.
+    if (berkas > 1) toast.success(t.filesComing.replace("{n}", String(berkas)));
+    await exportJudgeMeCsv(importable, nameStyle);
     await afterExport(importable);
   }
 
@@ -200,6 +205,19 @@ export function ExportCard({
         <div className="mt-3 flex gap-2.5 rounded-xl border border-[#e6c9bd] bg-clay-soft px-3 py-2.5">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-clay" />
           <p className="text-[11px] leading-relaxed font-medium text-[#8c3c1f]">{t.scopeAllWarn}</p>
+        </div>
+      )}
+
+      {/* Foto yang belum disalin ke penyimpanan sendiri TIDAK ikut CSV —
+          lebih baik kosong daripada tautan mati yang membuat import terlihat
+          berhasil padahal fotonya hilang. Yang hilang harus disebut, dan
+          disebut bersama cara memulihkannya. */}
+      {fotoTidakTerbawa(importable) > 0 && (
+        <div className="mb-3 rounded-xl border border-[#e6c9bd] bg-clay-soft px-3 py-2.5 text-xs leading-relaxed text-[#8c3c1f]">
+          <span className="font-semibold">
+            {t.photoDropped.replace("{n}", String(fotoTidakTerbawa(importable)))}
+          </span>{" "}
+          {t.photoDroppedHint}
         </div>
       )}
 
