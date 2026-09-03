@@ -291,8 +291,18 @@ function petunjukCookieShopee() {
   }
   if (shopeeCookie) {
     console.error(
-      `\n  Cookie ${SHOPEE_COOKIE_ENV} (${asal}) sudah dipakai tapi tetap ditolak — kemungkinan sudah kedaluwarsa.\n` +
-        "  Buka shopee.co.id di browser (pastikan masih login), lalu salin ulang cookie-nya.\n",
+      `\n  Cookie ${SHOPEE_COOKIE_ENV} (${asal}) dipakai, tapi tetap ditolak.\n\n` +
+        "  Sebabnya bukan cookie yang salah. Permintaan asli dari browser membawa\n" +
+        "  header x-sap-sec dan x-sap-ri — TANDA TANGAN yang dihitung ulang oleh\n" +
+        "  JavaScript Shopee (x-sz-sdk-version) untuk SETIAP permintaan, terikat\n" +
+        "  pada alamat yang dituju. Tanda tangan itu tidak bisa disalin ulang, dan\n" +
+        "  menirunya berarti membongkar sistem anti-bot: rapuh, berubah sewaktu-\n" +
+        "  waktu, dan melanggar ketentuan Shopee. Jalan itu tidak ditempuh di sini.\n\n" +
+        "  Jalan yang benar — dan Anda berhak atasnya sebagai pemilik toko:\n" +
+        "    • Shopee Open Platform (open.shopee.com) → API resmi product.get_comment.\n" +
+        "      Daftarkan app, otorisasi toko sendiri, dapatkan partner_id + partner_key.\n" +
+        "    • Atau ekspor penilaian dari Seller Centre kalau tersedia sebagai CSV.\n\n" +
+        "  Beri tahu jalur mana yang dipilih — penariknya tinggal disambungkan.\n",
     );
     return;
   }
