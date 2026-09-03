@@ -114,7 +114,7 @@ export async function storeReviews(
 
   let fotoDisalin = 0, fotoGagal = 0, fotoTertunda = 0;
   if (berfoto.length) {
-    const hasil = await salinFoto(admin, source, berfoto);
+    const hasil = await salinFoto(admin, source, berfoto, 240_000);
     fotoDisalin = hasil.disalin;
     fotoGagal = hasil.gagal;
     fotoTertunda = hasil.dilewati;

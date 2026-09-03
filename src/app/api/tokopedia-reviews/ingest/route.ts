@@ -8,7 +8,9 @@ import { isSource, type MarketplaceSource } from "@/lib/marketplace/sources";
 import type { TokopediaRunStatus } from "@/lib/tokopedia/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Menyalin ratusan foto butuh waktu, dan run yang jatuh di detik terakhir
+// berarti review barunya ikut hilang — bukan cuma fotonya.
+export const maxDuration = 300;
 
 /* ============================================================
    Jalur masuk untuk penarik yang berjalan di LUAR Vercel.

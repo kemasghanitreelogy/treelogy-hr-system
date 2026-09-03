@@ -70,6 +70,8 @@ const SOURCE = (process.argv.find((a) => a.startsWith("--source="))?.split("=")[
 const DISCOVER = process.argv.find((a) => a.startsWith("--discover="))?.split("=")[1]?.trim() ?? null;
 /** --check → periksa sesi Shopee saja, tanpa menarik apa pun. */
 const CHECK = process.argv.includes("--check");
+/** --refresh-photos → telusuri lebih dalam untuk menyegarkan tautan foto lama. */
+const REFRESH_PHOTOS = process.argv.includes("--refresh-photos");
 if (!["tokopedia", "shopee"].includes(SOURCE)) {
   console.error(`\n  Sumber tidak dikenal: ${SOURCE}. Pilih tokopedia atau shopee.\n`);
   process.exit(1);
@@ -538,7 +540,23 @@ async function main() {
         let baruHalaman = 0;
         for (const r of list) {
           const key = id(r);
-          if (!key || seen.has(key)) continue;
+          if (!key) continue;
+          const sudahPunya = seen.has(key);
+
+          // Review yang SUDAH dimiliki tetap dikirim kalau ia berfoto.
+          //
+          // Tautan foto marketplace hidup hanya beberapa jam, dan satu-satunya
+          // cara menyegarkannya adalah membawa kembali barisnya ke server —
+          // di sana fotonya disalin ke penyimpanan sendiri dan tautannya jadi
+          // permanen. Sebelumnya baris semacam ini dibuang di sini, sehingga
+          // jalur penyegaran foto di server TIDAK PERNAH berjalan meski
+          // kodenya ada.
+          if (sudahPunya) {
+            const berfoto = SOURCE === "shopee" ? (r.images ?? []).length : (r.imageAttachments ?? []).length;
+            if (berfoto) reviews.push({ ...r, _productId: p.productId, _shopifyHandle: p.shopifyHandle });
+            continue;
+          }
+
           seen.add(key);
           baruHalaman++;
           reviews.push({ ...r, _productId: p.productId, _shopifyHandle: p.shopifyHandle });
@@ -548,11 +566,13 @@ async function main() {
         // BERHENTI AWAL. Review diurutkan terbaru dulu, jadi satu halaman penuh
         // yang seluruhnya sudah ada di ledger berarti sisanya pasti sudah ada
         // juga. Melanjutkan hanya menambah beban tanpa menambah data.
-        if (list.length && baruHalaman === 0) break;
+        // Saat menyegarkan foto, berhenti-awal dimatikan: yang dicari justru
+        // review LAMA, dan halaman tanpa review baru adalah tempat mereka.
+        if (!REFRESH_PHOTOS && list.length && baruHalaman === 0) break;
         if (!hasNext || !list.length) break;
         page++;
       }
-      console.log(`  ${p.name ?? p.productId}: +${baruProduk} review baru`);
+      console.log(`  ${p.name ?? p.productId}: +${baruProduk} review baru${REFRESH_PHOTOS ? ` · ${reviews.length} baris terkumpul` : ""}`);
     }
 
     console.log(`\n  ${requests} permintaan · ${reviews.length} review baru — mengirim ke server…`);
