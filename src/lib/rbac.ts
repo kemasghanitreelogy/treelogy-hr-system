@@ -194,6 +194,11 @@ const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leav
  */
 export const SALARY_PERMS = ["payroll.salary", "payroll.process", "payroll.export"];
 
+// Hak Admin Operasional: karyawan biasa + inventaris + penyetuju TAHAP 1
+// perjalanan dinas. Dipisah jadi konstanta supaya peran gabungan di bawah
+// ikut berubah otomatis kalau daftar ini bertambah.
+const OPS_PERMS = [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve", "reviews.view", "reviews.pull"];
+
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");
 
@@ -245,7 +250,7 @@ export const roles: Role[] = [
     color: "#6b7548",
     // Terpisah dari "Pengelola Inventaris" supaya pemegang peran itu TIDAK ikut
     // mendapat hak menyetujui perjalanan dinas.
-    permissionIds: [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve", "reviews.view", "reviews.pull"],
+    permissionIds: OPS_PERMS,
   },
   {
     id: "role-receipt",
@@ -290,6 +295,17 @@ export const roles: Role[] = [
     // suatu saat HR mendapat izin baru, peran ini ikut mendapatkannya tanpa ada
     // yang perlu ingat menyalinnya ke sini.
     permissionIds: HR_PERMS.filter((id) => !SALARY_PERMS.includes(id)),
+  },
+  {
+    id: "role-hr-ops",
+    name: "HR + Ops (akses penuh)",
+    description:
+      "Seluruh hak HR Officer termasuk gaji & payroll, plus persetujuan tahap 1 perjalanan dinas & pembayaran.",
+    color: "#6b7548",
+    // Gabungan, bukan penukaran: pemegangnya adalah satu-satunya penyetuju
+    // tahap 1 perjalanan dinas di luar admin, dan HR Officer tidak punya hak
+    // itu — memindahkannya ke "role-hr" saja akan memutus rantai persetujuan.
+    permissionIds: [...new Set([...HR_PERMS, ...OPS_PERMS])],
   },
   {
     id: "role-payroll",
