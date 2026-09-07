@@ -7,10 +7,8 @@ import { saveBlobAsFile } from "@/lib/download";
 import type { Locale } from "@/lib/i18n";
 import { ImportParseError, parseImportFile, templateCsv, type ImportRow, type ParsedImport } from "@/lib/eligible-customers/parse";
 import type { EligibleState, GrantInput, GrantResult } from "@/lib/eligible-customers/types";
-import { splitTags } from "@/lib/eligible-customers/validate";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
 import { Progress } from "@/components/ui/progress";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
@@ -41,14 +39,12 @@ export function ImportSheet({
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>({ kind: "pick" });
-  const [extraTags, setExtraTags] = useState("");
 
   const busy = step.kind === "running" || step.kind === "parsing";
 
   function close() {
     if (busy) return;
     setStep({ kind: "pick" });
-    setExtraTags("");
     onClose();
   }
 
@@ -74,12 +70,11 @@ export function ImportSheet({
   async function process(parsed: ParsedImport) {
     const rows = parsed.rows.filter((r) => !r.problem);
     if (!rows.length) return;
-    const tags = splitTags(extraTags);
     const inputs: GrantInput[] = rows.map((r) => ({
       email: r.email,
       firstName: r.firstName,
       lastName: r.lastName,
-      tags: [...new Set([...r.tags, ...tags])],
+      tags: r.tags,
       source: "import",
     }));
     setStep({ kind: "running", rows, done: 0, total: rows.length, results: [] });
@@ -143,7 +138,6 @@ export function ImportSheet({
       )}
 
       {step.kind === "preview" && <Preview t={t} parsed={step.parsed} fileName={step.fileName}
-        extraTags={extraTags} onExtraTags={setExtraTags}
         onChange={() => fileRef.current?.click()} onProcess={() => process(step.parsed)} />}
 
       {step.kind === "running" && (
@@ -175,13 +169,11 @@ export function ImportSheet({
 }
 
 function Preview({
-  t, parsed, fileName, extraTags, onExtraTags, onChange, onProcess,
+  t, parsed, fileName, onChange, onProcess,
 }: {
   t: Record<string, string>;
   parsed: ParsedImport;
   fileName: string;
-  extraTags: string;
-  onExtraTags: (v: string) => void;
   onChange: () => void;
   onProcess: () => void;
 }) {
@@ -201,10 +193,6 @@ function Preview({
         {dup > 0 && <span className="rounded-full bg-gold-soft px-2.5 py-1 font-medium text-[#8a6512]">{dup} {t.previewDup}</span>}
       </div>
 
-      <Field label={t.extraTags} htmlFor="ec-extra-tags" hint={t.extraTagsHint}>
-        <Input id="ec-extra-tags" value={extraTags} onChange={(e) => onExtraTags(e.target.value)} placeholder="kampanye-sept" />
-      </Field>
-
       <div className="max-h-[45vh] overflow-auto rounded-xl border border-line">
         <table className="w-full text-left text-xs">
           <thead className="sticky top-0 bg-panel text-faint">
@@ -212,7 +200,6 @@ function Preview({
               <th className="px-2 py-1.5 font-medium">#</th>
               <th className="px-2 py-1.5 font-medium">{t.email}</th>
               <th className="px-2 py-1.5 font-medium">{t.firstName} / {t.lastName}</th>
-              <th className="px-2 py-1.5 font-medium">{t.tags}</th>
             </tr>
           </thead>
           <tbody>
@@ -229,7 +216,6 @@ function Preview({
                   )}
                 </td>
                 <td className="px-2 py-1.5 text-ink-soft">{[r.firstName, r.lastName].filter(Boolean).join(" ") || "—"}</td>
-                <td className="px-2 py-1.5 text-ink-soft">{r.tags.join(", ") || "—"}</td>
               </tr>
             ))}
           </tbody>

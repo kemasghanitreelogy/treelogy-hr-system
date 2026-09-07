@@ -38,9 +38,9 @@ export class ImportParseError extends Error {
 /** Contoh berkas yang bisa diunduh — judul kolom persis yang dikenali. */
 export function templateCsv(): string {
   return [
-    "email,nama_depan,nama_belakang,tags",
-    "budi@example.com,Budi,Santoso,vip",
-    "sari@example.com,Sari,,",
+    "email,nama_depan,nama_belakang",
+    "budi@example.com,Budi,Santoso",
+    "sari@example.com,Sari,",
   ].join("\n");
 }
 
