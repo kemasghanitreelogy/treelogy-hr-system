@@ -3,6 +3,7 @@ import { createClient } from "./supabase/server";
 import { isSupabaseConfigured } from "./supabase/config";
 import { ALL_PERMISSION_IDS } from "./rbac";
 import { SUPER_ADMIN_EMAIL, SUPERADMIN_PERM } from "./super-admin";
+import { fieldTeamPerms } from "./field-team";
 
 export interface SessionUser {
   id: string;
@@ -53,7 +54,7 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
       ? supabase.from("roles").select("name, permissions").eq("id", profile.role_id).maybeSingle()
       : Promise.resolve({ data: null }),
     profile?.employee_id
-      ? supabase.from("employees").select("name").eq("id", profile.employee_id).maybeSingle()
+      ? supabase.from("employees").select("name, team").eq("id", profile.employee_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
 
@@ -67,6 +68,13 @@ async function resolveSessionUser(): Promise<SessionUser | null> {
   const local = (user.email ?? "pengguna").split("@")[0].replace(/[._-]+/g, " ");
   let name = local.replace(/\b\w/g, (c) => c.toUpperCase());
   if (empRes.data?.name) name = empRes.data.name;
+
+  // Izin yang melekat pada TIM (farm/factory → Surat Keluar), di atas izin
+  // peran. Ditambahkan di sini supaya nav, can(), dan guard halaman semuanya
+  // ikut tanpa harus tahu aturannya; pasangannya di RLS adalah is_field_team().
+  for (const perm of fieldTeamPerms(empRes.data?.team)) {
+    if (!permissions.includes(perm)) permissions = [...permissions, perm];
+  }
 
   // Super admin = the fixed root email OR an account the super admin assigned.
   // Carry a synthetic permission so nav/can()/route-guards all gate for free.
