@@ -31,6 +31,16 @@ export class ShopifyError extends Error {
   }
 }
 
+/**
+ * Pencarian LANGSUNG, bukan lewat indeks pencarian. `customers(query:"email:…")`
+ * membaca indeks yang tertinggal beberapa detik dari customer yang baru dibuat
+ * — dan modul ini justru sering memanggil lookup sesaat setelah membuat.
+ * `customerByIdentifier` membaca penyimpanan utama, konsisten seketika.
+ */
+const BY_EMAIL = `query CustomerByEmail($identifier: CustomerIdentifierInput!) {
+  customerByIdentifier(identifier: $identifier) { id tags defaultEmailAddress { emailAddress } }
+}`;
+
 const FIND = `query FindCustomerByEmail($q: String!) {
   customers(first: 5, query: $q) {
     nodes { id tags defaultEmailAddress { emailAddress } }
@@ -114,6 +124,9 @@ function mapNode(n: any): ShopifyCustomer {
  */
 export async function findCustomerByEmail(email: string): Promise<ShopifyCustomer | null> {
   const target = email.trim().toLowerCase();
+  const direct = await gql(BY_EMAIL, { identifier: { emailAddress: target } });
+  if (direct?.customerByIdentifier) return mapNode(direct.customerByIdentifier);
+
   const data = await gql(FIND, { q: `email:"${target.replace(/"/g, "")}"` });
   const nodes: any[] = data?.customers?.nodes ?? [];
   const hit = nodes.map(mapNode).find((c) => c.email === target);
@@ -137,6 +150,15 @@ export async function createCustomer(input: {
   const payload = data?.customerCreate;
   const errs: any[] = payload?.userErrors ?? [];
   if (errs.length || !payload?.customer) {
+    // "Email has already been taken" = customer-nya ADA tapi belum terlihat
+    // lookup mana pun — baca ulang langsung beberapa kali sebelum menyerah.
+    if (errs.some((e) => /already been taken/i.test(e?.message ?? ""))) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        const found = await findCustomerByEmail(input.email);
+        if (found) return found;
+      }
+    }
     throw new ShopifyError(
       "shopify_user_error",
       errs.map((e) => e?.message).filter(Boolean).join("; ") || undefined,

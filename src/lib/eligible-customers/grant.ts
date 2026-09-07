@@ -63,7 +63,7 @@ export async function grantOne(
 
   if (seedConfigured()) {
     const out = await seedEligibility({
-      email, firstName, lastName,
+      email, customerId: shopifyId, firstName, lastName,
       tags: [...new Set([ADMIN_CREATED_TAG, ...tags])],
       campaignKeys: input.campaignKeys ?? null,
       seedDate,

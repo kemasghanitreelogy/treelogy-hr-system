@@ -23,6 +23,9 @@ export function seedConfigured(): boolean {
 
 export interface SeedRequest {
   email: string;
+  /** GID customer yang baru dibuat/ditemukan — backend memakainya langsung,
+   *  tanpa bergantung pada indeks pencarian yang bisa tertinggal. */
+  customerId?: string | null;
   firstName?: string;
   lastName?: string;
   tags: string[];
@@ -54,6 +57,7 @@ export async function seedEligibility(req: SeedRequest): Promise<SeedOutcome> {
       headers: { "Content-Type": "application/json", "X-Admin-Secret": secret },
       body: JSON.stringify({
         email: req.email,
+        customerId: req.customerId ?? null,
         firstName: req.firstName || null,
         lastName: req.lastName || null,
         tags: req.tags,
