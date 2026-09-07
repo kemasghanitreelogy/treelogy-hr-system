@@ -137,6 +137,21 @@ const MESSAGES: Record<string, Msg> = {
   shopify_not_configured: { id: "Kredensial Shopify (STORE_NAME / ADMIN_API_KEY) kosong di server. Pencocokan tidak bisa jalan — ini BUKAN berarti ordernya tidak ada.", en: "Shopify credentials (STORE_NAME / ADMIN_API_KEY) are empty on the server. Matching can't run — this does NOT mean the orders are missing." },
   shopify_forbidden: { id: "Token Shopify tidak punya izin baca order (read_orders). Pencocokan tidak bisa jalan sampai izinnya ditambahkan — ini BUKAN berarti ordernya tidak ada.", en: "The Shopify token lacks order read access (read_orders). Matching can't run until that scope is granted — this does NOT mean the orders are missing." },
   shopify_failed: { id: "Gagal menghubungi Shopify. Coba lagi.", en: "Couldn't reach Shopify. Try again." },
+  // --- pelanggan eligible (customer Shopify + seeding Combined Discount) ---
+  email_required: { id: "Email wajib diisi.", en: "Email is required." },
+  too_many_rows: { id: "Terlalu banyak baris dalam satu kiriman. Kirim per 25 baris.", en: "Too many rows in one request. Send at most 25 rows." },
+  no_rows: { id: "Tidak ada baris yang bisa diproses.", en: "There are no rows to process." },
+  shopify_forbidden_customers: { id: "Token Shopify tidak punya izin write_customers. Pelanggan tidak bisa dibuat sampai izinnya ditambahkan.", en: "The Shopify token lacks the write_customers scope. Customers can't be created until it's granted." },
+  shopify_user_error: { id: "Shopify menolak data pelanggan ini.", en: "Shopify rejected this customer's data." },
+  seed_not_configured: { id: "Backend Combined Discount belum dikonfigurasi (COMBINED_DISCOUNT_API_URL / COMBINED_DISCOUNT_ADMIN_SECRET). Pelanggan dibuat di Shopify, tapi eligibility BELUM di-seed.", en: "The Combined Discount backend isn't configured (COMBINED_DISCOUNT_API_URL / COMBINED_DISCOUNT_ADMIN_SECRET). The customer exists in Shopify but eligibility is NOT seeded yet." },
+  seed_unauthorized: { id: "Backend Combined Discount menolak secret admin (401). Periksa COMBINED_DISCOUNT_ADMIN_SECRET.", en: "The Combined Discount backend rejected the admin secret (401). Check COMBINED_DISCOUNT_ADMIN_SECRET." },
+  seed_user_error: { id: "Backend Combined Discount menolak data pelanggan ini (422).", en: "The Combined Discount backend rejected this customer's data (422)." },
+  seed_no_campaign: { id: "Belum ada campaign aktif dengan cutoff di app Combined Discount (409). Simpan discount-nya dulu, lalu ulangi grant.", en: "No active campaign with a cutoff exists in the Combined Discount app (409). Save the discount first, then re-grant." },
+  seed_failed: { id: "Backend Combined Discount gagal menulis DB/metafield (500). Ulangi grant — aman, prosesnya idempoten.", en: "The Combined Discount backend failed to write DB/metafield (500). Re-grant — it's safe, the process is idempotent." },
+  verify_not_configured: { id: "Token app Combined Discount (ADMIN_API_KEY_COMBINED_DISCOUNT) kosong di server — metafield tidak bisa dibaca.", en: "The Combined Discount app token (ADMIN_API_KEY_COMBINED_DISCOUNT) is empty on the server — the metafield can't be read." },
+  verify_no_customer: { id: "Pelanggan ini belum punya ID Shopify — jalankan grant dulu.", en: "This customer has no Shopify ID yet — run the grant first." },
+  verify_failed: { id: "Gagal membaca metafield dari Shopify. Coba lagi.", en: "Couldn't read the metafield from Shopify. Try again." },
+  seed_unreachable: { id: "Backend Combined Discount tidak bisa dihubungi. Coba lagi.", en: "Couldn't reach the Combined Discount backend. Try again." },
   jubelio_login_failed: { id: "Gagal masuk ke Jubelio — periksa kredensial API-nya.", en: "Jubelio login failed — check the API credentials." },
 
   // --- review tokopedia → judge.me ---

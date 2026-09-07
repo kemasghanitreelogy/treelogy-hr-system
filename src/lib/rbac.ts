@@ -126,6 +126,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     ],
   },
   {
+    module: "customers",
+    label: "Pelanggan Eligible",
+    permissions: [
+      { id: "customers.view", label: "Lihat pelanggan eligible diskon Shopify" },
+      { id: "customers.grant", label: "Buat pelanggan Shopify & beri eligibility diskon" },
+    ],
+  },
+  {
     module: "kpi",
     label: "KPI & Kinerja",
     permissions: [
@@ -197,7 +205,9 @@ export const SALARY_PERMS = ["payroll.salary", "payroll.process", "payroll.expor
 // Hak Admin Operasional: karyawan biasa + inventaris + penyetuju TAHAP 1
 // perjalanan dinas. Dipisah jadi konstanta supaya peran gabungan di bawah
 // ikut berubah otomatis kalau daftar ini bertambah.
-const OPS_PERMS = [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve", "reviews.view", "reviews.pull"];
+// Pelanggan Eligible ikut ke Ops: tim yang sama yang mengurus toko dan
+// kampanye diskonnya — bukan HR — yang tahu siapa saja yang harus di-grant.
+const OPS_PERMS = [...EMPLOYEE_PERMS, "inventory.manage", "travel.approve", "reviews.view", "reviews.pull", "customers.view", "customers.grant"];
 
 // HR: everything operational + user assignment, but NOT role management.
 const HR_PERMS = ALL_PERMISSION_IDS.filter((id) => id !== "access.roles");
@@ -261,15 +271,17 @@ export const roles: Role[] = [
     // SEMUA karyawan ikut melihat nomor telepon pelanggan. receipt.sync sengaja
     // tidak ikut: menulis ke Jubelio mengubah data pesanan sungguhan.
     // Review Marketplace ikut karena tim yang sama mengurus toko; `reviews.manage`
-    // tidak, supaya peta produk hanya diubah HR/admin.
-    permissionIds: [...EMPLOYEE_PERMS, "receipt.view", "reviews.view", "reviews.pull"],
+    // tidak, supaya peta produk hanya diubah HR/admin. Pelanggan Eligible juga
+    // milik tim ini (Anna & Ika): merekalah yang menerima daftar pelanggan yang
+    // harus di-grant, dan grant-nya idempoten sehingga aman di tangan operator.
+    permissionIds: [...EMPLOYEE_PERMS, "receipt.view", "reviews.view", "reviews.pull", "customers.view", "customers.grant"],
   },
   {
     id: "role-manager-receipt",
     name: "Manager + Receipt Sales",
     description: "Hak manajer, plus membaca label resi & mencocokkannya ke order Shopify.",
     color: "#4a7ba6",
-    permissionIds: [...MANAGER_PERMS, "receipt.view", "reviews.view", "reviews.pull"],
+    permissionIds: [...MANAGER_PERMS, "receipt.view", "reviews.view", "reviews.pull", "customers.view", "customers.grant"],
   },
   {
     id: "role-finance-lead",
