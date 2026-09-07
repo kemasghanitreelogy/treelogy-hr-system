@@ -3,14 +3,18 @@ import { can, getSessionUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { grantOne } from "@/lib/eligible-customers/grant";
 import type { GrantInput, GrantResult } from "@/lib/eligible-customers/types";
-import { MAX_BULK_ROWS } from "@/lib/eligible-customers/validate";
+import { MAX_BULK_ROWS, OUT_OF_TIME } from "@/lib/eligible-customers/validate";
 import { readState } from "../state";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+/** Berhenti menerima baris baru setelah ini; sisanya dijawab out_of_time dan
+ *  klien mengirimnya lagi. Lebih baik jawaban parsial yang jujur daripada
+ *  fungsi dipotong platform di tengah baris — tanpa jawaban sama sekali. */
+const TIME_BUDGET_MS = 240_000;
 
 /**
- * Grant massal — satu potongan (≤25 baris) per permintaan.
+ * Grant massal — satu potongan (≤10 baris) per permintaan.
  *
  * Berkas CSV/XLSX diurai di BROWSER, lalu dikirim per potongan; server
  * memproses baris berurutan (tiap baris = 2–3 panggilan Shopify + 1 ke
@@ -31,8 +35,13 @@ export async function POST(req: Request) {
   if (!rows.length) return NextResponse.json({ error: "no_rows" }, { status: 400 });
   if (rows.length > MAX_BULK_ROWS) return NextResponse.json({ error: "too_many_rows" }, { status: 400 });
 
+  const started = Date.now();
   const results: GrantResult[] = [];
   for (const row of rows) {
+    if (Date.now() - started > TIME_BUDGET_MS) {
+      results.push({ email: String(row.email ?? ""), ok: false, error: OUT_OF_TIME });
+      continue;
+    }
     results.push(await grantOne(supabase, me, { ...row, source: row.source ?? "import" }));
   }
 

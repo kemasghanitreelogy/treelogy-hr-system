@@ -29,9 +29,13 @@ export interface ParsedImport {
   hadHeader: boolean;
 }
 
+export type ImportParseCode = "empty" | "no_email_column" | "unsupported";
+
 export class ImportParseError extends Error {
-  constructor(public code: "empty" | "no_email_column" | "unsupported") {
+  code: ImportParseCode;
+  constructor(code: ImportParseCode) {
     super(code);
+    this.code = code;
   }
 }
 
@@ -102,7 +106,11 @@ function cellText(v: any): string {
 
 export async function parseXlsx(buffer: ArrayBuffer): Promise<string[][]> {
   // ExcelJS dimuat saat dibutuhkan saja — bundel utama tidak menanggungnya.
-  const ExcelJS = await import("exceljs");
+  // Bentuk interop yang sama dengan attendance-xlsx: tergantung bundler, kelasnya
+  // ada di `default` atau langsung di namespace — dan tanpa ini QA di Node
+  // gagal "Workbook is not a constructor".
+  const mod = await import("exceljs");
+  const ExcelJS = mod.default ?? (mod as unknown as typeof mod.default);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
   const ws = wb.worksheets[0];
@@ -115,7 +123,11 @@ export async function parseXlsx(buffer: ArrayBuffer): Promise<string[][]> {
     for (let c = 1; c < raw.length; c++) vals[c - 1] = cellText(raw[c]).trim();
     rows[n - 1] = vals;
   });
-  return rows.filter(Boolean);
+  // Baris kosong di tengah sheet dilewati ExcelJS dan meninggalkan lubang.
+  // Lubangnya diisi [] (bukan dibuang) supaya nomor baris di pratinjau tetap
+  // nomor baris yang dilihat orang di Excel.
+  for (let i = 0; i < rows.length; i++) if (!rows[i]) rows[i] = [];
+  return rows;
 }
 
 // ── Pemetaan kolom ───────────────────────────────────────────────────

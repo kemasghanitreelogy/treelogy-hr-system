@@ -94,7 +94,7 @@ export const STR: Record<Locale, Record<string, string>> = {
     // — impor —
     importTitle: "Impor pelanggan dari CSV / XLSX",
     importLead:
-      "Berkas diurai di perangkat ini dan dikirim per 25 baris. Baris bermasalah ditandai dulu — tidak ada customer yang dibuat sebelum kamu menekan Proses.",
+      "Berkas diurai di perangkat ini dan dikirim per 10 baris. Baris bermasalah ditandai dulu — tidak ada customer yang dibuat sebelum kamu menekan Proses.",
     pickFile: "Pilih berkas",
     dropHint: "CSV, XLSX. Kolom yang dikenali: email (wajib), nama_depan, nama_belakang atau nama.",
     template: "Unduh contoh CSV",
@@ -205,7 +205,7 @@ export const STR: Record<Locale, Record<string, string>> = {
 
     importTitle: "Import customers from CSV / XLSX",
     importLead:
-      "The file is parsed on this device and sent 25 rows at a time. Problem rows are flagged first — no customer is created until you press Process.",
+      "The file is parsed on this device and sent 10 rows at a time. Problem rows are flagged first — no customer is created until you press Process.",
     pickFile: "Choose file",
     dropHint: "CSV, XLSX. Recognised columns: email (required), first_name, last_name or name.",
     template: "Download sample CSV",

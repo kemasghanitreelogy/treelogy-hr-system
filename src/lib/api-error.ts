@@ -139,7 +139,7 @@ const MESSAGES: Record<string, Msg> = {
   shopify_failed: { id: "Gagal menghubungi Shopify. Coba lagi.", en: "Couldn't reach Shopify. Try again." },
   // --- pelanggan eligible (customer Shopify + seeding Combined Discount) ---
   email_required: { id: "Email wajib diisi.", en: "Email is required." },
-  too_many_rows: { id: "Terlalu banyak baris dalam satu kiriman. Kirim per 25 baris.", en: "Too many rows in one request. Send at most 25 rows." },
+  too_many_rows: { id: "Terlalu banyak baris dalam satu kiriman. Kirim per 10 baris.", en: "Too many rows in one request. Send at most 10 rows." },
   no_rows: { id: "Tidak ada baris yang bisa diproses.", en: "There are no rows to process." },
   shopify_forbidden_customers: { id: "Token Shopify tidak punya izin write_customers. Pelanggan tidak bisa dibuat sampai izinnya ditambahkan.", en: "The Shopify token lacks the write_customers scope. Customers can't be created until it's granted." },
   shopify_user_error: { id: "Shopify menolak data pelanggan ini.", en: "Shopify rejected this customer's data." },

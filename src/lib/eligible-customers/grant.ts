@@ -51,6 +51,10 @@ export async function grantOne(
     finalTags = r.customer.tags;
   } catch (e) {
     const err = e instanceof ShopifyError ? e : new ShopifyError("shopify_error");
+    // Tetap dicatat di ledger: tanpa baris, kegagalan ini hanya hidup di laporan
+    // impor yang sudah ditutup, dan "Ulangi yang belum eligible" tidak pernah
+    // tahu ada yang perlu diulang. Baris tanpa ID Shopify = belum sampai mana pun.
+    await recordShopifyFailure(supabase, me, { email, firstName, lastName, source }, err);
     return { email, ok: false, error: err.code, detail: err.detail };
   }
 
@@ -134,4 +138,39 @@ export async function grantOne(
   }
 
   return { email, ok: true, customer: mapEligibleRow(saved) };
+}
+
+/** Baris ledger untuk email yang gagal di langkah Shopify (belum punya ID). */
+async function recordShopifyFailure(
+  supabase: SupabaseClient,
+  me: SessionUser,
+  input: { email: string; firstName: string; lastName: string; source: "manual" | "import" },
+  err: ShopifyError,
+) {
+  const { data: existing } = await supabase
+    .from("eligible_customers")
+    .select("granted_by, granted_by_name, granted_at, source, shopify_customer_id")
+    .eq("email", input.email)
+    .maybeSingle();
+  // Baris yang sudah punya ID Shopify jangan diturunkan jadi "belum ada
+  // customer" hanya karena percobaan ulangnya gagal jaringan.
+  if (existing?.shopify_customer_id) return;
+  const now = new Date().toISOString();
+  await supabase.from("eligible_customers").upsert(
+    {
+      email: input.email,
+      first_name: input.firstName,
+      last_name: input.lastName,
+      seed_status: "failed",
+      seed_error: err.code,
+      seed_error_detail: err.detail ?? null,
+      source: existing?.source ?? input.source,
+      granted_by: existing?.granted_by ?? (me.id.startsWith("seed-") ? null : me.id),
+      granted_by_name: existing?.granted_by_name ?? me.name,
+      granted_at: existing?.granted_at ?? now,
+      last_attempt_at: now,
+      updated_at: now,
+    },
+    { onConflict: "email" },
+  );
 }

@@ -27,4 +27,9 @@ export function splitTags(raw: unknown): string[] {
   return [...new Set(String(raw ?? "").split(/[,;|]/).map((t) => t.trim()).filter(Boolean))];
 }
 
-export const MAX_BULK_ROWS = 25;
+/** Potongan kecil: ±3 dtk per baris (2–3 panggilan Shopify + backend), jadi satu
+ *  potongan selesai jauh di bawah batas fungsi, dan kalau satu permintaan putus
+ *  hanya sedikit baris yang perlu diulang. */
+export const MAX_BULK_ROWS = 10;
+/** Kode hasil untuk baris yang belum sempat diproses karena anggaran waktu habis. */
+export const OUT_OF_TIME = "out_of_time";
