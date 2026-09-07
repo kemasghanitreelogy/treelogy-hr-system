@@ -192,7 +192,10 @@ const MANAGER_PERMS = [
 // payroll.view di sini = karyawan boleh melihat SLIP GAJINYA SENDIRI;
 // halaman payroll menampilkan mode operasional hanya untuk payroll.process.
 // shifts.view = lihat halaman Jadwal (jadwal sendiri + tabungan libur).
-const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view", "documents.view", "travel.view", "travel.request", "payment.request", ];
+// letters.view = melihat agenda surat keluar (baca saja). Ditambahkan ke Karyawan
+// (7 Sep 2026) supaya seluruh tim farm & factory — semuanya berperan Karyawan —
+// punya menu Surat Keluar; mencatat/mengubah surat tetap butuh letters.manage.
+const EMPLOYEE_PERMS = ["dashboard.view", "attendance.view", "leave.view", "leave.request", "payroll.view", "shifts.view", "inventory.view", "documents.view", "letters.view", "travel.view", "travel.request", "payment.request"];
 
 /**
  * Izin yang membuka BESARAN GAJI karyawan lain.
