@@ -13,9 +13,16 @@ export default async function OvertimePage() {
     getEmployees(),
     getSessionUser(),
   ]);
-  const employees = employeesAll
-    .filter((e) => e.status === "active")
-    .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position, managerId: e.managerId ?? null }));
+  // Karyawan nonaktif tetap dikirim supaya lembur lamanya tetap bernama;
+  // pilihan di formulir disaring lewat activeOptions().
+  const employees = employeesAll.map((e) => ({
+    id: e.id,
+    name: e.name,
+    team: e.team,
+    position: e.position,
+    managerId: e.managerId ?? null,
+    status: e.status,
+  }));
 
   // Same approval scope as leave: HR/admin org-wide; a manager (leave.approve)
   // scoped to their division. Marking PAID is a payroll action.

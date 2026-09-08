@@ -7,6 +7,7 @@ import type { Employee, LeaveBalance, LeaveRequest, LeaveType, RequestStatus, Ta
 import { TEAM_META } from "@/lib/constants";
 import { leaveHistory, type LeavePeriod } from "@/lib/leave-policy";
 import type { ApprovalAction } from "@/lib/approval";
+import { activeOptions } from "@/lib/directory";
 import { ApprovalStatus } from "@/components/ui/approval-status";
 import { RejectDialog } from "@/components/ui/reject-dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -315,7 +316,8 @@ export function LeaveView({
   requests: LeaveRequest[];
   balances: LeaveBalance[];
   tabungan?: TabunganEntry[];
-  employees: Pick<Employee, "id" | "name" | "team" | "position" | "managerId">[];
+  /** SEMUA karyawan, termasuk nonaktif — riwayat lama tetap bernama. */
+  employees: Pick<Employee, "id" | "name" | "team" | "position" | "managerId" | "status">[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
   /** employeeId → tenure-anchor ISO date (earliest contract start / join date). */
@@ -340,6 +342,9 @@ export function LeaveView({
   const [confirmDecide, setConfirmDecide] = useState<{ id: string; action: Exclude<ApprovalAction, "reject"> } | null>(null);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  // Formulir hanya boleh mengajukan untuk karyawan aktif (diri sendiri tetap
+  // masuk, apa pun statusnya) — daftar di atas sengaja memuat yang nonaktif.
+  const pickable = useMemo(() => activeOptions(employees, currentEmployeeId), [employees, currentEmployeeId]);
   const toast = useToast();
   const router = useRouter();
   const locale = useLocale();
@@ -510,7 +515,7 @@ export function LeaveView({
 
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.sheetTitle} description={t.sheetDesc}>
         <LeaveForm
-          employees={employees}
+          employees={pickable}
           currentEmployeeId={currentEmployeeId}
           canRequestForOthers={canRequestForOthers}
           onSubmit={addRequest}
@@ -528,7 +533,7 @@ export function LeaveView({
         {revising && (
           <LeaveForm
             item={revising}
-            employees={employees}
+            employees={activeOptions(employees, revising.employeeId)}
             currentEmployeeId={currentEmployeeId}
             canRequestForOthers={false}
             onSubmit={(saved) => {
@@ -734,7 +739,7 @@ function BalancesView({
 }: {
   balances: LeaveBalance[];
   tabungan: TabunganEntry[];
-  employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  employees: Pick<Employee, "id" | "name" | "team" | "position" | "status">[];
   /** false = tampilan mandiri karyawan: tanpa framing org-wide & tanpa identitas per baris. */
   showEmployee?: boolean;
   requests?: LeaveRequest[];
@@ -1011,7 +1016,7 @@ function LeaveForm({
 }: {
   /** Diisi saat pengaju MEMPERBAIKI pengajuannya (ditolak / masih menunggu). */
   item?: LeaveRequest;
-  employees: Pick<Employee, "id" | "name" | "team" | "position">[];
+  employees: Pick<Employee, "id" | "name" | "team" | "position" | "status">[];
   currentEmployeeId?: string | null;
   canRequestForOthers?: boolean;
   onSubmit: (r: LeaveRequest) => void;

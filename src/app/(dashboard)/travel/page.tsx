@@ -22,13 +22,15 @@ export default async function TravelPage() {
   const canFinalize = can(user, "travel.finalize") || can(user, "employees.manage");
   const canRequestForOthers = can(user, "employees.manage");
 
+  // Karyawan nonaktif ikut dikirim agar riwayat perjalanannya tetap bernama;
+  // pilihan di formulir disaring lewat activeOptions().
   const employees = employeesAll
-    .filter((e) => e.status === "active")
     .map((e) => ({
       id: e.id,
       name: e.name,
       position: e.position ?? "",
       managerId: e.managerId ?? null,
+      status: e.status,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 

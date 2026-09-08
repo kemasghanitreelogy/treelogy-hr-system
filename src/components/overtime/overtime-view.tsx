@@ -24,8 +24,10 @@ import { Sheet } from "@/components/ui/sheet";
 import { ScopeTabs, defaultScopeFor, scopeOptionsFor, inScope, type Scope } from "@/components/ui/scope-tabs";
 import { useStickyTab } from "@/lib/use-sticky-tab";
 import { useToast } from "@/components/ui/toast";
+import { activeOptions } from "@/lib/directory";
 
-type Emp = Pick<Employee, "id" | "name" | "team" | "position" | "managerId">;
+/** SEMUA karyawan, termasuk nonaktif — lembur lama tetap bernama. */
+type Emp = Pick<Employee, "id" | "name" | "team" | "position" | "managerId" | "status">;
 
 const STR: Record<
   Locale,
@@ -258,6 +260,8 @@ export function OvertimeView({
   // Approve / reset go through a confirm step so an accidental tap can't decide.
   const [confirmDecide, setConfirmDecide] = useState<{ id: string; action: Exclude<ApprovalAction, "reject"> } | null>(null);
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  // Pengajuan baru hanya untuk karyawan aktif (diri sendiri selalu ikut).
+  const pickable = useMemo(() => activeOptions(employees, currentEmployeeId), [employees, currentEmployeeId]);
   const toast = useToast();
   const router = useRouter();
   const locale = useLocale();
@@ -417,7 +421,7 @@ export function OvertimeView({
 
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.sheetTitle} description={t.sheetDesc}>
         <OvertimeForm
-          employees={employees}
+          employees={pickable}
           currentEmployeeId={currentEmployeeId}
           canRequestForOthers={canRequestForOthers}
           selfRatePerHour={selfRatePerHour}
@@ -442,7 +446,7 @@ export function OvertimeView({
         {revising && (
           <OvertimeForm
             item={revising}
-            employees={employees}
+            employees={activeOptions(employees, revising.employeeId)}
             currentEmployeeId={currentEmployeeId}
             canRequestForOthers={false}
             selfRatePerHour={selfRatePerHour}

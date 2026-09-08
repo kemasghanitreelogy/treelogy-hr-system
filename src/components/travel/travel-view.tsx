@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Download, MapPin, Pencil, Plane, Plus, Search } from "lucide-react";
-import type { TravelRequest } from "@/lib/types";
+import type { EmployeeStatus, TravelRequest } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, formatDate, rupiah } from "@/lib/utils";
@@ -21,9 +21,12 @@ import { useToast } from "@/components/ui/toast";
 import { TravelDetail } from "./travel-detail";
 import { TravelExport } from "./travel-export";
 import { TravelForm, type TravelEmployeeOption } from "./travel-form";
+import { activeOptions } from "@/lib/directory";
 
 export interface TravelEmployee extends TravelEmployeeOption {
   managerId: string | null;
+  /** Nonaktif tetap ada di daftar agar riwayat perjalanannya tetap bernama. */
+  status: EmployeeStatus;
 }
 
 const STR: Record<
@@ -202,6 +205,8 @@ export function TravelView({
   const [busy, setBusy] = useState(false);
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  // Pengajuan baru hanya untuk karyawan aktif (diri sendiri selalu ikut).
+  const pickable = useMemo(() => activeOptions(employees, currentEmployeeId), [employees, currentEmployeeId]);
   const hasTeam = useMemo(
     () => employees.some((e) => e.managerId != null && e.managerId === currentEmployeeId),
     [employees, currentEmployeeId],
@@ -504,8 +509,8 @@ export function TravelView({
       <Sheet open={requesting} onClose={() => setRequesting(false)} title={t.formTitle} width="lg">
         {requesting && (
           <TravelForm
-            employees={employees}
-            defaultEmployeeId={currentEmployeeId ?? employees[0]?.id ?? ""}
+            employees={pickable}
+            defaultEmployeeId={currentEmployeeId ?? pickable[0]?.id ?? ""}
             canPickEmployee={canRequestForOthers}
             onSaved={(saved) => {
               setRequesting(false);
@@ -537,7 +542,7 @@ export function TravelView({
         {fixing && (
           <TravelForm
             item={fixing}
-            employees={employees}
+            employees={activeOptions(employees, fixing.employeeId)}
             defaultEmployeeId={fixing.employeeId}
             canPickEmployee={false}
             onSaved={(saved) => {

@@ -23,9 +23,16 @@ export default async function LeavePage() {
     const s = tenureStart(e.joinDate, starts.get(e.id));
     if (s) tenureStarts[e.id] = s;
   }
-  const employees = employeesAll
-    .filter((e) => e.status === "active")
-    .map((e) => ({ id: e.id, name: e.name, team: e.team, position: e.position, managerId: e.managerId ?? null }));
+  // Termasuk karyawan nonaktif: pengajuan lama mereka harus tetap bernama.
+  // Pilihan di formulir disaring belakangan lewat activeOptions().
+  const employees = employeesAll.map((e) => ({
+    id: e.id,
+    name: e.name,
+    team: e.team,
+    position: e.position,
+    managerId: e.managerId ?? null,
+    status: e.status,
+  }));
 
   // Approval scope: HR/admin (employees.manage) act org-wide; a manager with
   // leave.approve is scoped to their own division (team). Plain staff: neither.
