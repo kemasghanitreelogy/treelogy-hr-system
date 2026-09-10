@@ -6,7 +6,7 @@ import {
   PackageCheck, RotateCcw, ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelRecord } from "@/lib/receipt/label-core";
-import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile } from "@/lib/receipt/label-core";
+import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile, type AltOrder } from "@/lib/receipt/label-core";
 import { courierTracking } from "@/lib/receipt/courier-tracking";
 import { extractZip } from "@/lib/receipt/local-extract";
 import {
@@ -34,6 +34,8 @@ interface MatchResult {
   confidence: "certain" | "high" | "low";
   reasons: string[];
   flag: string | null;
+  alternates?: AltOrder[];
+  twinPages?: number[];
 }
 
 const STR: Record<Locale, Record<string, string>> = {
@@ -427,6 +429,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
           r.matchReasons = m.reasons;
           r.matchStatus = "shopify";
           r.legacyId = m.legacyId;
+          r.alternates = m.alternates ?? [];
+          r.twinPages = m.twinPages ?? [];
           if (m.name) r.fields.recipient_name = { value: m.name, source: "shopify", confidence: "certain", flag: null };
           if (m.address) r.fields.recipient_address = { value: m.address, source: "shopify", confidence: "certain", flag: null };
         } else {
@@ -445,6 +449,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
           r.matchedOrder = null;
           r.matchReasons = [];
           r.matchStatus = "manual";
+          r.alternates = [];
+          r.twinPages = [];
         }
         r.needsReview = Object.values(r.fields).some((f) => f.confidence === "low");
       }
@@ -516,6 +522,89 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
   const [fulfillResult, setFulfillResult] = useState<Record<number, { ok: boolean; text: string; seq?: number }>>({});
+
+  /**
+   * Pasang sebuah halaman ke order LAIN milik pembeli yang sama.
+   *
+   * Pembeli yang memesan dua kali menghasilkan dua label kembar; pembagian
+   * otomatis menebak label mana untuk order mana, dan manusia yang melihat
+   * kedua labelnya berhak membalik tebakan itu. Kalau order yang dipilih
+   * sedang dipegang halaman lain DARI KELOMPOK YANG SAMA (hasil pembagian
+   * otomatis), keduanya DITUKAR sekaligus — satu ketukan, bukan dua kartu
+   * yang harus dibereskan bergantian. Di luar itu hanya halaman ini yang
+   * pindah; bila jadi kembar, penjaga kembar-order yang biasa menahannya.
+   */
+  function pilihOrder(page: number, legacyId: string) {
+    if (!result) return;
+    const me = result.records.find((r) => r.page === page);
+    const target = me?.alternates?.find((a) => a.legacyId === legacyId);
+    if (!me || !target || !me.legacyId) return;
+    const pindah = (r: LabelRecord, ke: AltOrder): LabelRecord => ({
+      ...r,
+      legacyId: ke.legacyId,
+      matchedOrder: ke.orderName,
+      matchReasons: ke.reasons,
+      alternates: [
+        {
+          orderName: r.matchedOrder ?? "", legacyId: r.legacyId!, createdAt: "", fulfilled: false,
+          phone: r.fields.phone?.value ?? null, name: r.fields.recipient_name?.value ?? null,
+          address: r.fields.recipient_address?.value ?? null, reasons: r.matchReasons ?? [],
+        },
+        ...(r.alternates ?? []).filter((a) => a.legacyId !== ke.legacyId),
+      ],
+      fields: {
+        ...r.fields,
+        ...(ke.phone ? { phone: { value: ke.phone, source: "shopify", confidence: "certain", flag: null } } : {}),
+        ...(ke.name ? { recipient_name: { value: ke.name, source: "shopify", confidence: "certain", flag: null } } : {}),
+        ...(ke.address ? { recipient_address: { value: ke.address, source: "shopify", confidence: "certain", flag: null } } : {}),
+      },
+    });
+    // Pemegang order tujuan saat ini — kalau ia sekelompok dan mengenal order kita, tukar.
+    const lawan = result.records.find(
+      (r) => r.page !== page && r.legacyId === legacyId && !fulfillResult[r.page]?.ok && me.twinPages?.includes(r.page),
+    );
+    const balik = lawan?.alternates?.find((a) => a.legacyId === me.legacyId);
+    const gerak: [number, AltOrder][] = [[page, target]];
+    if (lawan && balik) gerak.push([lawan.page, balik]);
+    const byPage = new Map(gerak);
+    const records = result.records.map((r) => (byPage.has(r.page) ? pindah(r, byPage.get(r.page)!) : r));
+    setResult({ ...result, records });
+    // Isian yang diekspor mengikuti order barunya juga.
+    setEdits((e) => {
+      const next = { ...e };
+      for (const [pg, ke] of gerak) {
+        next[pg] = {
+          ...next[pg],
+          ...(ke.phone ? { phone: ke.phone } : {}),
+          ...(ke.name ? { recipient_name: ke.name } : {}),
+          ...(ke.address ? { recipient_address: ke.address } : {}),
+        };
+      }
+      return next;
+    });
+    // Pilihan "pakai resi halaman ini" untuk order yang bergerak tidak lagi berlaku.
+    setOrderChoice((prev) => {
+      const next = { ...prev };
+      delete next[legacyId];
+      delete next[me.legacyId!];
+      return next;
+    });
+  }
+
+  /** Keterangan kelompok label kembar per halaman — nomor order TERKINI tiap
+   *  halaman dalam kelompoknya, dihitung dari data hidup supaya tetap benar
+   *  setelah ditukar. */
+  const twinInfo = useMemo(() => {
+    const recs = result?.records ?? [];
+    const byPage = new Map(recs.map((r) => [r.page, r]));
+    const info: Record<number, { page: number; orderName: string | null }[]> = {};
+    for (const r of recs) {
+      if (!r.twinPages?.length) continue;
+      info[r.page] = r.twinPages.map((p) => ({ page: p, orderName: byPage.get(p)?.matchedOrder ?? null }));
+    }
+    return info;
+  }, [result]);
+
 
   /**
    * Baris yang SIAP di-fulfill. Tiga syarat, semuanya wajib:
@@ -1271,6 +1360,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             spotlightPages={spotlightPages}
             blockedInfo={blockedInfo}
             onChooseOrder={(legacyId, page) => setOrderChoice((prev) => ({ ...prev, [legacyId]: page }))}
+            onPickOrder={pilihOrder}
+            twinInfo={twinInfo}
             onJumpTo={lompatKe}
           />
           )}

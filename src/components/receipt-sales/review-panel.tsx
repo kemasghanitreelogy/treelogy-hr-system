@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Check, ChevronDown, ChevronUp, FileText, Image as ImageIcon, Loader2,
+  AlertTriangle, ArrowLeftRight, Check, ChevronDown, ChevronUp, FileText, Image as ImageIcon, Loader2,
   ScanBarcode, ShoppingBag, X,
 } from "lucide-react";
-import type { LabelRecord } from "@/lib/receipt/label-core";
+import type { AltOrder, LabelRecord } from "@/lib/receipt/label-core";
 import type { PageImageStore } from "@/lib/receipt/browser-ocr";
 import type { Locale } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -76,7 +76,14 @@ const STR: Record<Locale, Record<string, string>> = {
     heldSkipped: "Dilewati — resi untuk order ini dipakai dari",
     pickThis: "Pakai resi halaman ini",
     seeTwin: "Lihat",
-    heldOrderHint: "Kalau memang satu pesanan dikirim dua paket, fulfill cukup dari salah satu halaman. Kalau bukan, salah satu pencocokannya keliru — bandingkan nama & alamat kedua kartu dengan order-nya.",
+    heldOrderHint: "Kalau pembelinya memesan dua kali, pasang halaman ini ke order satunya di bawah. Kalau satu pesanan memang dikirim dua paket, fulfill cukup dari salah satu halaman. Kalau bukan keduanya, salah satu pencocokannya keliru — bandingkan nama & alamat kedua kartu dengan order-nya.",
+    altTitle: "Order lain milik pembeli ini yang juga cocok:",
+    altPick: "Pasang ke",
+    altUnfulfilled: "belum terkirim",
+    altFulfilled: "sudah terkirim",
+    twinTitle: "Pembeli yang sama punya {n} order yang sama-sama cocok — dibagi otomatis:",
+    twinThis: "Halaman ini dipasang ke",
+    twinSwapHint: "Kalau terbalik, pasang ke order satunya — kartu pasangannya ikut ditukar.",
     verified: "Sudah diperiksa",
     markVerified: "Tandai sudah diperiksa",
     more: "Detail lain dari label",
@@ -100,7 +107,14 @@ const STR: Record<Locale, Record<string, string>> = {
     heldSkipped: "Skipped — this order\u2019s tracking comes from",
     pickThis: "Use this page\u2019s tracking",
     seeTwin: "View",
-    heldOrderHint: "If one order genuinely shipped as two parcels, fulfilling from either page is enough. If not, one match is wrong — compare both cards\u2019 name & address against the order.",
+    heldOrderHint: "If the buyer ordered twice, assign this page to their other order below. If one order genuinely shipped as two parcels, fulfilling from either page is enough. If neither, one match is wrong — compare both cards\u2019 name & address against the order.",
+    altTitle: "This buyer\u2019s other orders that also match:",
+    altPick: "Assign to",
+    altUnfulfilled: "unfulfilled",
+    altFulfilled: "fulfilled",
+    twinTitle: "The same buyer has {n} orders that all match — split automatically:",
+    twinThis: "This page is assigned to",
+    twinSwapHint: "If that\u2019s the wrong one, assign the other order — the partner card swaps with it.",
     verified: "Verified",
     markVerified: "Mark as verified",
     more: "Other details from the label",
@@ -308,6 +322,53 @@ function FieldRow({
   );
 }
 
+/**
+ * Pilihan "pasang ke order lain" — order-order pembeli yang sama yang lolos
+ * penjaga keras. Yang belum terkirim ditaruh di depan: itulah yang hampir
+ * pasti dimaksud; yang sudah terkirim tetap ditampilkan (label bisa dicetak
+ * ulang) tetapi ditandai, supaya tidak dipilih tanpa sadar.
+ */
+function AltChooser({
+  page, alternates, onPick, locale,
+}: {
+  page: number;
+  alternates: AltOrder[];
+  onPick: (page: number, legacyId: string) => void;
+  locale: Locale;
+}) {
+  const t = STR[locale];
+  if (!alternates.length) return null;
+  const urut = [...alternates].sort((a, b) => Number(a.fulfilled) - Number(b.fulfilled));
+  const tgl = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isFinite(+d) ? d.toLocaleDateString(locale === "en" ? "en-GB" : "id-ID", { day: "numeric", month: "short" }) : "";
+  };
+  return (
+    <div className="mt-2">
+      <p className="text-[11px] font-medium">{t.altTitle}</p>
+      <div className="mt-1 flex flex-wrap gap-2">
+        {urut.map((a) => (
+          <button
+            key={a.legacyId}
+            type="button"
+            onClick={() => onPick(page, a.legacyId)}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#e8d9a8] bg-panel px-2.5 py-1.5 font-medium text-[#8a6512] transition-colors hover:bg-gold-soft"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              {t.altPick} <span className="font-semibold">{a.orderName}</span>
+              <span className="font-normal text-[#a8842a]">
+                {" "}· {a.fulfilled ? t.altFulfilled : t.altUnfulfilled}
+                {tgl(a.createdAt) ? ` · ${tgl(a.createdAt)}` : ""}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ReviewPanel({
   records,
   images,
@@ -320,6 +381,8 @@ export function ReviewPanel({
   spotlightPages,
   blockedInfo = {},
   onChooseOrder,
+  onPickOrder,
+  twinInfo = {},
   onJumpTo,
 }: {
   records: LabelRecord[];
@@ -339,6 +402,10 @@ export function ReviewPanel({
   blockedInfo?: Record<number, { kind: "awb" | "order"; partners: number[]; legacyId?: string; chosen?: number }>;
   /** Pilih halaman mana yang resinya dipakai untuk sebuah order kembar. */
   onChooseOrder?: (legacyId: string, page: number) => void;
+  /** Pasang halaman ke order LAIN milik pembeli yang sama (pembeli order dua kali). */
+  onPickOrder?: (page: number, legacyId: string) => void;
+  /** Kelompok label pembeli yang sama yang ordernya dibagi otomatis: halaman → order terkini. */
+  twinInfo?: Record<number, { page: number; orderName: string | null }[]>;
   /** Lompat + sorot kartu lain — untuk membandingkan kembarannya. */
   onJumpTo?: (page: number) => void;
 }) {
@@ -435,6 +502,42 @@ export function ReviewPanel({
                         </button>
                       ))}
                     </div>
+                  )}
+
+                  {/* Pembeli yang memesan dua kali: kembarannya bukan salah
+                      cocok, melainkan order kedua yang belum dapat halaman.
+                      Di sinilah halaman ini bisa dipasang ke order itu. */}
+                  {blockedInfo[r.page].kind === "order" && onPickOrder && (
+                    <AltChooser page={r.page} alternates={r.alternates ?? []} onPick={onPickOrder} locale={locale} />
+                  )}
+                </div>
+              )}
+
+              {/* Kelompok label pembeli yang sama yang ordernya DIBAGI otomatis.
+                  Pembagiannya tebakan (kedua label isinya identik), jadi
+                  disebut terang-terangan beserta cara menukarnya. */}
+              {twinInfo[r.page] && !blockedInfo[r.page] && !fulfillResult[r.page] && (
+                <div className="mt-2 rounded-xl border border-[#e8d9a8] bg-gold-soft px-3 py-2 text-xs leading-relaxed text-[#8a6512]">
+                  <span className="font-semibold">{t.twinTitle.replace("{n}", String(twinInfo[r.page].length))}</span>{" "}
+                  {twinInfo[r.page].map((x, i) => (
+                    <span key={x.page}>
+                      {i > 0 && ", "}
+                      {x.page === r.page ? (
+                        <span>{x.orderName ?? "?"} → {t.page.toLowerCase()} {x.page}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onJumpTo?.(x.page)}
+                          className="cursor-pointer underline decoration-dotted underline-offset-2 hover:text-[#6e510f]"
+                        >
+                          {x.orderName ?? "?"} → {t.page.toLowerCase()} {x.page}
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                  . {t.twinThis} <span className="font-semibold">{r.matchedOrder}</span>. {t.twinSwapHint}
+                  {onPickOrder && (
+                    <AltChooser page={r.page} alternates={r.alternates ?? []} onPick={onPickOrder} locale={locale} />
                   )}
                 </div>
               )}

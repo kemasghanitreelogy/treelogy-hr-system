@@ -18,6 +18,8 @@
  * Shopify sendiri.
  */
 
+import type { AltOrder } from "./label-core";
+
 export interface MatchResult {
   phone: string | null;
   name: string | null;
@@ -31,6 +33,18 @@ export interface MatchResult {
   reasons: string[];
   flag: string | null;
   candidateCount: number;
+  /**
+   * Order LAIN milik pembeli yang sama yang juga lolos semua penjaga keras —
+   * urut dari yang paling mirip. Dipakai saat dua label tercocok ke satu
+   * order: pembeli yang memesan dua kali dalam waktu dekat menghasilkan dua
+   * label dengan nama/HP/alamat identik, dan label keduanya harus punya jalan
+   * ke order keduanya, bukan dibuang.
+   */
+  alternates: AltOrder[];
+  /** Halaman-halaman (termasuk ini) yang labelnya milik pembeli yang sama dan
+   *  ordernya dibagi otomatis — supaya kartu bisa menyebut pembagiannya dan
+   *  pemakai bisa menukar. Kosong = bukan bagian kelompok. */
+  twinPages: number[];
 }
 
 export interface MatchInput {
@@ -372,7 +386,26 @@ function emptyResult(flag: string, candidateCount = 0): MatchResult {
   return {
     phone: null, name: null, address: null, city: null, zip: null,
     orderName: null, legacyId: null, confidence: "low", reasons: [], flag, candidateCount,
+    alternates: [], twinPages: [],
   };
+}
+
+/** Bentuk publik satu kandidat — cukup untuk ditampilkan dan dipilih di kartu. */
+function toAlt(o: PoolOrder, reasons: string[]): AltOrder {
+  return {
+    orderName: o.orderName, legacyId: o.legacyId, createdAt: o.createdAt, fulfilled: o.fulfilled,
+    phone: o.phone || null, name: o.shipName || null, address: o.address || null, reasons,
+  };
+}
+
+/** Berapa order lain yang disebutkan per label. Pembeli langganan jarang
+ *  punya lebih dari dua-tiga order dalam jendela 3 hari. */
+const MAX_ALTERNATES = 5;
+
+interface Scored {
+  o: PoolOrder;
+  score: number;
+  reasons: string[];
 }
 
 /**
@@ -454,12 +487,14 @@ function candidatesFor(inp: MatchInput, idx: PoolIndex, inTokens: Set<string>): 
   return [...seen];
 }
 
-function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
-  const pool = idx.pool;
+/**
+ * Semua kandidat yang lolos penjaga keras, berikut skornya, urut skor tertinggi
+ * dulu. Urutan seri mengikuti urutan pool (terbaru dulu) — sama persis dengan
+ * pemenang versi "pilih satu" sebelumnya, jadi kalibrasi 166 label tetap berlaku.
+ */
+function rankCandidates(inp: MatchInput, idx: PoolIndex): { ranked: Scored[]; ditolakGate: number } {
   const inTokens = nameTokens(inp.name);
-  let best: PoolOrder | null = null;
-  let bestScore = -Infinity;
-  let bestReasons: string[] = [];
+  const ranked: Scored[] = [];
 
   const inPlace = placeTokens(inp.destCity ?? "");
   let ditolakGate = 0;
@@ -558,12 +593,26 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
       reasons.push("belum terkirim");
     }
 
-    if (score > bestScore) {
-      bestScore = score;
-      best = o;
-      bestReasons = reasons;
-    }
+    if (score > 0) ranked.push({ o, score, reasons });
   }
+
+  // Stabil: seri tetap pada urutan masuk (pool terbaru dulu).
+  ranked.sort((a, b) => b.score - a.score);
+  return { ranked, ditolakGate };
+}
+
+/**
+ * Susun hasil dari kandidat peringkat pertama. `ranked[0]` adalah pemenang;
+ * sisanya jadi `alternates`. Dipanggil ulang saat pembagian order kembar
+ * menggeser pemenang sebuah halaman ke kandidat berikutnya.
+ */
+function buildResult(inp: MatchInput, idx: PoolIndex, ranked: Scored[], ditolakGate: number): MatchResult {
+  const pool = idx.pool;
+  const inTokens = nameTokens(inp.name);
+  const top = ranked[0];
+  const best = top?.o ?? null;
+  const bestScore = top?.score ?? -Infinity;
+  const bestReasons = top?.reasons ?? [];
 
   if (!best || bestScore <= 0) {
     // Disebut apa adanya: "dibuang penjaga" berarti ADA order mirip tapi
@@ -642,7 +691,69 @@ function matchAgainstPool(inp: MatchInput, idx: PoolIndex): MatchResult {
     reasons: bestReasons,
     flag,
     candidateCount: pool.length,
+    alternates: ranked.slice(1, 1 + MAX_ALTERNATES).map((c) => toAlt(c.o, c.reasons)),
+    twinPages: [],
   };
+}
+
+/**
+ * PEMBAGIAN ORDER KEMBAR.
+ *
+ * Pembeli yang memesan dua kali dalam waktu dekat mencetak dua label yang
+ * sinyalnya identik (nama, HP, kodepos) — keduanya menang di order yang sama,
+ * dan dulu salah satunya terpaksa dilewati. Padahal ordernya memang ada dua.
+ *
+ * Di sini, halaman-halaman yang berebut satu order dibagi: yang pertama tetap
+ * di pemenangnya, yang berikutnya digeser ke order lain milik pembeli itu
+ * yang (a) lolos semua penjaga keras, (b) BELUM terkirim, (c) belum diklaim
+ * halaman lain, dan (d) hasilnya tetap "certain" — kalau tidak, halaman itu
+ * dibiarkan kembar supaya manusia yang memutuskan seperti sebelumnya.
+ *
+ * Label mana untuk order mana tidak bisa dipastikan dari label saja (isinya
+ * sama persis), jadi keduanya diberi `twinPages` dan daftar `alternates` agar
+ * pemakai bisa menukar dari kartu bila terbalik. Salah tukar hanya menukar
+ * nomor lacak dua paket yang sama-sama menuju pembeli itu — jauh lebih ringan
+ * daripada satu order yang tidak pernah terkirim.
+ */
+function spreadTwins(
+  inputs: MatchInput[],
+  idx: PoolIndex,
+  out: Map<number, MatchResult>,
+  rankedBy: Map<number, { ranked: Scored[]; ditolakGate: number }>,
+) {
+  const byOrder = new Map<string, number[]>();
+  for (const inp of inputs) {
+    const m = out.get(inp.page);
+    if (m?.confidence === "certain" && m.legacyId) byOrder.set(m.legacyId, [...(byOrder.get(m.legacyId) ?? []), inp.page]);
+  }
+  const claimed = new Set(byOrder.keys());
+  const inputByPage = new Map(inputs.map((i) => [i.page, i]));
+
+  for (const [, pages] of byOrder) {
+    if (pages.length < 2) continue;
+    const group = [...pages].sort((a, b) => a - b);
+    const assigned = new Map<number, string>([[group[0], out.get(group[0])!.legacyId!]]);
+
+    for (const page of group.slice(1)) {
+      const entry = rankedBy.get(page);
+      const inp = inputByPage.get(page);
+      if (!entry || !inp) continue;
+      const pilihan = entry.ranked.find(
+        (c) => c.o.legacyId && !claimed.has(c.o.legacyId) && !c.o.fulfilled,
+      );
+      if (!pilihan) continue;
+      const ulang = [pilihan, ...entry.ranked.filter((c) => c !== pilihan)];
+      const hasil = buildResult(inp, idx, ulang, entry.ditolakGate);
+      if (hasil.confidence !== "certain") continue;
+      out.set(page, hasil);
+      claimed.add(pilihan.o.legacyId);
+      assigned.set(page, pilihan.o.legacyId);
+    }
+
+    if (assigned.size < 2) continue;
+    const twinPages = [...assigned.keys()];
+    for (const page of twinPages) out.set(page, { ...out.get(page)!, twinPages });
+  }
 }
 
 export async function matchAll(inputs: MatchInput[]): Promise<Map<number, MatchResult>> {
@@ -679,6 +790,12 @@ export async function matchAll(inputs: MatchInput[]): Promise<Map<number, MatchR
 
   // Indeks dibangun sekali untuk seluruh batch, lalu dipakai ulang tiap label.
   const idx = buildIndex(pool);
-  for (const inp of inputs) out.set(inp.page, matchAgainstPool(inp, idx));
+  const rankedBy = new Map<number, { ranked: Scored[]; ditolakGate: number }>();
+  for (const inp of inputs) {
+    const entry = rankCandidates(inp, idx);
+    rankedBy.set(inp.page, entry);
+    out.set(inp.page, buildResult(inp, idx, entry.ranked, entry.ditolakGate));
+  }
+  spreadTwins(inputs, idx, out, rankedBy);
   return out;
 }

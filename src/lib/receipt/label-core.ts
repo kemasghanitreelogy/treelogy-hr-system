@@ -43,6 +43,18 @@ export interface PageVisual {
   docType?: "label" | "packing_slip";
 }
 
+/** Order Shopify lain milik pembeli yang sama — bisa dipilih dari kartu. */
+export interface AltOrder {
+  orderName: string;
+  legacyId: string;
+  createdAt: string;
+  fulfilled: boolean;
+  phone: string | null;
+  name: string | null;
+  address: string | null;
+  reasons: string[];
+}
+
 export interface LabelRecord {
   page: number;
   origin: PageOrigin;
@@ -58,6 +70,10 @@ export interface LabelRecord {
   matchStatus?: "shopify" | "manual" | "pdf" | null;
   /** ID numerik order Shopify — kunci eksak ke `ref_no` Jubelio. */
   legacyId?: string | null;
+  /** Order lain pembeli yang sama yang juga cocok — pilihan "pasang ke order lain". */
+  alternates?: AltOrder[];
+  /** Halaman-halaman (termasuk ini) dari pembeli yang sama yang ordernya dibagi otomatis. */
+  twinPages?: number[];
 }
 
 /** Format resi yang dikenal — J&T (JD…), Lion Parcel (…LP…). Tambah bila perlu. */
