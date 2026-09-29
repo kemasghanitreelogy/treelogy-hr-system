@@ -1,6 +1,7 @@
 import type { Locale } from "./i18n";
 import type {
   InventoryCategory,
+  InventoryCompany,
   InventoryCondition,
   InventoryItem,
   InventoryStatus,
@@ -12,20 +13,16 @@ import type {
    daftar, detail, dan lembar label cetak.
    ============================================================ */
 
-export const CATEGORIES: InventoryCategory[] = [
-  "tanah",
-  "bangunan_permanen",
-  "bangunan_non_permanen",
-  "kendaraan",
-  "aset_biologis",
-  "mesin",
-  "peralatan_kantor",
-  "elektronik",
-  "furnitur",
-  "atk",
-  "perlengkapan",
-  "lainnya",
-];
+export const COMPANIES: InventoryCompany[] = ["PMA", "PMDN"];
+
+/** Arti tiap company — sesuai sheet register aset. */
+export const COMPANY_LABEL: Record<Locale, Record<InventoryCompany, string>> = {
+  id: { PMA: "Farm & Office", PMDN: "Factory" },
+  en: { PMA: "Farm & Office", PMDN: "Factory" },
+};
+
+/** Urutan & kode mengikuti sheet register aset (Category / Category Code). */
+export const CATEGORIES: InventoryCategory[] = ["LND", "VEH", "FMT", "MCH", "OFC", "FUR", "ELC", "LVS", "BIO", "OTH"];
 
 export const CONDITIONS: InventoryCondition[] = ["baik", "perlu_servis", "rusak", "hilang"];
 
@@ -37,34 +34,35 @@ type Tone = "forest" | "olive" | "matcha" | "gold" | "clay" | "sky" | "neutral";
 
 export const CATEGORY_LABEL: Record<Locale, Record<InventoryCategory, string>> = {
   id: {
-    tanah: "Tanah",
-    bangunan_permanen: "Bangunan Permanen",
-    bangunan_non_permanen: "Bangunan Non-Permanen",
-    kendaraan: "Kendaraan",
-    aset_biologis: "Aset Biologis",
-    mesin: "Mesin & Peralatan",
-    peralatan_kantor: "Peralatan Kantor",
-    elektronik: "Elektronik",
-    furnitur: "Furnitur",
-    atk: "ATK",
-    perlengkapan: "Perlengkapan",
-    lainnya: "Lainnya",
+    LND: "Tanah & Bangunan",
+    VEH: "Kendaraan",
+    FMT: "Mesin & Alat Pertanian",
+    MCH: "Mesin & Peralatan Pabrik",
+    OFC: "Peralatan Kantor & IT",
+    FUR: "Furnitur & Perlengkapan",
+    ELC: "Instalasi Listrik & Utilitas",
+    LVS: "Fasilitas & Peralatan Ternak",
+    BIO: "Aset Biologis",
+    OTH: "Lainnya",
   },
   en: {
-    tanah: "Land",
-    bangunan_permanen: "Building (Permanent)",
-    bangunan_non_permanen: "Building (Non-Permanent)",
-    kendaraan: "Vehicle",
-    aset_biologis: "Biological Asset",
-    mesin: "Machinery & Equipment",
-    peralatan_kantor: "Office Equipment",
-    elektronik: "Electronics",
-    furnitur: "Furniture",
-    atk: "Stationery",
-    perlengkapan: "Equipment",
-    lainnya: "Other",
+    LND: "Land & Buildings",
+    VEH: "Vehicles",
+    FMT: "Farm Machinery & Tools",
+    MCH: "Factory Machinery & Equipment",
+    OFC: "Office Equipment & IT",
+    FUR: "Furniture & Fixtures",
+    ELC: "Electrical & Utility Installations",
+    LVS: "Livestock Facilities & Equipment",
+    BIO: "Biological",
+    OTH: "Other",
   },
 };
+
+/** Awalan kode aset untuk satu kombinasi — pratinjau sebelum disimpan. */
+export function codePrefix(company: InventoryCompany, category: InventoryCategory): string {
+  return `${company}-${category}`;
+}
 
 export const CONDITION_LABEL: Record<Locale, Record<InventoryCondition, string>> = {
   id: { baik: "Baik", perlu_servis: "Perlu servis", rusak: "Rusak", hilang: "Hilang" },

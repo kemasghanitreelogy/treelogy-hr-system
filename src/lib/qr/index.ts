@@ -139,19 +139,23 @@ export function itemQrPayload(origin: string, code: string): string {
   return `${origin.replace(/\/+$/, "")}/inventory?item=${encodeURIComponent(code)}`;
 }
 
+/** Kode aset: lama `INV-0001`, baru `PMA-OFC-0001` / `PMDN-MCH-0001`. */
+const CODE_BODY = "(?:INV|PMA-[A-Z]{3}|PMDN-[A-Z]{3})-\\d{4,}";
+const CODE_EXACT = new RegExp(`^${CODE_BODY}$`, "i");
+const CODE_LOOSE = new RegExp(CODE_BODY, "i");
+
 /** Kode barang dari sebuah payload QR (URL atau kode polos). Null bila bukan kode valid. */
 export function parseQrPayload(raw: string): string | null {
   const text = raw.trim();
   if (!text) return null;
-  const direct = text.match(/^INV-\d{4,}$/i);
-  if (direct) return text.toUpperCase();
+  if (CODE_EXACT.test(text)) return text.toUpperCase();
   try {
     const url = new URL(text);
     const code = url.searchParams.get("item");
-    if (code && /^INV-\d{4,}$/i.test(code)) return code.toUpperCase();
+    if (code && CODE_EXACT.test(code)) return code.toUpperCase();
   } catch {
     /* bukan URL — jatuh ke pencarian pola di bawah */
   }
-  const loose = text.match(/INV-\d{4,}/i);
+  const loose = text.match(CODE_LOOSE);
   return loose ? loose[0].toUpperCase() : null;
 }

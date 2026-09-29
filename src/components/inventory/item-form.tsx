@@ -11,6 +11,8 @@ import { ItemPhoto } from "./item-photo";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
+  COMPANIES,
+  COMPANY_LABEL,
   CONDITIONS,
   CONDITION_LABEL,
   STATUSES,
@@ -32,6 +34,7 @@ const STR: Record<
   {
     name: string;
     namePh: string;
+    company: string;
     category: string;
     brand: string;
     brandPh: string;
@@ -61,11 +64,13 @@ const STR: Record<
     nameRequired: string;
     connection: string;
     codeHint: string;
+    codeFixed: (code: string) => string;
   }
 > = {
   id: {
     name: "Nama barang",
     namePh: "cth. Laptop Dell Latitude 5440",
+    company: "Company",
     category: "Kategori",
     brand: "Merk",
     brandPh: "cth. Dell",
@@ -95,10 +100,12 @@ const STR: Record<
     nameRequired: "Nama barang wajib diisi.",
     connection: "Koneksi bermasalah. Coba lagi.",
     codeHint: "Kode aset & QR dibuat otomatis oleh sistem setelah disimpan.",
+    codeFixed: (code) => `Kode aset ${code} tetap — QR yang sudah ditempel tidak berubah walau company/kategori diganti.`,
   },
   en: {
     name: "Item name",
     namePh: "e.g. Dell Latitude 5440 laptop",
+    company: "Company",
     category: "Category",
     brand: "Brand",
     brandPh: "e.g. Dell",
@@ -128,11 +135,13 @@ const STR: Record<
     nameRequired: "Item name is required.",
     connection: "Connection problem. Try again.",
     codeHint: "The asset code & QR are generated automatically once saved.",
+    codeFixed: (code) => `Asset code ${code} stays — a QR already stuck on the item keeps working even if company/category change.`,
   },
 };
 
 type FormState = {
   name: string;
+  company: InventoryItem["company"];
   category: InventoryItem["category"];
   brand: string;
   serialNo: string;
@@ -151,7 +160,8 @@ type FormState = {
 function initial(item?: InventoryItem): FormState {
   return {
     name: item?.name ?? "",
-    category: item?.category ?? "elektronik",
+    company: item?.company ?? "PMA",
+    category: item?.category ?? "OTH",
     brand: item?.brand ?? "",
     serialNo: item?.serialNo ?? "",
     quantity: String(item?.quantity ?? 1),
@@ -219,6 +229,7 @@ export function ItemForm({
       const payload = {
         ...(item ? { id: item.id } : {}),
         name: form.name,
+        company: form.company,
         category: form.category,
         brand: form.brand,
         serialNo: form.serialNo,
@@ -264,19 +275,32 @@ export function ItemForm({
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label={t.category}>
-          <Select value={form.category} onChange={(e) => set("category", e.target.value as InventoryItem["category"])}>
-            {CATEGORIES.map((c) => (
+        <Field label={t.company}>
+          <Select value={form.company} onChange={(e) => set("company", e.target.value as InventoryItem["company"])}>
+            {COMPANIES.map((c) => (
               <option key={c} value={c}>
-                {CATEGORY_LABEL[locale][c]}
+                {c} — {COMPANY_LABEL[locale][c]}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label={t.brand}>
-          <Input value={form.brand} onChange={(e) => set("brand", e.target.value)} placeholder={t.brandPh} />
+        <Field label={t.category}>
+          <Select value={form.category} onChange={(e) => set("category", e.target.value as InventoryItem["category"])}>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c} — {CATEGORY_LABEL[locale][c]}
+              </option>
+            ))}
+          </Select>
         </Field>
       </div>
+      {item && (item.company !== form.company || item.category !== form.category) && (
+        <p className="-mt-2 text-xs text-faint">{t.codeFixed(item.code)}</p>
+      )}
+
+      <Field label={t.brand}>
+        <Input value={form.brand} onChange={(e) => set("brand", e.target.value)} placeholder={t.brandPh} />
+      </Field>
 
       {/* Jumlah + satuan berpasangan; nomor seri butuh lebar penuh — dipaksa
           jadi kolom ketiga, teksnya terpotong di lebar sheet ponsel. */}

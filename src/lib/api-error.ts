@@ -88,6 +88,7 @@ const MESSAGES: Record<string, Msg> = {
 
   // --- inventaris ---
   invalid_category: { id: "Kategori barang tidak valid.", en: "The item category is invalid." },
+  invalid_company: { id: "Company tidak valid — pilih PMA atau PMDN.", en: "Invalid company — choose PMA or PMDN." },
   invalid_condition: { id: "Kondisi barang tidak valid.", en: "The item condition is invalid." },
   invalid_quantity: { id: "Jumlah harus 0 atau lebih.", en: "Quantity must be 0 or more." },
   invalid_price: { id: "Harga beli tidak valid.", en: "The purchase price is invalid." },

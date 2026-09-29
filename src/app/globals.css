@@ -431,3 +431,38 @@ body.camera-open .app-chrome {
   .hf-check-draw path { animation: none; stroke-dasharray: none; stroke-dashoffset: 0; }
   .hf-progress-fill { transition: none; }
 }
+
+/* ═══ WIZARD TAMBAH BARANG: company → kategori → QR ═══
+   Doktrin HyperFrames: arah gerak = arah navigasi (maju masuk dari kanan,
+   mundur dari kiri), settle power3.out tanpa pantul, kartu pilihan tiba
+   berjenjang 30 ms (10 kartu = 0,3 dtk — satu ketukan), lalu DIAM. */
+@keyframes wz-in-fwd {
+  from { opacity: 0; transform: translateX(18px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes wz-in-back {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: none; }
+}
+.wz-in-fwd  { animation: wz-in-fwd 300ms cubic-bezier(0.215, 0.61, 0.355, 1) both; }
+.wz-in-back { animation: wz-in-back 300ms cubic-bezier(0.215, 0.61, 0.355, 1) both; }
+
+.wz-card {
+  animation: hf-row-in 280ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+  animation-delay: calc(80ms + var(--i, 0) * 30ms);
+}
+
+/* Kode aset "tercetak" huruf demi huruf, setelah cincin centang selesai. */
+@keyframes wz-char-in {
+  from { opacity: 0; transform: translateY(4px); filter: blur(2px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.wz-char {
+  display: inline-block;
+  animation: wz-char-in 220ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+  animation-delay: calc(360ms + var(--i, 0) * 28ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wz-in-fwd, .wz-in-back, .wz-card, .wz-char { animation: none; }
+}

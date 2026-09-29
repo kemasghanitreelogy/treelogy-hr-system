@@ -158,6 +158,7 @@ export const mapInventoryItem = (r: Row): InventoryItem => ({
   id: String(r.id),
   code: String(r.code),
   name: String(r.name),
+  company: (r.company as InventoryItem["company"]) ?? "PMA",
   category: r.category as InventoryItem["category"],
   brand: (r.brand as string) ?? null,
   serialNo: (r.serial_no as string) ?? null,
@@ -487,7 +488,8 @@ export async function getTravelRequests(): Promise<TravelRequest[]> {
 /** Inventaris kantor, barang terbaru dulu (kode menurun = urutan pendaftaran). */
 export async function getInventoryItems(): Promise<InventoryItem[]> {
   const rows = await fetchTable("inventory_items", mapInventoryItem, seedInventory);
-  return rows.slice().sort((a, b) => b.code.localeCompare(a.code));
+  // Terbaru dulu menurut waktu dibuat — kode tidak lagi satu deret (INV-…, PMA-OFC-…, PMDN-…).
+  return rows.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.code.localeCompare(a.code));
 }
 
 /** Agenda surat keluar — surat terbaru dulu (tanggal surat menurun). */

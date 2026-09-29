@@ -28,6 +28,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
 import { ItemDetail } from "./item-detail";
 import { ItemForm, type EmployeeOption } from "./item-form";
+import { ItemWizard } from "./item-wizard";
 import { QrCode } from "./qr-code";
 import { QrScanner } from "./qr-scanner";
 import { downloadInventoryLabels } from "./labels-pdf";
@@ -92,7 +93,7 @@ const STR: Record<
     colHolder: "Pemegang",
     colStatus: "Status",
     empty: "Belum ada barang inventaris.",
-    emptyHint: "Cukup isi namanya. Kode aset dan QR dibuat otomatis — Anda tidak perlu menomori apa pun.",
+    emptyHint: "Cukup pilih company dan kategori. Kode aset dan QR dibuat otomatis — Anda tidak perlu menomori apa pun.",
     emptyCta: "Tambah barang pertama",
     fab: "Tambah barang",
     emptyFiltered: "Tidak ada barang yang cocok.",
@@ -130,7 +131,7 @@ const STR: Record<
     colHolder: "Holder",
     colStatus: "Status",
     empty: "No inventory items yet.",
-    emptyHint: "Just type the name. The asset code and QR are generated for you — no numbering to remember.",
+    emptyHint: "Just pick the company and category. The asset code and QR are generated for you — no numbering to remember.",
     emptyCta: "Add the first item",
     fab: "Add item",
     emptyFiltered: "No matching items.",
@@ -190,8 +191,6 @@ export function InventoryView({
   const [status, setStatus] = useState<string>("all");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** Barang yang baru saja dibuat — detailnya menyorot QR baru sekali saja. */
-  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -258,12 +257,6 @@ export function InventoryView({
   function upsert(saved: InventoryItem, mode: "create" | "update") {
     setList((cur) => (mode === "create" ? [saved, ...cur] : cur.map((i) => (i.id === saved.id ? saved : i))));
     toast.success(mode === "create" ? t.created : t.updated);
-    // Barang baru langsung membuka detailnya: kode & QR yang baru dibuat
-    // ditampilkan saat itu juga, lengkap dengan ajakan mencetak labelnya.
-    if (mode === "create") {
-      setSelectedId(saved.id);
-      setJustCreatedId(saved.id);
-    }
     router.refresh();
   }
 
@@ -547,17 +540,13 @@ export function InventoryView({
       {/* Detail */}
       <Sheet
         open={selected !== null}
-        onClose={() => {
-          setSelectedId(null);
-          setJustCreatedId(null);
-        }}
+        onClose={() => setSelectedId(null)}
         title={t.detailTitle}
         width="lg"
       >
         {selected && (
           <ItemDetail
             item={selected}
-            justCreated={justCreatedId === selected.id}
             // Karyawan biasa mungkin tidak boleh membaca baris karyawan lain (RLS):
             // tampilkan "—", bukan "Belum ditentukan" yang keliru.
             employeeName={selected.assignedTo ? (empName.get(selected.assignedTo) ?? "—") : undefined}
@@ -569,15 +558,20 @@ export function InventoryView({
       </Sheet>
 
       {/* Tambah */}
+      {/* Tambah: company → kategori → QR langsung jadi. Detail menyusul lewat
+          form ubah, jadi wizard tidak pernah menahan HR di depan form panjang.
+          Dirender hanya saat terbuka → setiap pembukaan mulai dari langkah 1. */}
       <Sheet open={adding} onClose={() => setAdding(false)} title={t.addTitle} width="lg">
-        <ItemForm
-          employees={employees}
-          onSaved={(saved) => {
-            setAdding(false);
-            upsert(saved, "create");
-          }}
-          onCancel={() => setAdding(false)}
-        />
+        {adding && (
+          <ItemWizard
+            onCreated={(saved) => upsert(saved, "create")}
+            onComplete={(saved) => {
+              setAdding(false);
+              setEditing(saved);
+            }}
+            onClose={() => setAdding(false)}
+          />
+        )}
       </Sheet>
 
       {/* Ubah */}

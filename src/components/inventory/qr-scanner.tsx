@@ -53,7 +53,7 @@ const STR: Record<
     denied: "Akses kamera ditolak. Izinkan kamera atau ketik kodenya di bawah.",
     unsupported: "Browser ini belum bisa memindai langsung. Ketik kode barangnya, atau pindai dengan kamera bawaan HP.",
     manualLabel: "Kode barang",
-    manualHint: "Contoh: INV-0001",
+    manualHint: "Contoh: PMA-OFC-0001",
     open: "Buka",
     close: "Tutup",
     notFound: "Kode tidak dikenali.",
@@ -65,7 +65,7 @@ const STR: Record<
     denied: "Camera access denied. Allow the camera or type the code below.",
     unsupported: "This browser can't scan in-app yet. Type the item code, or scan with your phone's camera app.",
     manualLabel: "Item code",
-    manualHint: "e.g. INV-0001",
+    manualHint: "e.g. PMA-OFC-0001",
     open: "Open",
     close: "Close",
     notFound: "Code not recognised.",
@@ -202,7 +202,7 @@ export function QrScanner({ onDetect, onClose }: { onDetect: (code: string) => v
               setManual(e.target.value);
               setManualError(null);
             }}
-            placeholder="INV-0001"
+            placeholder="PMA-OFC-0001"
             autoCapitalize="characters"
             className="uppercase"
           />

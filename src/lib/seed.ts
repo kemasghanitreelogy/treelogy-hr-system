@@ -213,73 +213,73 @@ export const travelRequests: TravelRequest[] = [
 ];
 
 // Inventaris kantor — dataset demo (mode tanpa Supabase). Kode mengikuti pola
-// yang sama dengan yang dibuat database: INV-0001, INV-0002, …
+// yang sama dengan yang dibuat database: <COMPANY>-<KATEGORI>-<nnnn>.
 export const inventoryItems: InventoryItem[] = [
   {
-    id: "inv1", code: "INV-0001", name: "Laptop Dell Latitude 5440", category: "elektronik",
+    id: "inv1", code: "PMA-OFC-0001", name: "Laptop Dell Latitude 5440", company: "PMA", category: "OFC",
     brand: "Dell", serialNo: "DL5440-2291", quantity: 1, unit: "unit", condition: "baik",
     status: "dipakai", location: "Ruang Finance", assignedTo: "e09",
     purchaseDate: "2024-02-12", purchasePrice: 14_500_000, photoPath: null,
     note: "Garansi sampai Feb 2027", createdAt: "2024-02-12T09:00:00+08:00", updatedAt: "2026-05-02T09:00:00+08:00",
   },
   {
-    id: "inv2", code: "INV-0002", name: "Printer Epson L3210", category: "elektronik",
+    id: "inv2", code: "PMA-OFC-0002", name: "Printer Epson L3210", company: "PMA", category: "OFC",
     brand: "Epson", serialNo: "EPL3210-8814", quantity: 1, unit: "unit", condition: "perlu_servis",
     status: "perawatan", location: "Ruang Admin", assignedTo: "e11",
     purchaseDate: "2023-08-05", purchasePrice: 2_750_000, photoPath: null,
     note: "Head printer perlu dibersihkan", createdAt: "2023-08-05T09:00:00+08:00", updatedAt: "2026-06-01T09:00:00+08:00",
   },
   {
-    id: "inv3", code: "INV-0003", name: "Meja Kerja Kayu Jati 120cm", category: "furnitur",
+    id: "inv3", code: "PMA-FUR-0001", name: "Meja Kerja Kayu Jati 120cm", company: "PMA", category: "FUR",
     brand: null, serialNo: null, quantity: 8, unit: "unit", condition: "baik",
     status: "dipakai", location: "Ruang Kantor Utama", assignedTo: null,
     purchaseDate: "2022-11-20", purchasePrice: 1_850_000, photoPath: null,
     note: null, createdAt: "2022-11-20T09:00:00+08:00", updatedAt: "2022-11-20T09:00:00+08:00",
   },
   {
-    id: "inv4", code: "INV-0004", name: "Kursi Ergonomis Mesh", category: "furnitur",
+    id: "inv4", code: "PMA-FUR-0002", name: "Kursi Ergonomis Mesh", company: "PMA", category: "FUR",
     brand: "Ergosit", serialNo: null, quantity: 10, unit: "unit", condition: "baik",
     status: "dipakai", location: "Ruang Kantor Utama", assignedTo: null,
     purchaseDate: "2022-11-20", purchasePrice: 1_200_000, photoPath: null,
     note: null, createdAt: "2022-11-20T09:00:00+08:00", updatedAt: "2022-11-20T09:00:00+08:00",
   },
   {
-    id: "inv5", code: "INV-0005", name: "Motor Operasional Honda Vario", category: "kendaraan",
+    id: "inv5", code: "PMA-VEH-0001", name: "Motor Operasional Honda Vario", company: "PMA", category: "VEH",
     brand: "Honda", serialNo: "DK-4471-AB", quantity: 1, unit: "unit", condition: "baik",
     status: "dipakai", location: "Parkir Kantor", assignedTo: "e07",
     purchaseDate: "2023-04-18", purchasePrice: 22_300_000, photoPath: null,
     note: "Pajak jatuh tempo April tiap tahun", createdAt: "2023-04-18T09:00:00+08:00", updatedAt: "2026-04-19T09:00:00+08:00",
   },
   {
-    id: "inv6", code: "INV-0006", name: "Proyektor Epson EB-X06", category: "elektronik",
+    id: "inv6", code: "PMA-OFC-0003", name: "Proyektor Epson EB-X06", company: "PMA", category: "OFC",
     brand: "Epson", serialNo: "EBX06-3320", quantity: 1, unit: "unit", condition: "baik",
     status: "tersedia", location: "Gudang Kantor", assignedTo: null,
     purchaseDate: "2023-01-10", purchasePrice: 6_400_000, photoPath: null,
     note: null, createdAt: "2023-01-10T09:00:00+08:00", updatedAt: "2023-01-10T09:00:00+08:00",
   },
   {
-    id: "inv7", code: "INV-0007", name: "Kertas A4 80gsm", category: "atk",
+    id: "inv7", code: "PMA-OFC-0004", name: "Kertas A4 80gsm", company: "PMA", category: "OFC",
     brand: "Sinar Dunia", serialNo: null, quantity: 24, unit: "rim", condition: "baik",
     status: "tersedia", location: "Gudang ATK", assignedTo: null,
     purchaseDate: "2026-05-04", purchasePrice: 58_000, photoPath: null,
     note: "Stok bulanan", createdAt: "2026-05-04T09:00:00+08:00", updatedAt: "2026-05-04T09:00:00+08:00",
   },
   {
-    id: "inv8", code: "INV-0008", name: "Dispenser Galon Bawah", category: "perlengkapan",
+    id: "inv8", code: "PMA-OTH-0001", name: "Dispenser Galon Bawah", company: "PMA", category: "OTH",
     brand: "Sharp", serialNo: null, quantity: 2, unit: "unit", condition: "baik",
     status: "dipakai", location: "Pantry", assignedTo: null,
     purchaseDate: "2024-07-01", purchasePrice: 1_650_000, photoPath: null,
     note: null, createdAt: "2024-07-01T09:00:00+08:00", updatedAt: "2024-07-01T09:00:00+08:00",
   },
   {
-    id: "inv9", code: "INV-0009", name: "Genset Honda EP2500", category: "mesin",
+    id: "inv9", code: "PMDN-MCH-0001", name: "Genset Honda EP2500", company: "PMDN", category: "MCH",
     brand: "Honda", serialNo: "EP2500-1180", quantity: 1, unit: "unit", condition: "baik",
     status: "tersedia", location: "Belakang Kantor", assignedTo: null,
     purchaseDate: "2021-09-14", purchasePrice: 8_900_000, photoPath: null,
     note: "Servis rutin tiap 6 bulan", createdAt: "2021-09-14T09:00:00+08:00", updatedAt: "2026-03-14T09:00:00+08:00",
   },
   {
-    id: "inv10", code: "INV-0010", name: "Handphone Kantor Samsung A15", category: "elektronik",
+    id: "inv10", code: "PMA-OFC-0005", name: "Handphone Kantor Samsung A15", company: "PMA", category: "OFC",
     brand: "Samsung", serialNo: "SMA15-7742", quantity: 1, unit: "unit", condition: "hilang",
     status: "pensiun", location: "—", assignedTo: null,
     purchaseDate: "2024-10-02", purchasePrice: 2_400_000, photoPath: null,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { mapInventoryItem } from "@/lib/data";
-import { CATEGORIES, CONDITIONS, STATUSES } from "@/lib/inventory";
+import { CATEGORIES, CATEGORY_LABEL, COMPANIES, CONDITIONS, STATUSES } from "@/lib/inventory";
 import { isValidUploadedPath } from "@/lib/storage-path";
 import type { InventoryItem } from "@/lib/types";
 
@@ -15,6 +15,7 @@ const PHOTO_FOLDER = "items";
 interface ItemPayload {
   id?: string;
   name?: string;
+  company?: InventoryItem["company"];
   category?: InventoryItem["category"];
   brand?: string | null;
   serialNo?: string | null;
@@ -42,8 +43,13 @@ async function auth() {
 
 /** `partial` = PATCH: hanya field yang dikirim yang divalidasi. */
 function validate(body: ItemPayload, partial: boolean): string | null {
-  if (!partial || body.name !== undefined) {
+  // Tambah barang cukup company + kategori (nama diisi otomatis); saat ubah,
+  // nama yang dikirim tidak boleh dikosongkan.
+  if (partial && body.name !== undefined) {
     if (!body.name?.trim()) return "name_required";
+  }
+  if (!partial || body.company !== undefined) {
+    if (!body.company || !COMPANIES.includes(body.company)) return "invalid_company";
   }
   if (!partial || body.category !== undefined) {
     if (!body.category || !CATEGORIES.includes(body.category)) return "invalid_category";
@@ -79,6 +85,7 @@ const trimOrNull = (v: string | null | undefined) => {
 function toRow(body: ItemPayload): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if (body.name !== undefined) row.name = body.name!.trim();
+  if (body.company !== undefined) row.company = body.company;
   if (body.category !== undefined) row.category = body.category;
   if (body.brand !== undefined) row.brand = trimOrNull(body.brand);
   if (body.serialNo !== undefined) row.serial_no = trimOrNull(body.serialNo);
@@ -101,8 +108,9 @@ function isCodeConflict(code?: string): boolean {
 }
 
 // ---- Tambah barang ----
-// Kode aset TIDAK dikirim client: database yang membuatnya (sequence + default),
-// jadi mustahil duplikat walau dua HR menyimpan bersamaan.
+// Kode aset TIDAK dikirim client: trigger database yang membuatnya
+// (<COMPANY>-<KATEGORI>-<nnnn>, counter terkunci per baris), jadi mustahil
+// duplikat walau dua HR menyimpan bersamaan.
 export async function POST(req: Request) {
   let body: ItemPayload;
   try {
@@ -116,7 +124,10 @@ export async function POST(req: Request) {
   const { supabase, error: authErr } = await auth();
   if (authErr) return authErr;
 
-  const { data, error } = await supabase!.from("inventory_items").insert(toRow(body)).select("*").single();
+  // Wizard hanya mengirim company + kategori → nama awal = nama kategori,
+  // bisa dilengkapi kapan saja lewat "Lengkapi detail".
+  const row = toRow({ ...body, name: body.name?.trim() || CATEGORY_LABEL.id[body.category!] });
+  const { data, error } = await supabase!.from("inventory_items").insert(row).select("*").single();
   if (error || !data) {
     if (isCodeConflict(error?.code)) return NextResponse.json({ error: "code_conflict" }, { status: 409 });
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });

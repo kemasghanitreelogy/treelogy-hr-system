@@ -455,19 +455,21 @@ export interface TravelRequest {
    Inventaris kantor
    ============================================================ */
 
+/** Entitas pemilik aset (sesuai register aset keuangan). */
+export type InventoryCompany = "PMA" | "PMDN";
+
+/** Kode kategori aset baku — ikut sheet register aset. */
 export type InventoryCategory =
-  | "elektronik"
-  | "furnitur"
-  | "atk"
-  | "kendaraan"
-  | "mesin"
-  | "perlengkapan"
-  | "tanah"
-  | "bangunan_permanen"
-  | "bangunan_non_permanen"
-  | "aset_biologis"
-  | "peralatan_kantor"
-  | "lainnya";
+  | "LND"
+  | "VEH"
+  | "FMT"
+  | "MCH"
+  | "OFC"
+  | "FUR"
+  | "ELC"
+  | "LVS"
+  | "BIO"
+  | "OTH";
 
 /** Kondisi fisik barang. */
 export type InventoryCondition = "baik" | "perlu_servis" | "rusak" | "hilang";
@@ -477,9 +479,10 @@ export type InventoryStatus = "tersedia" | "dipakai" | "perawatan" | "pensiun";
 
 export interface InventoryItem {
   id: string;
-  /** Kode aset unik yang dibuat database (INV-0001). Inilah isi QR-nya. */
+  /** Kode aset unik yang dibuat database (PMA-OFC-0001; data lama INV-0001). Inilah isi QR-nya. */
   code: string;
   name: string;
+  company: InventoryCompany;
   category: InventoryCategory;
   brand?: string | null;
   serialNo?: string | null;

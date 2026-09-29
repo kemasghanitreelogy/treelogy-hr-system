@@ -114,7 +114,9 @@ export async function downloadInventoryLabels(
 
     doc.setTextColor(31, 36, 27);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
+    // Kode baru (PMDN-MCH-0001) lebih panjang dari INV-0001 — kecilkan supaya
+    // tetap muat di kolom teks ±31 mm.
+    doc.setFontSize(item.code.length > 9 ? 9 : 11);
     doc.text(item.code, textX, cursor);
 
     cursor += 4.6;
