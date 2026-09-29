@@ -79,46 +79,71 @@ export function qrSvgPath(text: string, opts: { ecc?: EccLevel; border?: number 
 }
 
 /**
+ * Ukuran teks keterangan (dalam satuan modul) di bawah QR: sebesar mungkin
+ * tapi tetap muat selebar QR (±0,62 em per karakter tebal), maks. 5 modul.
+ */
+function captionMetrics(side: number, caption: string) {
+  const font = Math.min(5, (side * 0.86) / (Math.max(caption.length, 1) * 0.62));
+  const band = font * 1.9;
+  return { font, band, baseline: side + band * 0.55 };
+}
+
+const CAPTION_FONT = "Helvetica, Arial, sans-serif";
+
+/**
  * SVG standalone (untuk diunduh atau ditempel ke halaman cetak).
  * Quiet zone default 4 modul — sesuai spesifikasi QR untuk hasil cetak.
+ * `caption` (mis. kode aset) ditulis di bawah quiet zone, bukan di dalamnya,
+ * supaya QR tetap terbaca.
  */
 export function qrSvgMarkup(
   text: string,
-  opts: { ecc?: EccLevel; border?: number; dark?: string; light?: string } = {},
+  opts: { ecc?: EccLevel; border?: number; dark?: string; light?: string; caption?: string } = {},
 ): string {
   const { viewBox, d } = qrSvgPath(text, { ecc: opts.ecc, border: opts.border ?? 4 });
   const dark = opts.dark ?? "#1f241b";
   const light = opts.light ?? "#ffffff";
+  const cap = opts.caption ? captionMetrics(viewBox, opts.caption) : null;
+  const height = cap ? viewBox + cap.band : viewBox;
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox} ${viewBox}" shape-rendering="crispEdges">`,
-    `<rect width="${viewBox}" height="${viewBox}" fill="${light}"/>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBox} ${height}" shape-rendering="crispEdges">`,
+    `<rect width="${viewBox}" height="${height}" fill="${light}"/>`,
     `<path d="${d}" fill="${dark}"/>`,
+    cap
+      ? `<text x="${viewBox / 2}" y="${cap.baseline}" text-anchor="middle" dominant-baseline="middle" font-family="${CAPTION_FONT}" font-weight="700" font-size="${cap.font}" fill="${dark}" shape-rendering="auto">${escapeXml(opts.caption!)}</text>`
+      : "",
     `</svg>`,
   ].join("");
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 /**
  * PNG data URL lewat canvas (khusus browser). `scale` = piksel per modul —
  * default 12 menghasilkan ±400px untuk QR versi kecil, cukup tajam untuk dicetak
- * ulang atau dikirim lewat chat.
+ * ulang atau dikirim lewat chat. `caption` ditulis di bawah QR.
  */
 export function qrPngDataUrl(
   text: string,
-  opts: { ecc?: EccLevel; border?: number; scale?: number; dark?: string; light?: string } = {},
+  opts: { ecc?: EccLevel; border?: number; scale?: number; dark?: string; light?: string; caption?: string } = {},
 ): string {
   const border = opts.border ?? 4;
   const scale = opts.scale ?? 12;
   const matrix = qrMatrix(text, opts.ecc ?? "quartile");
-  const side = (matrix.size + border * 2) * scale;
+  const modules = matrix.size + border * 2;
+  const side = modules * scale;
+  const cap = opts.caption ? captionMetrics(modules, opts.caption) : null;
 
   const canvas = document.createElement("canvas");
   canvas.width = side;
-  canvas.height = side;
+  canvas.height = cap ? Math.ceil((modules + cap.band) * scale) : side;
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
 
   ctx.fillStyle = opts.light ?? "#ffffff";
-  ctx.fillRect(0, 0, side, side);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = opts.dark ?? "#1f241b";
   for (let y = 0; y < matrix.size; y++) {
     for (let x = 0; x < matrix.size; x++) {
@@ -126,6 +151,12 @@ export function qrPngDataUrl(
         ctx.fillRect((x + border) * scale, (y + border) * scale, scale, scale);
       }
     }
+  }
+  if (cap) {
+    ctx.font = `700 ${cap.font * scale}px ${CAPTION_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(opts.caption!, side / 2, cap.baseline * scale, side * 0.92);
   }
   return canvas.toDataURL("image/png");
 }

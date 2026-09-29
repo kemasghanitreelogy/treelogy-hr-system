@@ -94,7 +94,7 @@ export function QrPanel({ item }: { item: InventoryItem }) {
   }
 
   function downloadPng() {
-    const dataUrl = qrPngDataUrl(payload, { scale: 14 });
+    const dataUrl = qrPngDataUrl(payload, { scale: 14, caption: item.code });
     const a = document.createElement("a");
     a.href = dataUrl;
     a.download = `qr-${item.code}.png`;
@@ -102,7 +102,7 @@ export function QrPanel({ item }: { item: InventoryItem }) {
   }
 
   function downloadSvg() {
-    saveBlob(new Blob([qrSvgMarkup(payload)], { type: "image/svg+xml" }), `qr-${item.code}.svg`);
+    saveBlob(new Blob([qrSvgMarkup(payload, { caption: item.code })], { type: "image/svg+xml" }), `qr-${item.code}.svg`);
   }
 
   async function printLabel() {
@@ -122,11 +122,18 @@ export function QrPanel({ item }: { item: InventoryItem }) {
       <p className="mt-0.5 text-xs text-muted">{t.hint}</p>
 
       <div className="mt-3 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-        {payload ? (
-          <QrCode value={payload} size={168} scanline className="shrink-0 ring-1 ring-line" title={`QR ${item.code}`} />
-        ) : (
-          <div className="h-[168px] w-[168px] shrink-0 animate-pulse rounded-xl bg-sand" />
-        )}
+        {/* Kode aset tepat di bawah QR — sama seperti hasil unduhan PNG/SVG,
+            jadi yang ditempel bisa dibaca orang tanpa memindai. */}
+        <figure className="flex shrink-0 flex-col items-center overflow-hidden rounded-xl bg-white ring-1 ring-line">
+          {payload ? (
+            <QrCode value={payload} size={168} scanline className="rounded-none" title={`QR ${item.code}`} />
+          ) : (
+            <div className="h-[168px] w-[168px] animate-pulse bg-sand" />
+          )}
+          <figcaption className="w-full pb-2.5 text-center font-mono text-sm font-bold tracking-wide text-ink tabular-nums">
+            {item.code}
+          </figcaption>
+        </figure>
 
         <div className="w-full min-w-0 space-y-2">
           <div className="rounded-xl bg-cream/70 px-3 py-2">
