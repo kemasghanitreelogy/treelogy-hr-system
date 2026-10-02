@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Download, Plus, Share, X } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 
@@ -39,7 +40,16 @@ function isInAppBrowser(): boolean {
   return /FBAN|FBAV|Instagram|Line|Twitter|MicroMessenger|GSA|DuckDuckGo/i.test(window.navigator.userAgent);
 }
 
-export function InstallPrompt() {
+/**
+ * Halaman tanpa bottom nav (login, lupa kata sandi): banner mengambang di
+ * `bottom-20` justru jatuh tepat di atas tombol utama form. Di sana banner
+ * dirender inline oleh halaman itu sendiri (`placement="inline"`), di bawah
+ * form — tidak pernah menutupi apa pun.
+ */
+const INLINE_ROUTES = ["/login", "/forgot-password"];
+
+export function InstallPrompt({ placement = "floating" }: { placement?: "floating" | "inline" }) {
+  const pathname = usePathname();
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [show, setShow] = useState(false);
   const [iosHint, setIosHint] = useState(false);
@@ -92,10 +102,18 @@ export function InstallPrompt() {
   }
 
   if (!show) return null;
+  // Versi global (layout) mundur di halaman auth — versi inline yang tampil.
+  if (placement === "floating" && INLINE_ROUTES.some((r) => pathname?.startsWith(r))) return null;
 
   return (
-    <div className="fixed inset-x-3 bottom-20 z-50 mx-auto max-w-md lg:bottom-4 lg:left-auto lg:right-4 lg:mx-0">
-      <div className="card flex items-start gap-3 p-4 shadow-pop">
+    <div
+      className={
+        placement === "inline"
+          ? "fade-up mt-4"
+          : "fixed inset-x-3 bottom-20 z-50 mx-auto max-w-md lg:bottom-4 lg:left-auto lg:right-4 lg:mx-0"
+      }
+    >
+      <div className={placement === "inline" ? "card flex items-start gap-3 p-4" : "card flex items-start gap-3 p-4 shadow-pop"}>
         <div className="shrink-0">
           <Logo mark />
         </div>

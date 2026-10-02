@@ -14,6 +14,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { OtpInput } from "@/components/ui/otp-input";
@@ -288,6 +289,8 @@ export default function ForgotPasswordPage() {
             </div>
           )}
         </div>
+
+        <InstallPrompt placement="inline" />
 
         {step !== "done" && (
           <div className="mt-6 text-center">

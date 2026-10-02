@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Logo } from "@/components/layout/logo";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { SuccessCheck } from "@/components/ui/success-check";
@@ -132,6 +133,9 @@ export default function LoginPage() {
             Masuk
           </Button>
         </form>
+
+        {/* Ajakan pasang PWA di bawah form — bukan mengambang di atas tombol Masuk. */}
+        <InstallPrompt placement="inline" />
 
         <p className="mt-6 text-center text-xs text-faint">
           © 2026 Treelogy · Premium Organic Moringa
