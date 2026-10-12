@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, PackageSearch, Plus, Printer, ScanLine, Search } from "lucide-react";
+import { ChevronRight, FileSpreadsheet, PackageSearch, Plus, Printer, ScanLine, Search } from "lucide-react";
 import type { InventoryItem } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
 import { cn, rupiah } from "@/lib/utils";
 import { itemQrPayload } from "@/lib/qr";
+import { exportInventoryXlsx } from "@/lib/inventory-xlsx";
 import {
   CATEGORIES,
   CATEGORY_LABEL,
@@ -44,6 +45,9 @@ const STR: Record<
     printAll: (n: number) => string;
     printBusy: string;
     printFailed: string;
+    exportAll: string;
+    exportFailed: string;
+    exported: (n: number) => string;
     sumItems: (n: number) => string;
     sumUnits: (n: number) => string;
     sumAttention: (n: number) => string;
@@ -83,6 +87,9 @@ const STR: Record<
     printAll: (n) => `Cetak ${n} label`,
     printBusy: "Menyiapkan…",
     printFailed: "Gagal membuat label PDF.",
+    exportAll: "Ekspor Excel",
+    exportFailed: "Gagal membuat file Excel.",
+    exported: (n) => `${n} barang diekspor ✓`,
     sumItems: (n) => `${n} barang`,
     sumUnits: (n) => `${n} unit`,
     sumAttention: (n) => `${n} perlu perhatian`,
@@ -121,6 +128,9 @@ const STR: Record<
     printAll: (n) => `Print ${n} labels`,
     printBusy: "Preparing…",
     printFailed: "Failed to build the label PDF.",
+    exportAll: "Export Excel",
+    exportFailed: "Failed to build the Excel file.",
+    exported: (n) => `${n} items exported ✓`,
     sumItems: (n) => `${n} items`,
     sumUnits: (n) => `${n} units`,
     sumAttention: (n) => `${n} need attention`,
@@ -198,6 +208,7 @@ export function InventoryView({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [origin, setOrigin] = useState("");
 
   useEffect(() => setOrigin(window.location.origin), []);
@@ -304,6 +315,18 @@ export function InventoryView({
     }
   }
 
+  async function exportAll() {
+    setExportBusy(true);
+    try {
+      const n = await exportInventoryXlsx({ items: filtered, employeeNames: empName, locale });
+      if (n > 0) toast.success(t.exported(n));
+    } catch {
+      toast.error(t.exportFailed);
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
   function handleScan(code: string) {
     setScanning(false);
     const hit = list.find((i) => i.code.toUpperCase() === code.toUpperCase());
@@ -394,6 +417,16 @@ export function InventoryView({
               className="cursor-pointer rounded-lg px-2 py-1 font-medium text-muted transition-colors hover:bg-sand hover:text-ink"
             >
               {t.reset}
+            </button>
+          )}
+          {filtered.length > 0 && (
+            <button
+              onClick={exportAll}
+              disabled={exportBusy}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 font-medium text-muted transition-colors hover:bg-sand hover:text-ink disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              {exportBusy ? t.printBusy : t.exportAll}
             </button>
           )}
           {canManage && filtered.length > 0 && (
