@@ -176,6 +176,36 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "photo_required" }, { status: 400 });
   }
 
+  // Sudah clock-in hari ini → JANGAN catat ulang, apa pun jalurnya.
+  //
+  // Dulu hanya ketukan yang TIDAK lebih baru yang dianggap pengulangan; ketukan
+  // baru yang lebih lambat menimpa jam masuk (status bisa berubah jadi telat)
+  // dan mengosongkan fotonya, karena unggahan ulang ke path yang sama ditolak
+  // storage. Itu yang menimpa absensi Tanty 19–20 Okt 2026, ketika tombolnya
+  // keliru kembali ke "Clock In". Jam masuk pertama adalah yang sah; kliennya
+  // diberi state yang tersimpan supaya tombolnya pindah ke "Clock Out".
+  if (direction === "in" && profile?.employee_id) {
+    const { data: sudah } = await supabase
+      .from("attendance")
+      .select("clock_in, clock_out")
+      .eq("employee_id", profile.employee_id)
+      .eq("date", todayStr)
+      .maybeSingle();
+    if (sudah?.clock_in) {
+      return NextResponse.json({
+        ok: true,
+        recorded: true,
+        duplicate: true,
+        clockIn: sudah.clock_in,
+        clockOut: sudah.clock_out ?? null,
+        distance,
+        lateMinutes: null,
+        overtimeMinutes: null,
+        timeAdjusted: false,
+      });
+    }
+  }
+
   // Upload selfie (best-effort) to private storage.
   // Path per (hari, arah) + upsert: clock ulang di hari yang sama MENIMPA
   // foto sebelumnya, bukan menumpuk file yatim di storage.
@@ -329,48 +359,72 @@ export async function POST(req: Request) {
       const [sh, sm] = workStart.split(":").map(Number);
       lateMinutes = Math.max(0, ch * 60 + cm - (sh * 60 + sm));
 
-      // Ketukan masuk yang SUDAH tercatat, datang lagi.
-      //
-      // Antrean offline bisa memutar ulang ketukan yang sebenarnya sudah
-      // berhasil (mis. penghapusan salinannya gagal tersimpan). Memperlakukan
-      // pengulangan itu sebagai sesi baru berarti clock_out di bawah ikut
-      // dikosongkan — jam pulang orang lenyap tanpa ada yang menyadarinya.
-      // Ketukan yang tidak lebih baru dari yang tersimpan dianggap pengulangan
-      // dan dijawab "sudah tercatat", bukan ditulis ulang.
-      const { data: sebelumnya } = await supabase
+      // Penulisan bersyarat — jam masuk yang sudah ada TIDAK PERNAH ditimpa,
+      // bahkan bila dua ketukan tiba bersamaan (pemeriksaan di atas saja masih
+      // menyisakan celah balapan):
+      //  1) baris hari ini sudah ada tapi belum ber-clock-in (mis. dibuat HR
+      //     lewat edit massal) → isi, hanya bila clock_in masih kosong;
+      //  2) belum ada baris → sisipkan dengan ON CONFLICT DO NOTHING.
+      // Bila keduanya tidak menulis apa pun, ketukan lain sudah lebih dulu
+      // tercatat — jawab dengan state yang tersimpan.
+      const masuk = {
+        clock_in: nowIso,
+        status: lateMinutes > 0 ? "late" : "present",
+        late_minutes: lateMinutes,
+        source: "mobile",
+        clock_in_lat: body.lat ?? null,
+        clock_in_lng: body.lng ?? null,
+        clock_in_distance_m: distance,
+        clock_in_photo: photoPath,
+        clock_in_adjusted: timeAdjusted,
+        // A fresh clock-in starts a clean session: never inherit a stale
+        // clock-out (which would make clock_out < clock_in).
+        clock_out: null,
+        clock_out_lat: null,
+        clock_out_lng: null,
+        clock_out_distance_m: null,
+        clock_out_photo: null,
+        overtime_minutes: 0,
+      };
+      const { data: diisi, error: isiErr } = await supabase
         .from("attendance")
-        .select("clock_in")
+        .update(masuk)
         .eq("employee_id", profile.employee_id)
         .eq("date", today)
-        .maybeSingle();
-      if (sebelumnya?.clock_in && new Date(String(sebelumnya.clock_in)).getTime() >= clockAt.getTime()) {
-        return NextResponse.json({ ok: true, recorded: true, duplicate: true, distance, lateMinutes: null, overtimeMinutes: null, timeAdjusted });
+        .is("clock_in", null)
+        .select("id");
+      let error = isiErr;
+      let tertulis = (diisi?.length ?? 0) > 0;
+      if (!error && !tertulis) {
+        const { data: baru, error: sisipErr } = await supabase
+          .from("attendance")
+          .upsert(
+            { employee_id: profile.employee_id, date: today, ...masuk },
+            { onConflict: "employee_id,date", ignoreDuplicates: true },
+          )
+          .select("id");
+        error = sisipErr;
+        tertulis = (baru?.length ?? 0) > 0;
       }
-
-      const { error } = await supabase.from("attendance").upsert(
-        {
-          employee_id: profile.employee_id,
-          date: today,
-          clock_in: nowIso,
-          status: lateMinutes > 0 ? "late" : "present",
-          late_minutes: lateMinutes,
-          source: "mobile",
-          clock_in_lat: body.lat ?? null,
-          clock_in_lng: body.lng ?? null,
-          clock_in_distance_m: distance,
-          clock_in_photo: photoPath,
-          clock_in_adjusted: timeAdjusted,
-          // A fresh clock-in starts a clean session: never inherit a stale
-          // clock-out (which would make clock_out < clock_in).
-          clock_out: null,
-          clock_out_lat: null,
-          clock_out_lng: null,
-          clock_out_distance_m: null,
-          clock_out_photo: null,
-          overtime_minutes: 0,
-        },
-        { onConflict: "employee_id,date" },
-      );
+      if (!error && !tertulis) {
+        const { data: ada } = await supabase
+          .from("attendance")
+          .select("clock_in, clock_out")
+          .eq("employee_id", profile.employee_id)
+          .eq("date", today)
+          .maybeSingle();
+        return NextResponse.json({
+          ok: true,
+          recorded: true,
+          duplicate: true,
+          clockIn: ada?.clock_in ?? null,
+          clockOut: ada?.clock_out ?? null,
+          distance,
+          lateMinutes: null,
+          overtimeMinutes: null,
+          timeAdjusted: false,
+        });
+      }
       recorded = !error;
     } else {
       // Menit lembur (informasi absensi) = selisih pulang vs jadwal selesai (WITA).

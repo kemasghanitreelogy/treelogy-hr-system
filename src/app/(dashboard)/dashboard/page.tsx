@@ -20,15 +20,14 @@ import { TEAM_META } from "@/lib/constants";
 import { formatDate, rupiah } from "@/lib/utils";
 import {
   liveToday,
-  getAttendance,
   getAttendanceSettings,
   getDashboardData,
   getEmployee,
   getHolidayToday,
-  getLeaveRequests,
-  getOvertimeRequests,
-  getClockApprovals,
-  todayPendingClock,
+  getPendingClockApprovals,
+  getPendingLeaveRequests,
+  getPendingOvertimeRequests,
+  getTodayClockState,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 import { audienceFromPermissions } from "@/components/layout/nav-items";
@@ -158,20 +157,19 @@ export default async function DashboardPage() {
   // Front-line worker → clock-first self-service home.
   if (user && audienceFromPermissions(user.permissions) === "self") {
     const meId = user.employeeId ?? "";
-    const [settings, attendance, me, leave, overtime, clockApprovals] = await Promise.all([
+    // Beranda karyawan hanya memuat yang ia butuhkan — state clock hari ini dan
+    // pengajuannya yang masih pending — lewat kueri bertarget, bukan seluruh tabel.
+    // todayPending: clock-in yang menunggu HR (off-day / luar area) belum punya
+    // baris attendance, tapi tombolnya harus tetap "Clock Out".
+    const [settings, me, clock, leave, overtime, clockApprovals] = await Promise.all([
       getAttendanceSettings(),
-      getAttendance(),
       user.employeeId ? getEmployee(user.employeeId) : Promise.resolve(undefined),
-      getLeaveRequests(),
-      getOvertimeRequests(),
-      getClockApprovals(),
+      getTodayClockState(user.employeeId),
+      getPendingLeaveRequests(meId),
+      getPendingOvertimeRequests(meId),
+      getPendingClockApprovals(meId),
     ]);
-    // Today's record so the clock widget survives a refresh. A clock-in that's
-    // still pending HR (off-day / luar area) has no attendance row yet, so also
-    // seed from the pending approval — else the button reverts to "Clock In".
-    const today = liveToday();
-    const todayRecord = attendance.find((r) => r.employeeId === meId && r.date === today) ?? null;
-    const todayPending = todayPendingClock(clockApprovals, meId, today);
+    const { todayRecord, todayPending } = clock;
     const scheduleLabel = t.scheduleLabel(me?.workStart ?? "08:00", me?.workEnd ?? "17:00");
     const geofence = settings.geofences[me?.team ?? "office"];
     const holidayToday = await getHolidayToday(me?.religion);

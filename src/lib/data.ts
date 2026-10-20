@@ -89,21 +89,53 @@ type Row = Record<string, unknown>;
 const n = (v: unknown) => Number(v ?? 0);
 const hhmm = (t: unknown) => String(t ?? "").slice(0, 5);
 
+/**
+ * Batas baris per permintaan PostgREST (max_rows Supabase = 1000).
+ *
+ * `select("*")` TANPA paginasi diam-diam berhenti di baris ke-1000 — tanpa
+ * galat. Tabel `attendance` melewatinya 16 Okt 2026, dan sejak itu baris hari
+ * ini tidak ikut terbaca oleh HR (yang RLS-nya melihat semua): widget clock
+ * kembali ke "Clock In" setelah aplikasi dibuka ulang, orang menekan lagi, dan
+ * jam masuk aslinya tertimpa.
+ */
+const PAGE_SIZE = 1000;
+
+/**
+ * Baca SEMUA baris sebuah kueri, halaman demi halaman. `page(from, to)` harus
+ * mengembalikan kueri yang sudah diurutkan pada kunci unik — tanpa urutan
+ * tetap, halaman-halamannya bisa saling tumpang atau melompati baris.
+ * `null` = galat (pemanggil yang memutuskan cadangannya).
+ */
+async function selectAllPages(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+): Promise<Row[] | null> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error || !data) return null;
+    rows.push(...(data as Row[]));
+    if (data.length < PAGE_SIZE) return rows;
+  }
+}
+
 async function fetchTable<T>(
   table: string,
   map: (r: Row) => T,
   fallback: T[],
+  orderKey = "id",
 ): Promise<T[]> {
   if (!isSupabaseConfigured) return fallback;
   try {
     const supabase = await createClient();
     if (!supabase) return fallback;
-    const { data, error } = await supabase.from(table).select("*");
+    const rows = await selectAllPages((from, to) =>
+      supabase.from(table).select("*").order(orderKey).range(from, to),
+    );
     // Only fall back to seed on a genuine failure. An EMPTY result is a valid
     // answer (e.g. an employee with no records, RLS-scoped) — returning seed
     // here would leak demo rows with mismatched ids ("?" avatars).
-    if (error || !data) return fallback;
-    return (data as Row[]).map(map);
+    if (!rows) return fallback;
+    return rows.map(map);
   } catch {
     return fallback;
   }
@@ -557,9 +589,10 @@ export async function getAttendanceSince(fromDate: string): Promise<AttendanceRe
   try {
     const supabase = await createClient();
     if (!supabase) return [];
-    const { data, error } = await supabase.from("attendance").select("*").gte("date", fromDate);
-    if (error || !data) return [];
-    return (data as Row[]).map(mapAttendance);
+    const rows = await selectAllPages((from, to) =>
+      supabase.from("attendance").select("*").gte("date", fromDate).order("id").range(from, to),
+    );
+    return (rows ?? []).map(mapAttendance);
   } catch {
     return [];
   }
@@ -577,13 +610,10 @@ export async function getAttendanceBetween(from: string, to: string): Promise<At
   try {
     const supabase = await createClient();
     if (!supabase) return [];
-    const { data, error } = await supabase
-      .from("attendance")
-      .select("*")
-      .gte("date", from)
-      .lte("date", to);
-    if (error || !data) return [];
-    return (data as Row[]).map(mapAttendance);
+    const rows = await selectAllPages((a, b) =>
+      supabase.from("attendance").select("*").gte("date", from).lte("date", to).order("id").range(a, b),
+    );
+    return (rows ?? []).map(mapAttendance);
   } catch {
     return [];
   }
@@ -629,7 +659,7 @@ export async function getAttendanceForEmployee(
       .select("*")
       .eq("employee_id", employeeId)
       .gte("date", `${period}-01`)
-      .lte("date", `${period}-31`);
+      .lte("date", periodEnd(period));
     if (error || !data) return [];
     return (data as Row[]).map(mapAttendance);
   } catch {
@@ -637,8 +667,64 @@ export async function getAttendanceForEmployee(
   }
 }
 export const getAttendance = () => fetchTable("attendance", mapAttendance, seedAttendance);
+
+/**
+ * Tanggal terakhir periode YYYY-MM. Jangan menulis `${period}-31`: Postgres
+ * menolak "2026-11-31" (date out of range), kuerinya galat, dan hasilnya
+ * diam-diam kosong untuk setiap bulan 30 hari dan Februari.
+ */
+export function periodEnd(period: string): string {
+  const [y, m] = period.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${period}-${String(last).padStart(2, "0")}`;
+}
+
+/** Absensi satu periode (YYYY-MM), cakupan sesuai RLS (HR semua, karyawan dirinya). */
+export const getAttendanceForPeriod = (period: string) =>
+  getAttendanceBetween(`${period}-01`, periodEnd(period));
+
+/**
+ * State clock HARI INI milik satu karyawan, untuk widget clock.
+ *
+ * Diambil dengan kueri bertarget (karyawan + tanggal), bukan dengan
+ * menyaring seluruh tabel di aplikasi. Itulah yang dulu dilakukan, dan begitu
+ * `attendance` melewati 1000 baris, baris hari ini tidak ikut terbaca: tombol
+ * kembali ke "Clock In" dan jam masuk orang tertimpa ketukan berikutnya.
+ */
+export async function getTodayClockState(
+  employeeId: string | null,
+): Promise<{ todayRecord: AttendanceRecord | null; todayPending: PendingClockState | null }> {
+  const empty = { todayRecord: null, todayPending: null };
+  if (!employeeId) return empty;
+  const today = liveToday();
+  if (!isSupabaseConfigured) {
+    return {
+      todayRecord: seedAttendance.find((r) => r.employeeId === employeeId && r.date === today) ?? null,
+      todayPending: todayPendingClock(seedClockApprovals, employeeId, today),
+    };
+  }
+  try {
+    const supabase = await createClient();
+    if (!supabase) return empty;
+    const [att, appr] = await Promise.all([
+      supabase.from("attendance").select("*").eq("employee_id", employeeId).eq("date", today).maybeSingle(),
+      supabase
+        .from("clock_approval_requests")
+        .select("*")
+        .eq("employee_id", employeeId)
+        .eq("date", today)
+        .eq("status", "pending"),
+    ]);
+    return {
+      todayRecord: att.data ? mapAttendance(att.data as Row) : null,
+      todayPending: todayPendingClock(((appr.data ?? []) as Row[]).map(mapClockApproval), employeeId, today),
+    };
+  } catch {
+    return empty;
+  }
+}
 export const getLeaveRequestsRaw = () => fetchTable("leave_requests", mapLeave, seedLeave);
-export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, seedBalances);
+export const getLeaveBalances = () => fetchTable("leave_balances", mapBalance, seedBalances, "employee_id");
 export const getDayOffInLieu = () => fetchTable("day_off_in_lieu", mapDayOff, seedDayOff);
 export const getKpis = () => fetchTable("kpis", mapKpi, seedKpis);
 
@@ -683,6 +769,45 @@ export async function getOvertimeRequests(): Promise<OvertimeRequest[]> {
   const rows = await fetchTable("overtime_requests", mapOvertime, seedOvertime);
   return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
 }
+
+/**
+ * Hanya pengajuan berstatus `pending` (opsional: milik satu karyawan),
+ * disaring di database. Untuk badge menu, daftar "perlu aksi", dan beranda
+ * karyawan — yang tidak butuh riwayat lengkap yang terus bertambah.
+ */
+async function fetchPending<T extends { requestedAt: string }>(
+  table: string,
+  map: (r: Row) => T,
+  seed: (T & { status: string; employeeId: string })[],
+  employeeId?: string,
+): Promise<T[]> {
+  let rows: T[];
+  if (!isSupabaseConfigured) {
+    rows = seed.filter((r) => r.status === "pending" && (!employeeId || r.employeeId === employeeId));
+  } else {
+    try {
+      const supabase = await createClient();
+      if (!supabase) return [];
+      // Builder Supabase bersifat mutable — dibuat baru untuk setiap halaman.
+      const data = await selectAllPages((from, to) => {
+        let q = supabase.from(table).select("*").eq("status", "pending");
+        if (employeeId) q = q.eq("employee_id", employeeId);
+        return q.order("id").range(from, to);
+      });
+      rows = (data ?? []).map(map);
+    } catch {
+      return [];
+    }
+  }
+  return rows.slice().sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+}
+
+export const getPendingLeaveRequests = (employeeId?: string) =>
+  fetchPending("leave_requests", mapLeave, seedLeave, employeeId);
+export const getPendingOvertimeRequests = (employeeId?: string) =>
+  fetchPending("overtime_requests", mapOvertime, seedOvertime, employeeId);
+export const getPendingClockApprovals = (employeeId?: string) =>
+  fetchPending("clock_approval_requests", mapClockApproval, seedClockApprovals, employeeId);
 
 const mapNotification = (r: Row): AppNotification => ({
   id: String(r.id),
@@ -732,9 +857,9 @@ export async function getActionCounts(
   const t0 = performance.now();
   const [employees, leave, overtime, approvals] = await Promise.all([
     getEmployees(),
-    canApproveLeave ? getLeaveRequests() : Promise.resolve([]),
-    canApproveLeave ? getOvertimeRequests() : Promise.resolve([]),
-    canManageAttendance ? getClockApprovals() : Promise.resolve([]),
+    canApproveLeave ? getPendingLeaveRequests() : Promise.resolve([]),
+    canApproveLeave ? getPendingOvertimeRequests() : Promise.resolve([]),
+    canManageAttendance ? getPendingClockApprovals() : Promise.resolve([]),
   ]);
   console.log(`[perf] getActionCounts ${Math.round(performance.now() - t0)}ms`);
   const me = user.employeeId ? employees.find((e) => e.id === user.employeeId) : undefined;
@@ -1015,8 +1140,12 @@ export function buildPayslip(
 }
 
 export async function getPayslipsForRun(runId: string, period: string): Promise<Payslip[]> {
-  const [emps, att, overtime, leave] = await Promise.all([getEmployees(), getAttendance(), getOvertimeRequests(), getLeaveRequests()]);
-  const periodRows = att.filter((a) => a.date.startsWith(period));
+  const [emps, periodRows, overtime, leave] = await Promise.all([
+    getEmployees(),
+    getAttendanceForPeriod(period),
+    getOvertimeRequests(),
+    getLeaveRequests(),
+  ]);
   return emps.filter((e) => e.status === "active").map((e) => buildPayslip(e, period, runId, periodRows, overtime, leave));
 }
 

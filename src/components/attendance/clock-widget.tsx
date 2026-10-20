@@ -54,6 +54,7 @@ const STR: Record<
     recordFailed: string;
     pendingSent: (dir: "in" | "out") => string;
     clockInOk: string;
+    alreadyIn: (hhmm: string) => string;
     clockOutOk: string;
     timeAdjusted: string;
     connectionProblem: string;
@@ -117,6 +118,7 @@ const STR: Record<
     recordFailed: "Gagal merekam absensi. Coba lagi.",
     pendingSent: (dir) => `Pengajuan clock-${dir} di luar area terkirim — menunggu konfirmasi HR ✓`,
     clockInOk: "Clock-in berhasil terekam ✓",
+    alreadyIn: (hhmm) => `Anda sudah clock-in hari ini pukul ${hhmm} — jam masuk tidak diubah.`,
     clockOutOk: "Clock-out berhasil terekam ✓",
     timeAdjusted: "Tercatat memakai jam server — ketukan Anda terlalu lama tertunda untuk dipakai jamnya. Minta HR mengoreksi bila perlu.",
     connectionProblem: "Koneksi bermasalah. Coba lagi.",
@@ -179,6 +181,7 @@ const STR: Record<
     recordFailed: "Failed to record attendance. Try again.",
     pendingSent: (dir) => `Out-of-area clock-${dir} request sent — awaiting HR confirmation ✓`,
     clockInOk: "Clock-in recorded ✓",
+    alreadyIn: (hhmm) => `You already clocked in today at ${hhmm} — your clock-in time is unchanged.`,
     clockOutOk: "Clock-out recorded ✓",
     timeAdjusted: "Recorded with the server clock — your tap was queued too long to use its original time. Ask HR to correct it if needed.",
     connectionProblem: "Connection problem. Try again.",
@@ -330,7 +333,11 @@ export function ClockWidget({
     };
     void periksaAntrean();
     const onVisible = () => {
-      if (document.visibilityState === "visible") void periksaAntrean();
+      if (document.visibilityState !== "visible") return;
+      void periksaAntrean();
+      // Kembali ke aplikasi → ambil ulang state clock dari server; halaman yang
+      // dipulihkan dari memori bisa membawa state yang sudah basi.
+      router.refresh();
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", onVisible);
@@ -354,6 +361,15 @@ export function ClockWidget({
   const [pendingHr, setPendingHr] = useState<boolean>(!todayRecord?.clockIn && !!todayPending?.clockIn);
   const [clockInAt, setClockInAt] = useState<Date | null>(seedIn ? new Date(seedIn) : null);
   const [clockOutAt, setClockOutAt] = useState<Date | null>(seedOut ? new Date(seedOut) : null);
+  // useState hanya memakai nilai awal. Saat data server berubah (router.refresh,
+  // kembali ke aplikasi), state lokal harus ikut — kalau tidak, tombol bisa
+  // tertinggal di fase lama.
+  useEffect(() => {
+    setPhase(seedIn ? (seedOut ? "done" : "in") : "out");
+    setClockInAt(seedIn ? new Date(seedIn) : null);
+    setClockOutAt(seedOut ? new Date(seedOut) : null);
+    setPendingHr(!todayRecord?.clockIn && !!todayPending?.clockIn);
+  }, [seedIn, seedOut, todayRecord?.clockIn, todayPending?.clockIn]);
   const [flow, setFlow] = useState<Flow>("idle");
   /**
    * Ketukan hari ini yang MASIH tersangkut di antrean offline.
@@ -555,6 +571,26 @@ export function ClockWidget({
           setPhase("done");
         }
         setNotice({ tone: "ok", text: data.offDay ? t.offDayPending : t.pendingSent(pendingDir) });
+        router.refresh();
+        return;
+      }
+      // Sudah clock-in sebelumnya → server TIDAK mencatat ulang; ikuti state
+      // tersimpannya supaya tombol langsung menjadi "Clock Out".
+      if (pendingDir === "in" && data.duplicate && data.clockIn) {
+        const masuk = new Date(data.clockIn);
+        setClockInAt(masuk);
+        if (data.clockOut) {
+          setClockOutAt(new Date(data.clockOut));
+          setPhase("done");
+        } else {
+          setPhase("in");
+        }
+        setNotice({
+          tone: "ok",
+          text: t.alreadyIn(
+            masuk.toLocaleTimeString(intlLocale, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Makassar" }),
+          ),
+        });
         router.refresh();
         return;
       }

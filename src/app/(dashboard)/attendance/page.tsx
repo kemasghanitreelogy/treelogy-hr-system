@@ -4,32 +4,34 @@ import { AttendanceSettingsCard } from "@/components/attendance/attendance-setti
 import {
   liveToday,
   livePeriod,
-  getAttendance,
+  getAttendanceForPeriod,
   getAttendanceSettings,
-  getClockApprovals,
   getEmployees,
   getHolidays,
   getHolidayToday,
-  todayPendingClock,
+  getPendingClockApprovals,
+  getTodayClockState,
 } from "@/lib/data";
 import { can, getSessionUser } from "@/lib/auth";
 
 export const metadata = { title: "Absensi — Treelogy Workspace" };
 
 export default async function AttendancePage() {
-  const [all, employeesAll, settings, user, approvalsAll, holidaysAll] = await Promise.all([
-    getAttendance(),
-    getEmployees(),
-    getAttendanceSettings(),
-    getSessionUser(),
-    getClockApprovals(),
-    getHolidays(),
-  ]);
-  const pendingApprovals = approvalsAll.filter((a) => a.status === "pending");
-  const canManage = can(user, "attendance.manage");
   // Periode/hari "berjalan": tanggal WITA nyata saat live, konstanta demo saat seed.
   const period = livePeriod();
   const today = liveToday();
+  const user = await getSessionUser();
+  // Hanya periode berjalan + pengajuan pending + state clock hari ini — bukan
+  // seluruh riwayat absensi yang terus bertambah.
+  const [all, employeesAll, settings, pendingApprovals, holidaysAll, clock] = await Promise.all([
+    getAttendanceForPeriod(period),
+    getEmployees(),
+    getAttendanceSettings(),
+    getPendingClockApprovals(),
+    getHolidays(),
+    getTodayClockState(user?.employeeId ?? null),
+  ]);
+  const canManage = can(user, "attendance.manage");
   // Hari libur nasional (publik) → grid edit-massal tidak menganggapnya sel kosong.
   const holidayDates = canManage
     ? holidaysAll.filter((h) => h.type === "public").map((h) => h.date)
@@ -37,7 +39,6 @@ export default async function AttendancePage() {
   // Selain HR/admin hanya melihat absensinya sendiri (RLS sudah membatasi di
   // Supabase; filter ini menjaga perilaku yang sama di mode seed/offline).
   const records = all
-    .filter((r) => r.date.startsWith(period))
     .filter((r) => canManage || (user?.employeeId != null && r.employeeId === user.employeeId));
   const employees = employeesAll.map((e) => ({
     id: e.id,
@@ -64,11 +65,9 @@ export default async function AttendancePage() {
   // dan mereka mendarat di halaman tanpa tombolnya, lalu harus mencari sendiri.
   // Pengingat harus mendarat tepat di tempat aksinya.
   const showClockWidget = Boolean(user?.employeeId);
-  // Today's record so the clock widget reflects clocked-in state on refresh.
-  // Include a still-pending (off-day / luar area) clock-in so the button stays
-  // "Clock Out" instead of reverting to "Clock In".
-  const todayRecord = all.find((r) => r.employeeId === user?.employeeId && r.date === today) ?? null;
-  const todayPending = todayPendingClock(approvalsAll, user?.employeeId ?? null, today);
+  // State clock hari ini (termasuk clock-in yang masih menunggu HR) supaya
+  // tombolnya tetap "Clock Out" setelah aplikasi dibuka ulang.
+  const { todayRecord, todayPending } = clock;
 
   const view = (
     <AttendanceView
