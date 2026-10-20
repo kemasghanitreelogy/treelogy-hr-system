@@ -110,6 +110,8 @@ const MESSAGES: Record<string, Msg> = {
   doc_too_large: { id: "Dokumen terlalu besar (maks 10MB).", en: "Document is too large (max 10MB)." },
   doc_upload_failed: { id: "Gagal mengunggah dokumen. Coba lagi.", en: "Failed to upload the document. Try again." },
   invalid_path: { id: "Path file tidak valid.", en: "The file path is invalid." },
+  title_required: { id: "Judul surat wajib diisi (maks 200 karakter).", en: "Letter title is required (max 200 characters)." },
+  letter_not_found: { id: "Nomor surat ini tidak ditemukan — mungkin sudah dibatalkan.", en: "This letter number wasn't found — it may have been voided." },
 
   // --- client-side direct upload (lib/upload.ts) ---
   file_too_large: { id: "File terlalu besar (maks 25MB).", en: "File is too large (max 25MB)." },

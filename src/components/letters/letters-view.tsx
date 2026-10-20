@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Check, Copy, Factory, Loader2, Mail, Plus, Search, Sprout, Trash2, TrendingUp, Users, Wallet,
+  Check, ChevronRight, Copy, Factory, ImageIcon, Loader2, Mail, Plus, Search, Sprout, Trash2, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import type { LetterDept, OutgoingLetter } from "@/lib/types";
 import type { Locale } from "@/lib/i18n";
@@ -18,10 +18,12 @@ import { Input, Select } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
 import { SuccessCheck } from "@/components/ui/success-check";
 import { useToast } from "@/components/ui/toast";
+import { ItemPhoto } from "@/components/inventory/item-photo";
+import { LetterArchiveForm } from "./letter-archive-form";
 
 const STR: Record<Locale, Record<string, any>> = {
   id: {
-    searchPh: "Cari nomor surat…",
+    searchPh: "Cari nomor atau judul surat…",
     allDept: "Semua departemen",
     create: "Terbitkan Nomor",
     createTitle: "Terbitkan Nomor Surat",
@@ -38,6 +40,18 @@ const STR: Record<Locale, Record<string, any>> = {
     copyFail: "Tidak bisa menyalin — silakan salin manual.",
     again: "Terbitkan lagi",
     done: "Selesai",
+    skip: "Lewati",
+    archiveTitle: "Arsipkan surat",
+    photo: "Ada foto surat",
+    archiveHint: "Potret suratnya dan beri judul supaya nomor ini bisa ditelusuri.",
+    detailTitle: "Detail Surat",
+    notArchived: "Belum diarsipkan",
+    noTitle: "Belum ada judul",
+    dept: "Departemen",
+    date: "Tanggal terbit",
+    openPhoto: "Buka foto ukuran penuh",
+    archiveEdit: "Perbarui arsip",
+    noArchiveView: "Surat ini belum diarsipkan oleh pengelola.",
     by: "Diterbitkan oleh",
     deleteTitle: "Batalkan nomor ini?",
     deleteMsg:
@@ -48,7 +62,7 @@ const STR: Record<Locale, Record<string, any>> = {
     delete: "Batalkan nomor",
   },
   en: {
-    searchPh: "Search letter number…",
+    searchPh: "Search letter number or title…",
     allDept: "All departments",
     create: "Issue Number",
     createTitle: "Issue Letter Number",
@@ -65,6 +79,18 @@ const STR: Record<Locale, Record<string, any>> = {
     copyFail: "Couldn't copy — please copy it manually.",
     again: "Issue another",
     done: "Done",
+    skip: "Skip",
+    archiveTitle: "Archive the letter",
+    photo: "Has letter photo",
+    archiveHint: "Snap the letter and give it a title so this number can be traced.",
+    detailTitle: "Letter Details",
+    notArchived: "Not archived",
+    noTitle: "No title yet",
+    dept: "Department",
+    date: "Issued on",
+    openPhoto: "Open full-size photo",
+    archiveEdit: "Update archive",
+    noArchiveView: "This letter hasn't been archived by a manager yet.",
     by: "Issued by",
     deleteTitle: "Void this number?",
     deleteMsg:
@@ -160,6 +186,8 @@ export function LettersView({
   const [hasil, setHasil] = useState<OutgoingLetter | null>(null);
   const [busyDept, setBusyDept] = useState<LetterDept | null>(null);
   const [hapus, setHapus] = useState<OutgoingLetter | null>(null);
+  /** Baris yang sedang dibuka di lembar detail. */
+  const [detail, setDetail] = useState<OutgoingLetter | null>(null);
   const [busyHapus, setBusyHapus] = useState(false);
 
   const sekarang = witaNow();
@@ -168,7 +196,7 @@ export function LettersView({
     const q = query.trim().toLowerCase();
     return list.filter((l) => {
       if (dept !== "all" && l.department !== dept) return false;
-      return !q || l.code.toLowerCase().includes(q);
+      return !q || l.code.toLowerCase().includes(q) || (l.title ?? "").toLowerCase().includes(q);
     });
   }, [list, query, dept]);
 
@@ -220,6 +248,13 @@ export function LettersView({
   function tutup() {
     setOpen(false);
     setHasil(null);
+  }
+
+  /** Arsip tersimpan → perbarui baris di daftar & lembar yang sedang terbuka. */
+  function arsipTersimpan(updated: OutgoingLetter) {
+    setList((cur) => cur.map((x) => (x.id === updated.id ? updated : x)));
+    setDetail((cur) => (cur && cur.id === updated.id ? updated : cur));
+    router.refresh();
   }
 
   return (
@@ -288,8 +323,17 @@ export function LettersView({
               return (
                 <div
                   key={l.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetail(l)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setDetail(l);
+                    }
+                  }}
                   style={{ ["--i" as string]: Math.min(i, 8) }}
-                  className="stagger-item flex items-center gap-3 px-3 py-2.5"
+                  className="stagger-item flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors hover:bg-cream/60 focus-visible:bg-cream/60 focus-visible:outline-none"
                 >
                   <span
                     className={cn(
@@ -310,12 +354,23 @@ export function LettersView({
                     <span className="block truncate font-mono text-sm font-semibold tracking-tight text-ink">
                       {l.code}
                     </span>
+                    {l.title && (
+                      <span className="mt-0.5 block truncate text-sm text-ink">{l.title}</span>
+                    )}
                     <span className="mt-0.5 block truncate text-xs text-faint">
                       {DEPT_NAME[locale][l.department]}
                       {l.createdByName ? ` · ${l.createdByName}` : ""} ·{" "}
                       {formatDate(l.createdAt, "short", locale)}
                     </span>
                   </span>
+
+                  {l.photoPath ? (
+                    <ImageIcon className="h-4 w-4 shrink-0 text-forest-600" aria-label={t.photo} />
+                  ) : (
+                    <Badge tone="neutral" className="hidden shrink-0 sm:inline-flex">
+                      {t.notArchived}
+                    </Badge>
+                  )}
 
                   <Badge tone={DEPT_TONE[l.department]} className="hidden shrink-0 sm:inline-flex">
                     {DEPT_CODE[l.department]}
@@ -331,7 +386,10 @@ export function LettersView({
                   {canManage && (
                     <button
                       type="button"
-                      onClick={() => setHapus(l)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHapus(l);
+                      }}
                       aria-label={t.delete}
                       title={t.delete}
                       className="shrink-0 cursor-pointer rounded-lg p-1.5 text-faint transition-colors hover:bg-clay-soft hover:text-clay"
@@ -339,6 +397,8 @@ export function LettersView({
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
+
+                  <ChevronRight className="h-4 w-4 shrink-0 text-faint" aria-hidden />
                 </div>
               );
             })}
@@ -412,14 +472,90 @@ export function LettersView({
                 />
               </div>
             </div>
+            {/* Langsung arsipkan: potret surat → pratinjau → judul → Simpan. */}
+            <div className="rounded-2xl border border-line bg-panel p-4 text-left">
+              <p className="text-sm font-semibold text-ink">{t.archiveTitle}</p>
+              <p className="mb-3 mt-0.5 text-xs text-muted">{t.archiveHint}</p>
+              <LetterArchiveForm
+                key={hasil.id}
+                letter={hasil}
+                onSaved={(updated) => {
+                  arsipTersimpan(updated);
+                  tutup();
+                }}
+              />
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={() => setHasil(null)}>
                 <Plus className="h-4 w-4" /> {t.again}
               </Button>
-              <Button className="flex-1" onClick={tutup}>
-                {t.done}
+              <Button variant="ghost" className="flex-1" onClick={tutup}>
+                {t.skip}
               </Button>
             </div>
+          </div>
+        )}
+      </Sheet>
+
+      {/* Detail satu nomor: info + foto + judul; pengelola bisa (mem)perbarui arsipnya. */}
+      <Sheet open={detail !== null} onClose={() => setDetail(null)} title={t.detailTitle}>
+        {detail && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-line bg-cream/50 px-4 py-4">
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 break-all font-mono text-lg font-bold tracking-tight text-ink">
+                  {detail.code}
+                </p>
+                <CopyButton value={detail.code} label={t.copy} copiedLabel={t.copied} failLabel={t.copyFail} />
+              </div>
+              <p className={cn("mt-1 text-sm", detail.title ? "text-ink" : "italic text-faint")}>
+                {detail.title || t.noTitle}
+              </p>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <div>
+                  <dt className="text-faint">{t.dept}</dt>
+                  <dd className="mt-0.5 font-medium text-ink">{DEPT_NAME[locale][detail.department]}</dd>
+                </div>
+                <div>
+                  <dt className="text-faint">{t.date}</dt>
+                  <dd className="mt-0.5 font-medium text-ink">{formatDate(detail.createdAt, "long", locale)}</dd>
+                </div>
+                {detail.createdByName && (
+                  <div className="col-span-2">
+                    <dt className="text-faint">{t.by}</dt>
+                    <dd className="mt-0.5 font-medium text-ink">{detail.createdByName}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+
+            {canManage ? (
+              <div>
+                <p className="mb-2 text-sm font-semibold text-ink">
+                  {detail.photoPath ? t.archiveEdit : t.archiveTitle}
+                </p>
+                <LetterArchiveForm key={detail.id} letter={detail} onSaved={arsipTersimpan} />
+              </div>
+            ) : detail.photoPath ? (
+              <a
+                href={`/api/letters/photo?path=${encodeURIComponent(detail.photoPath)}`}
+                target="_blank"
+                rel="noreferrer"
+                title={t.openPhoto}
+                className="block"
+              >
+                <ItemPhoto
+                  path={detail.photoPath}
+                  alt={detail.title ?? detail.code}
+                  endpoint="/api/letters/photo"
+                  className="h-80 w-full [&_img]:object-contain"
+                />
+              </a>
+            ) : (
+              <p className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-sm text-faint">
+                {t.noArchiveView}
+              </p>
+            )}
           </div>
         )}
       </Sheet>

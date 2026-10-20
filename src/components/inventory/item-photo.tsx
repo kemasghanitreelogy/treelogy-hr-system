@@ -20,14 +20,17 @@ export function ItemPhoto({
   alt,
   className,
   rounded = "rounded-2xl",
+  endpoint = "/api/inventory/photo",
 }: {
   path: string;
   alt: string;
   className?: string;
   rounded?: string;
+  /** Route signed-URL untuk bucket asal fotonya (default: inventaris). */
+  endpoint?: string;
 }) {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const src = `/api/inventory/photo?path=${encodeURIComponent(path)}`;
+  const src = `${endpoint}?path=${encodeURIComponent(path)}`;
 
   // Ganti barang → ganti foto: kembalikan ke skeleton, jangan tampilkan foto lama.
   useEffect(() => setState("loading"), [path]);

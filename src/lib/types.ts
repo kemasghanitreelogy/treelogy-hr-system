@@ -554,6 +554,10 @@ export interface OutgoingLetter {
   /** Nama penerbit nomor; kosong bila akunnya sudah dihapus. */
   createdByName?: string | null;
   createdAt: string;
+  /** Judul surat yang diisi saat diarsipkan. */
+  title?: string | null;
+  /** Foto surat fisik di bucket privat `letter-files` (`<id>/<uuid>.<ext>`). */
+  photoPath?: string | null;
 }
 
 export interface Kpi {

@@ -231,6 +231,8 @@ export const mapOutgoingLetter = (r: Row): OutgoingLetter => ({
   month: Number(r.month ?? 0),
   createdByName: (r.created_by_name as string) ?? null,
   createdAt: String(r.created_at ?? ""),
+  title: (r.title as string) ?? null,
+  photoPath: (r.photo_path as string) ?? null,
 });
 
 export const mapPaymentRequest = (r: Row): PaymentRequest => ({
