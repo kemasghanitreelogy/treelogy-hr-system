@@ -28,6 +28,18 @@ import "server-only";
 
 export type SheetResult = { ok: true } | { ok: false; reason: string };
 
+/**
+ * Tafsirkan balasan Apps Script. Sukses = teks berawalan "ok" (mis. "ok:273",
+ * "ok:duplikat-dilewati:270"). Apa pun selain itu — "error: …", halaman HTML
+ * Google, teks kosong — adalah gagal, dan potongan balasannya menjadi alasan.
+ */
+export function bacaBalasanWebhook(text: string): SheetResult {
+  const bersih = text.trim();
+  if (/^ok\b/i.test(bersih)) return { ok: true };
+  const cuplikan = bersih.replace(/\s+/g, " ").slice(0, 160) || "(balasan kosong)";
+  return { ok: false, reason: `webhook_body:${cuplikan}` };
+}
+
 const WEBHOOK_URL = process.env.SHEETS_WEBHOOK_URL;
 const WEBHOOK_SECRET = process.env.SHEETS_WEBHOOK_SECRET;
 const SA_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -139,13 +151,15 @@ export async function appendSheetRow(
       const text = (await res.text()).slice(0, 200);
       // Apps Script membalas 200 walau gagal di dalam — periksa isinya.
       //
-      // Sengaja TIDAK mensyaratkan balasan diawali "ok": Google kadang menyajikan
-      // halaman antara (HTML) pada tahap redirect PADAHAL doPost sudah menulis
-      // barisnya. Menganggap itu gagal akan memicu kirim ulang → BARIS GANDA di
-      // sheet keuangan. Baris hilang lebih mudah ditemukan (jumlahnya beda)
-      // daripada baris ganda yang diam-diam menggandakan total.
-      if (/error|unauthor/i.test(text)) return { ok: false, reason: `webhook_body:${text}` };
-      return { ok: true };
+      // HANYA balasan berawalan "ok" yang dianggap masuk. Dulu semua balasan
+      // tanpa kata "error" diloloskan, karena Google kadang menyajikan halaman
+      // antara (HTML) padahal doPost sudah menulis dan kirim ulang berarti baris
+      // ganda. Sejak skrip sheet menolak Request ID yang sudah ada, kirim ulang
+      // aman — sedangkan "sukses" yang tidak terbukti pernah membuat dua
+      // pengajuan (21 Sep 2026) hilang dari sheet dengan tanda "Masuk sheet".
+      // Balasan mentahnya disimpan di sheet_error supaya kejadian serupa
+      // langsung terbaca, bukan ditebak.
+      return bacaBalasanWebhook(text);
     }
 
     const token = await accessToken();

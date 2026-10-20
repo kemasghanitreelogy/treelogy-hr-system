@@ -1,11 +1,20 @@
 /**
- * Skrip sekali-jalan: dorong pengajuan pembayaran yang BELUM masuk Google Sheet.
- *
- * Dipakai untuk membereskan baris yang sempat tertahan oleh alur persetujuan
- * (yang kemudian dibatalkan). Aman diulang: hanya memproses baris dengan
- * sheet_status <> 'synced', dan menandainya 'synced' setelah berhasil.
+ * Dorong pengajuan pembayaran yang BELUM masuk Google Sheet — atau baris
+ * tertentu yang statusnya perlu dipaksa kirim ulang.
  *
  *   node --env-file=.env.local scripts/push-pending-payments.mjs
+ *       → semua baris dengan sheet_status <> 'synced' (jalur dinas hanya yang
+ *         sudah disetujui akhir), urut waktu pengajuan.
+ *
+ *   node --env-file=.env.local scripts/push-pending-payments.mjs --ids a,b,c
+ *       → HANYA id-id itu, PERSIS dalam urutan yang ditulis, apa pun statusnya
+ *         di database. Dipakai memulihkan baris yang tercatat "synced" padahal
+ *         tidak ada di sheet (kejadian 21 Sep 2026). Aman: skrip di sheet
+ *         menolak Request ID yang sudah ada, jadi tidak ada baris kembar.
+ *
+ * Tiap baris membawa `key` (= id pengajuan) — lapisan anti-ganda di sheet —
+ * dan hanya balasan berawalan "ok" yang dicatat sebagai masuk; balasan lain
+ * disimpan utuh di sheet_error supaya bisa dibaca dari layar aplikasi.
  */
 import { createClient } from "@supabase/supabase-js";
 import { createHmac } from "node:crypto";
@@ -19,6 +28,13 @@ const ORIGIN = process.env.APP_ORIGIN ?? "https://treelogy-hr-system.vercel.app"
 
 if (!SUPABASE_URL || !SERVICE_KEY || !WEBHOOK_URL) {
   console.error("Env belum lengkap (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SHEETS_WEBHOOK_URL).");
+  process.exit(1);
+}
+
+const argIds = process.argv.indexOf("--ids");
+const IDS = argIds !== -1 ? (process.argv[argIds + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean) : null;
+if (IDS && IDS.length === 0) {
+  console.error("--ids butuh daftar id dipisah koma.");
   process.exit(1);
 }
 
@@ -60,24 +76,32 @@ const kindText = (r) =>
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-// Jalur dinas baru boleh masuk sheet SETELAH persetujuan akhir — jangan
-// sampai klaim yang masih menunggu Ops/Finance ikut terkirim.
-const { data: rows, error } = await db
-  .from("payment_requests")
-  .select("*")
-  .neq("sheet_status", "synced")
-  .or("flow.eq.biasa,approval_status.eq.approved")
-  .order("submitted_at", { ascending: true });
-if (error) {
-  console.error("Gagal membaca baris:", error.message);
-  process.exit(1);
+let rows;
+if (IDS) {
+  const { data, error } = await db.from("payment_requests").select("*").in("id", IDS);
+  if (error) { console.error("Gagal membaca baris:", error.message); process.exit(1); }
+  const byId = new Map((data ?? []).map((r) => [r.id, r]));
+  const hilang = IDS.filter((id) => !byId.has(id));
+  if (hilang.length) { console.error("Id tidak ditemukan:", hilang.join(", ")); process.exit(1); }
+  rows = IDS.map((id) => byId.get(id)); // urutan mengikuti argumen, bukan database
+} else {
+  // Jalur dinas baru boleh masuk sheet SETELAH persetujuan akhir — jangan
+  // sampai klaim yang masih menunggu Ops/Finance ikut terkirim.
+  const { data, error } = await db
+    .from("payment_requests")
+    .select("*")
+    .neq("sheet_status", "synced")
+    .or("flow.eq.biasa,approval_status.eq.approved")
+    .order("submitted_at", { ascending: true });
+  if (error) { console.error("Gagal membaca baris:", error.message); process.exit(1); }
+  rows = data ?? [];
 }
-if (!rows?.length) {
+if (!rows.length) {
   console.log("Tidak ada baris yang tertinggal — semua sudah masuk sheet.");
   process.exit(0);
 }
 
-console.log(`${rows.length} baris belum masuk sheet. Mengirim…\n`);
+console.log(`${rows.length} baris akan dikirim ke sheet…\n`);
 let ok = 0;
 for (const r of rows) {
   const values = [
@@ -94,25 +118,32 @@ for (const r of rows) {
     r.approval_path ? signedUrl(r.approval_path) : "",
   ];
 
-  const res = await fetch(WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ secret: WEBHOOK_SECRET, values }),
-  });
-  const text = (await res.text()).slice(0, 200);
-  const gagal = !res.ok || /error|unauthor/i.test(text);
+  let status = 0, text = "";
+  try {
+    const res = await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: WEBHOOK_SECRET, values, key: r.id }),
+    });
+    status = res.status;
+    text = (await res.text()).trim().replace(/\s+/g, " ").slice(0, 200);
+  } catch (e) {
+    text = e instanceof Error ? e.message : String(e);
+  }
+  const masuk = status === 200 && /^ok\b/i.test(text);
 
-  if (gagal) {
+  if (!masuk) {
     await db.from("payment_requests")
-      .update({ sheet_status: "failed", sheet_error: `webhook_${res.status}:${text}`.slice(0, 300) })
+      .update({ sheet_status: "failed", sheet_error: `webhook_${status}:${text || "(balasan kosong)"}`.slice(0, 300), sheet_claimed_at: null })
       .eq("id", r.id);
-    console.log(`  ✗ ${invoiceLine(r)} — ${res.status} ${text}`);
+    console.log(`  ✗ ${invoiceLine(r)} — ${status} ${text}`);
   } else {
     await db.from("payment_requests")
-      .update({ sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null })
+      .update({ sheet_status: "synced", sheet_synced_at: new Date().toISOString(), sheet_error: null, sheet_claimed_at: null })
       .eq("id", r.id);
     ok++;
-    console.log(`  ✓ ${invoiceLine(r)}`);
+    console.log(`  ✓ ${invoiceLine(r)} — ${text}`);
   }
 }
 console.log(`\nSelesai: ${ok}/${rows.length} baris masuk sheet.`);
+process.exit(ok === rows.length ? 0 : 2);

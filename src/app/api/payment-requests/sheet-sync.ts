@@ -7,10 +7,14 @@ import {
 import type { PaymentRequest } from "@/lib/types";
 
 /**
- * Penyalinan satu pengajuan ke Google Sheet keuangan — dipakai dua route:
- * persetujuan tahap 1 (salinan pertama kali) dan kirim-ulang saat gagal.
- * Sejak alur dua tahap, baris BARU ditulis ke sheet setelah ops menyetujui,
- * bukan saat submit — Finance hanya melihat yang sudah lolos tahap 1.
+ * Penyalinan satu pengajuan ke Google Sheet keuangan — dipakai tiga tempat:
+ * submit jalur biasa (salinan pertama kali), persetujuan akhir jalur dinas,
+ * dan kirim-ulang saat gagal.
+ *
+ * "Masuk sheet" hanya dicatat bila skrip di sheet membalas "ok" — dan skrip itu
+ * sendiri baru membalas "ok" setelah membaca balik barisnya lewat Request ID
+ * (lihat scripts/apps-script/payment-sheet.gs). Kirim ulang selalu aman karena
+ * skrip menolak Request ID yang sudah ada.
  */
 
 /**
