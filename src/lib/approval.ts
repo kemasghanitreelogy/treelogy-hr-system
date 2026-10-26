@@ -36,12 +36,14 @@ export function applyApproval(opts: {
   role: ApprovalRole;
   actorName: string;
   managerRequired: boolean;
+  /** HR actor who is also the requester's direct atasan (is_manager_of). */
+  actorIsManager?: boolean;
   current: ApprovalCurrent;
   nowIso: string;
   /** Required when action === "reject": the approver's reason, shown to the requester. */
   reason?: string | null;
 }): ApprovalResult {
-  const { action, role, actorName, managerRequired, current, nowIso, reason } = opts;
+  const { action, role, actorName, managerRequired, actorIsManager, current, nowIso, reason } = opts;
 
   // Reset: HR/admin only (enforced by the caller) → clear back to pending.
   if (action === "reset") {
@@ -83,9 +85,22 @@ export function applyApproval(opts: {
     };
   }
 
-  // role === "hr": enforce manager-first ordering.
+  // role === "hr": enforce manager-first ordering — unless the HR actor IS the
+  // requester's atasan. Then one tap covers both steps; waiting on themselves
+  // would leave the request stuck forever.
   if (managerRequired && !current.managerApprover) {
-    return { error: "awaiting_manager", status: "pending" };
+    if (!actorIsManager) return { error: "awaiting_manager", status: "pending" };
+    return {
+      status: "approved",
+      update: {
+        manager_approver: actorName,
+        manager_approved_at: nowIso,
+        hr_approver: actorName,
+        hr_approved_at: nowIso,
+        status: "approved",
+        approver: actorName,
+      },
+    };
   }
   return {
     status: "approved",

@@ -266,11 +266,9 @@ export async function PATCH(req: Request) {
   // Acting capacity: HR/admin fill the HR slot; otherwise a team manager (verified
   // by RLS-backed RPC) fills the manager slot. Reset is HR-only.
   const isHR = can(user, "employees.manage");
-  let isManager = false;
-  if (!isHR) {
-    const { data: mgr } = await supabase!.rpc("is_manager_of", { target_employee: prev.employee_id });
-    isManager = mgr === true;
-  }
+  // Checked for HR too: an HR who is also the direct atasan approves both steps at once.
+  const { data: mgr } = await supabase!.rpc("is_manager_of", { target_employee: prev.employee_id });
+  const isManager = mgr === true;
   if (body.action === "reset" && !isHR) return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
   if (body.action !== "reset" && !isHR && !isManager) {
     return NextResponse.json({ error: "forbidden_or_failed" }, { status: 403 });
@@ -286,6 +284,7 @@ export async function PATCH(req: Request) {
     role: isHR ? "hr" : "manager",
     actorName: user.name,
     managerRequired,
+    actorIsManager: isManager,
     current: {
       status: prev.status as RequestStatus,
       managerApprover: (prev.manager_approver as string) ?? null,
