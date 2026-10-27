@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
-import { ALL_FIELDS, ReviewPanel, type Edits } from "./review-panel";
+import { ALL_FIELDS, ReviewPanel, type Edits, type OrderLookup, type RematchState } from "./review-panel";
 import { DiagnosticsPanel } from "./diagnostics-panel";
 
 interface MatchResult {
@@ -36,6 +36,43 @@ interface MatchResult {
   flag: string | null;
   alternates?: AltOrder[];
   twinPages?: number[];
+}
+
+/** Bukti satu halaman yang dikirim ke pencocok — disimpan supaya halaman itu
+ *  bisa dicocokkan ulang saat nomor HP-nya diketik manual. */
+interface MatchInputLite {
+  page: number;
+  name: string;
+  zip: string;
+  phoneLast4: string;
+  shipDate: string;
+  destCity: string;
+  labelDate: string;
+}
+
+/** Minimal digit nomor HP Indonesia (08xx-xxxx-xx) sebelum dicari ulang. */
+const MANUAL_PHONE_MIN_DIGITS = 10;
+
+/** Tanggal yang paling sering muncul — cara yang SAMA dengan matchAll di
+ *  server memilih tanggal acuan pool, supaya pencocokan ulang memakai pool
+ *  (dan cache) yang sama dengan pencocokan pertama. */
+function dominantDate(dates: string[]): string {
+  const tally = new Map<string, number>();
+  for (const d of dates) if (d) tally.set(d, (tally.get(d) ?? 0) + 1);
+  let best = "";
+  let n = 0;
+  for (const [d, c] of tally) if (c > n) { n = c; best = d; }
+  return best;
+}
+
+/** Hitungan ringkasan ikut berubah saat satu kartu dicocokkan ulang. */
+function withRecords(prev: RunResult, records: LabelRecord[]): RunResult {
+  return {
+    ...prev,
+    records,
+    phoneMatched: records.filter((r) => Boolean(r.fields.phone?.value)).length,
+    reviewCount: records.filter((r) => r.needsReview).length,
+  };
 }
 
 const STR: Record<Locale, Record<string, string>> = {
@@ -245,6 +282,43 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
   const imagesRef = useRef<PageImageStore | null>(null);
   const [images, setImages] = useState<PageImageStore | null>(null);
 
+  // ── Pencocokan ulang dari nomor HP manual ─────────────────────────
+  /** Bukti tiap halaman yang dikirim ke pencocok (packing slip tidak ikut). */
+  const matchInputsRef = useRef<Map<number, MatchInputLite>>(new Map());
+  /** Tanggal acuan pool batch ini. */
+  const poolDateRef = useRef("");
+  /** Salinan kartu SEBELUM dicocokkan dari nomor manual — dipulihkan bila
+   *  nomornya diubah lagi. */
+  const manualSnapshots = useRef<Map<number, LabelRecord>>(new Map());
+  /** Digit nomor yang menghasilkan kecocokan manual saat ini, per halaman. */
+  const manualDigits = useRef<Map<number, string>>(new Map());
+  const rematchTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  /** Nomor urut permintaan per halaman — jawaban yang sudah basi dibuang. */
+  const rematchSeq = useRef<Map<number, number>>(new Map());
+  /** Naik tiap batch baru — jawaban milik batch lama dibuang. */
+  const runGen = useRef(0);
+  const resultRef = useRef<RunResult | null>(null);
+  const [rematch, setRematch] = useState<Record<number, RematchState>>({});
+
+  const resetRematch = useCallback(() => {
+    runGen.current++;
+    for (const timer of rematchTimers.current.values()) clearTimeout(timer);
+    rematchTimers.current.clear();
+    rematchSeq.current.clear();
+    manualSnapshots.current.clear();
+    manualDigits.current.clear();
+    matchInputsRef.current = new Map();
+    setRematch({});
+  }, []);
+
+  useEffect(() => () => {
+    for (const timer of rematchTimers.current.values()) clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    resultRef.current = result;
+  }, [result]);
+
   const releaseImages = useCallback(() => {
     const store = imagesRef.current;
     imagesRef.current = null;
@@ -283,14 +357,16 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
       setResult(null);
       setEdits({});
       setVerified({});
+      resetRematch();
     },
-    [t.duplicate, t.skipped, t.unsupported, toast],
+    [resetRematch, t.duplicate, t.skipped, t.unsupported, toast],
   );
 
   const removeFile = useCallback((index: number) => {
     setFiles((cur) => cur.filter((_, i) => i !== index));
     setResult(null);
-  }, []);
+    resetRematch();
+  }, [resetRematch]);
 
   const run = useCallback(async () => {
     if (!files.length) return;
@@ -298,6 +374,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     setResult(null);
     setProgress(null);
     setDiagnostics([]);
+    resetRematch();
     const started = Date.now();
     try {
       // 1) OCR sepenuhnya di browser — berkasnya tidak pernah meninggalkan perangkat.
@@ -375,6 +452,9 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
           shipDate: normalizeShipDate(rowByPage.get(r.page)?.ship_date) || shipDate,
           labelDate: normalizeShipDate(rowByPage.get(r.page)?.created_date),
         }));
+      // Disimpan untuk pencocokan ulang per halaman dari nomor HP manual.
+      matchInputsRef.current = new Map(inputs.map((i) => [i.page, i]));
+      poolDateRef.current = dominantDate(inputs.map((i) => i.shipDate));
 
       let matches: Record<number, MatchResult> = {};
       // Pencocokan GAGAL total (izin/koneksi) ≠ order tidak ditemukan. Dibedakan
@@ -443,8 +523,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                 ? "Shopify matching didn't run — this does NOT mean the order is missing. Fix the connection, then read the file again."
                 : "Pencocokan Shopify tidak jalan — ini BUKAN berarti ordernya tidak ada. Perbaiki sambungannya, lalu baca ulang berkasnya."
               : locale === "en"
-                ? "Not in Shopify — likely a direct/WhatsApp order. Enter the phone manually."
-                : "Tidak ada di Shopify — kemungkinan order langsung/WA. Isi nomornya manual.",
+                ? "Shopify order not found from the label. Type the full phone number — the order is looked up again, and if found it joins fulfill. WhatsApp orders: the number is just for the download."
+                : "Order Shopify tidak ketemu dari label. Ketik nomor HP lengkap — ordernya dicari ulang, dan kalau ketemu ikut fulfill. Order WA: nomornya cukup untuk unduhan.",
           };
           r.matchedOrder = null;
           r.matchReasons = [];
@@ -590,6 +670,333 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
       return next;
     });
   }
+
+  /**
+   * PENCOCOKAN ULANG DARI NOMOR HP MANUAL.
+   *
+   * Kartu "Manual / WA" tidak punya order Shopify, jadi tidak pernah ikut
+   * fulfill — dan dulu nomor yang diketik di kartunya hanya masuk ke unduhan.
+   * Padahal sebagian besar kartu seperti itu ADALAH order Shopify yang 4 digit
+   * HP-nya saja yang tidak terbaca dari label. Begitu nomor lengkapnya
+   * diketik, halaman itu dicocokkan ulang dengan 4 digit terakhir nomor
+   * tersebut, melewati semua penjaga keras yang sama (nama, tanggal, kodepos).
+   *
+   * Kecocokan manual DIBATALKAN begitu nomornya diubah — order hanya boleh
+   * menempel selama nomor yang membuktikannya masih ada di kolomnya.
+   */
+  function revertManualMatch(page: number) {
+    const snap = manualSnapshots.current.get(page);
+    if (!snap) return;
+    const cur = resultRef.current?.records.find((r) => r.page === page);
+    manualSnapshots.current.delete(page);
+    manualDigits.current.delete(page);
+    setResult((prev) => (prev ? withRecords(prev, prev.records.map((r) => (r.page === page ? snap : r))) : prev));
+    // Nama & alamat yang tadi diisi dari Shopify dikembalikan — kecuali sudah
+    // diubah manusia sejak itu.
+    setEdits((e) => {
+      const mine = { ...(e[page] ?? {}) };
+      for (const key of ["recipient_name", "recipient_address"] as const) {
+        if (cur && (mine[key] ?? "") === (cur.fields[key]?.value ?? "")) mine[key] = snap.fields[key]?.value ?? "";
+      }
+      return { ...e, [page]: mine };
+    });
+    if (cur?.legacyId) {
+      setOrderChoice((prev) => {
+        if (prev[cur.legacyId!] !== page) return prev;
+        const next = { ...prev };
+        delete next[cur.legacyId!];
+        return next;
+      });
+    }
+    setFulfillResult((prev) => {
+      if (!prev[page] || prev[page].ok) return prev;
+      const next = { ...prev };
+      delete next[page];
+      return next;
+    });
+  }
+
+  function applyManualMatch(page: number, m: MatchResult, phoneDigits: string) {
+    const before = resultRef.current?.records.find((r) => r.page === page);
+    if (!before || (before.legacyId && !before.manualMatch)) return;
+    if (!manualSnapshots.current.has(page)) manualSnapshots.current.set(page, before);
+    const snap = manualSnapshots.current.get(page)!;
+    manualDigits.current.set(page, phoneDigits);
+
+    const fields = {
+      ...snap.fields,
+      phone: { value: m.phone, source: "shopify" as const, confidence: "certain" as const, flag: null },
+      ...(m.name ? { recipient_name: { value: m.name, source: "shopify" as const, confidence: "certain" as const, flag: null } } : {}),
+      ...(m.address ? { recipient_address: { value: m.address, source: "shopify" as const, confidence: "certain" as const, flag: null } } : {}),
+    };
+    const next: LabelRecord = {
+      ...snap,
+      fields,
+      matchedOrder: m.orderName,
+      matchReasons: [...m.reasons, locale === "en" ? "typed phone" : "HP diketik"],
+      matchStatus: "shopify",
+      legacyId: m.legacyId,
+      alternates: m.alternates ?? [],
+      twinPages: [],
+      manualMatch: true,
+      needsReview: Object.values(fields).some((f) => f.confidence === "low"),
+    };
+    setResult((prev) => (prev ? withRecords(prev, prev.records.map((r) => (r.page === page ? next : r))) : prev));
+    // Nomor HP yang diketik dibiarkan apa adanya (jangan melawan orang yang
+    // sedang mengetik); nama & alamat diisi dari order bila belum diubah.
+    setEdits((e) => {
+      const mine = { ...(e[page] ?? {}) };
+      for (const key of ["recipient_name", "recipient_address"] as const) {
+        const fromShopify = next.fields[key]?.value;
+        if (fromShopify && (mine[key] ?? "") === (before.fields[key]?.value ?? "")) mine[key] = fromShopify;
+      }
+      return { ...e, [page]: mine };
+    });
+    setFulfillResult((prev) => {
+      if (!prev[page] || prev[page].ok) return prev;
+      const copy = { ...prev };
+      delete copy[page];
+      return copy;
+    });
+  }
+
+  async function rematchPage(page: number, phoneDigits: string) {
+    const inp = matchInputsRef.current.get(page);
+    const cur = resultRef.current;
+    if (!inp || !cur) return;
+    const seq = (rematchSeq.current.get(page) ?? 0) + 1;
+    rematchSeq.current.set(page, seq);
+    const gen = runGen.current;
+    const stale = () => gen !== runGen.current || rematchSeq.current.get(page) !== seq;
+    // Order yang sudah dipegang halaman lain — supaya pembeli yang memesan dua
+    // kali mendapat order satunya, bukan kembar dengan kartu lain.
+    const claimed = cur.records.filter((r) => r.page !== page && r.legacyId).map((r) => r.legacyId!);
+
+    setRematch((st) => ({ ...st, [page]: { status: "searching" } }));
+    let match: MatchResult | null = null;
+    let err: string | null = null;
+    try {
+      const res = await fetch("/api/receipt-sales/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manual: { input: { ...inp, phoneLast4: phoneDigits.slice(-4) }, claimed, poolDate: poolDateRef.current },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) err = apiErrorMessage(data?.error, locale, res.status);
+      else match = (data.match ?? null) as MatchResult | null;
+    } catch {
+      err = t.connection;
+    }
+    if (stale()) return;
+    if (err) {
+      setRematch((st) => ({ ...st, [page]: { status: "error", text: err! } }));
+      return;
+    }
+    if (match?.confidence === "certain" && match.legacyId) {
+      applyManualMatch(page, match, phoneDigits);
+      setRematch((st) => ({ ...st, [page]: { status: "found", order: match!.orderName } }));
+    } else {
+      setRematch((st) => ({ ...st, [page]: { status: "none" } }));
+    }
+  }
+
+  function clearRematchState(page: number) {
+    setRematch((st) => {
+      if (!(page in st)) return st;
+      const next = { ...st };
+      delete next[page];
+      return next;
+    });
+  }
+
+  /** Semua ketikan di kartu lewat sini; nomor HP memicu pencocokan ulang. */
+  function handleEdit(page: number, key: string, value: string) {
+    onEdit(page, key, value);
+    if (key !== "phone") return;
+    const r = result?.records.find((x) => x.page === page);
+    // Hanya halaman label (bukan packing slip), belum terkirim, dan yang
+    // order-nya TIDAK berasal dari pembacaan label — kecocokan dari label
+    // tidak boleh digeser oleh ketikan.
+    if (!r || !matchInputsRef.current.has(page) || fulfillResult[page]?.ok) return;
+    if (r.legacyId && !r.manualMatch) return;
+
+    const digitsNow = value.replace(/\D/g, "");
+    if (r.manualMatch && manualDigits.current.get(page) === digitsNow) return;
+
+    const pending = rematchTimers.current.get(page);
+    if (pending) clearTimeout(pending);
+    rematchTimers.current.delete(page);
+    // Nomor berubah → jawaban yang sedang dalam perjalanan sudah basi.
+    rematchSeq.current.set(page, (rematchSeq.current.get(page) ?? 0) + 1);
+    if (r.manualMatch) revertManualMatch(page);
+
+    if (digitsNow.length < MANUAL_PHONE_MIN_DIGITS) {
+      clearRematchState(page);
+      return;
+    }
+    rematchTimers.current.set(
+      page,
+      setTimeout(() => {
+        rematchTimers.current.delete(page);
+        void rematchPage(page, digitsNow);
+      }, 700),
+    );
+  }
+
+  /**
+   * PASANG ORDER SECARA MANUAL.
+   *
+   * Label buatan kurir kadang salah tulis (nama disingkat, HP salah ketik),
+   * sehingga order Shopify-nya tidak lolos pencocokan ketat dan kartunya jatuh
+   * ke "Manual / WA". Pemakai yang tahu itu order Shopify memilih ordernya
+   * sendiri dari rekomendasi atau kode order — dan sejak itu kartunya
+   * berperilaku seperti kecocokan biasa: ikut tombol fulfill, dengan semua
+   * penjaga kembar-resi/kembar-order yang sama.
+   *
+   * Rekomendasi memakai isian TERKINI di kartu (nama/alamat/HP yang mungkin
+   * sudah dibetulkan), bukan hasil baca awal.
+   */
+  async function lookupOrders(page: number, q?: string): Promise<OrderLookup> {
+    const inp = matchInputsRef.current.get(page);
+    if (!inp) return { orders: [] };
+    const e = edits[page] ?? {};
+    const hp = (e.phone ?? "").replace(/\D/g, "");
+    const body = q
+      ? { search: { q } }
+      : {
+          suggest: {
+            input: {
+              ...inp,
+              name: e.recipient_name || inp.name,
+              zip: extractZip(e.recipient_address || "") || inp.zip,
+              phoneLast4: hp.length >= 4 ? hp.slice(-4) : inp.phoneLast4,
+            },
+            poolDate: poolDateRef.current,
+          },
+        };
+    try {
+      const res = await fetch("/api/receipt-sales/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { orders: [], error: apiErrorMessage(data?.error, locale, res.status) };
+      return { orders: (data.orders ?? []) as OrderLookup["orders"] };
+    } catch {
+      return { orders: [], error: t.connection };
+    }
+  }
+
+  function linkOrder(page: number, o: AltOrder) {
+    const before = resultRef.current?.records.find((r) => r.page === page);
+    if (!before || fulfillResult[page]?.ok) return;
+    // Kecocokan dari pembacaan label tidak boleh ditimpa dari sini.
+    if (before.legacyId && !before.manualPick && !before.manualMatch) return;
+    if (!manualSnapshots.current.has(page)) manualSnapshots.current.set(page, before);
+    const snap = manualSnapshots.current.get(page)!;
+    manualDigits.current.delete(page);
+    const pending = rematchTimers.current.get(page);
+    if (pending) clearTimeout(pending);
+    rematchTimers.current.delete(page);
+    rematchSeq.current.set(page, (rematchSeq.current.get(page) ?? 0) + 1);
+    clearRematchState(page);
+
+    const shop = (value: string | null) =>
+      ({ value, source: "shopify" as const, confidence: "certain" as const, flag: null });
+    const fields = {
+      ...snap.fields,
+      // Tanpa HP di order, kolomnya tetap milik pemakai — bukan dikosongkan.
+      phone: o.phone ? shop(o.phone) : { value: null, source: "none" as const, confidence: "high" as const, flag: null },
+      ...(o.name ? { recipient_name: shop(o.name) } : {}),
+      ...(o.address ? { recipient_address: shop(o.address) } : {}),
+    };
+    const next: LabelRecord = {
+      ...snap,
+      fields,
+      matchedOrder: o.orderName,
+      matchReasons: [...(o.reasons ?? []), locale === "en" ? "picked manually" : "dipilih manual"],
+      matchStatus: "shopify",
+      legacyId: o.legacyId,
+      alternates: [],
+      twinPages: [],
+      manualMatch: false,
+      manualPick: true,
+      needsReview: Object.values(fields).some((f) => f.confidence === "low"),
+    };
+    setResult((prev) => (prev ? withRecords(prev, prev.records.map((r) => (r.page === page ? next : r))) : prev));
+    // Data penerima mengikuti order yang dipilih: label kurirnya justru yang
+    // diragukan, jadi isian Shopify yang dipakai untuk unduhan.
+    setEdits((e) => ({
+      ...e,
+      [page]: {
+        ...e[page],
+        ...(o.phone ? { phone: o.phone } : {}),
+        ...(o.name ? { recipient_name: o.name } : {}),
+        ...(o.address ? { recipient_address: o.address } : {}),
+      },
+    }));
+    if (before.legacyId) {
+      setOrderChoice((prev) => {
+        if (prev[before.legacyId!] !== page) return prev;
+        const copy = { ...prev };
+        delete copy[before.legacyId!];
+        return copy;
+      });
+    }
+    setFulfillResult((prev) => {
+      if (!prev[page] || prev[page].ok) return prev;
+      const copy = { ...prev };
+      delete copy[page];
+      return copy;
+    });
+    toast.success(
+      locale === "en"
+        ? `Page ${page} linked to ${o.orderName} — included in fulfill.`
+        : `Halaman ${page} dipasang ke ${o.orderName} — ikut fulfill.`,
+    );
+  }
+
+  /** Lepas order pilihan manual — kartu kembali seperti hasil baca awalnya. */
+  function unlinkOrder(page: number) {
+    const snap = manualSnapshots.current.get(page);
+    const cur = resultRef.current?.records.find((r) => r.page === page);
+    if (!snap || !cur?.manualPick || fulfillResult[page]?.ok) return;
+    manualSnapshots.current.delete(page);
+    setResult((prev) => (prev ? withRecords(prev, prev.records.map((r) => (r.page === page ? snap : r))) : prev));
+    setEdits((e) => {
+      const mine = { ...(e[page] ?? {}) };
+      for (const key of ["phone", "recipient_name", "recipient_address"] as const) {
+        const dariOrder = cur.fields[key]?.value ?? "";
+        // Yang sudah diubah tangan sejak dipasang dibiarkan.
+        if ((mine[key] ?? "") === dariOrder) mine[key] = snap.fields[key]?.value ?? "";
+      }
+      return { ...e, [page]: mine };
+    });
+    if (cur.legacyId) {
+      setOrderChoice((prev) => {
+        if (prev[cur.legacyId!] !== page) return prev;
+        const copy = { ...prev };
+        delete copy[cur.legacyId!];
+        return copy;
+      });
+    }
+    setFulfillResult((prev) => {
+      if (!prev[page] || prev[page].ok) return prev;
+      const copy = { ...prev };
+      delete copy[page];
+      return copy;
+    });
+  }
+
+  /** Order → halaman yang sedang memegangnya, untuk menandai rekomendasi yang sudah terpakai. */
+  const claimedBy = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of result?.records ?? []) if (r.legacyId) m[r.legacyId] = r.page;
+    return m;
+  }, [result]);
 
   /** Keterangan kelompok label kembar per halaman — nomor order TERKINI tiap
    *  halaman dalam kelompoknya, dihitung dari data hidup supaya tetap benar
@@ -1196,38 +1603,41 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             ))}
           </section>
 
-          <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-ink">
-                {t.reviewTitle}
-                {result.fileCount > 1 && (
-                  <span className="ml-1.5 font-normal text-faint">
-                    · {result.records.length} {locale === "en" ? "pages from" : "halaman dari"}{" "}
-                    {result.fileCount} {t.files}
-                  </span>
-                )}
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">{t.reviewLead}</p>
-              {/* Cara tiap halaman dibaca menentukan seberapa perlu diperiksa:
-                  teks PDF tidak bisa salah baca, hasil OCR bisa. */}
-              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-faint">
-                {result.textPages > 0 && (
-                  <span className="inline-flex items-center gap-1">
-                    <FileText className="h-3 w-3 text-forest-600" />
-                    {result.textPages} {t.modeText}
-                  </span>
-                )}
-                {result.ocrPages > 0 && (
-                  <span className="inline-flex items-center gap-1">
-                    <ScanText className="h-3 w-3 text-[#8a6512]" />
-                    {result.ocrPages} {t.modeOcr}
-                  </span>
-                )}
-              </p>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/* Dua lapis, bukan satu baris: judul tidak pernah berebut lebar
+              dengan tombol. Jumlah tombol berubah-ubah (coba ulang, izin
+              receipt.sync), jadi bilah aksi dibiarkan membungkus sendiri. */}
+          <section className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold text-ink">
+                  {t.reviewTitle}
+                  {result.fileCount > 1 && (
+                    <span className="ml-1.5 font-normal text-faint">
+                      · {result.records.length} {locale === "en" ? "pages from" : "halaman dari"}{" "}
+                      {result.fileCount} {t.files}
+                    </span>
+                  )}
+                </h2>
+                <p className="mt-0.5 max-w-prose text-xs text-muted">{t.reviewLead}</p>
+                {/* Cara tiap halaman dibaca menentukan seberapa perlu diperiksa:
+                    teks PDF tidak bisa salah baca, hasil OCR bisa. */}
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint">
+                  {result.textPages > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <FileText className="h-3 w-3 text-forest-600" />
+                      {result.textPages} {t.modeText}
+                    </span>
+                  )}
+                  {result.ocrPages > 0 && (
+                    <span className="inline-flex items-center gap-1">
+                      <ScanText className="h-3 w-3 text-[#8a6512]" />
+                      {result.ocrPages} {t.modeOcr}
+                    </span>
+                  )}
+                </p>
+              </div>
               {/* Dua keadaan saja: lihat semuanya, atau kerjakan yang tersisa. */}
-              <div className="inline-flex rounded-xl bg-sand p-1" role="tablist" aria-label={t.reviewTitle}>
+              <div className="inline-flex shrink-0 self-start rounded-xl bg-sand p-1 sm:self-auto" role="tablist" aria-label={t.reviewTitle}>
                 {(["all", "review"] as const).map((opt) => (
                   <button
                     key={opt}
@@ -1247,55 +1657,65 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="card flex flex-col gap-2 p-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               {/* Aksi yang MENULIS ke pesanan sungguhan berdiri terpisah dari
                   tombol unduhan, dan hanya muncul untuk pemegang receipt.sync. */}
               {canFulfill && (
-                <Button
-                  onClick={() => {
-                    // Email ke pembeli WAJIB dicentang sadar SETIAP kali dialog
-                    // dibuka. Tanpa reset ini, centang dari run sebelumnya
-                    // menempel diam-diam — dan "Ya" berikutnya mengirim ratusan
-                    // email yang tidak pernah diminta di run itu.
-                    setNotifyBuyer(false);
-                    setAskFulfill(true);
-                  }}
-                  disabled={fulfilling || fulfillItems.length === 0}
-                  title={fulfillItems.length === 0 ? t.fulfillNone : undefined}
-                  className={cn(runGlow && "hf-glow-done")}
-                >
-                  {fulfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-                  {fulfilling
-                    ? fulfillProgress
-                      ? `${t.fulfilling} ${fulfillProgress.done}/${fulfillProgress.total}`
-                      : t.fulfilling
-                    : `${t.fulfill} (${fulfillItems.length})`}
-                </Button>
-              )}
-              {/* Coba-ulang HANYA yang gagal — pengaman preventif, bukan jalur
-                  utama: sistemnya sendiri sudah mengulang di dalam run dan
-                  memverifikasi balik ke Shopify. Aman ditekan berulang karena
-                  idempoten. */}
-              {canFulfill && !fulfilling && fulfillFailed.length > 0 && (
-                <Button variant="outline" onClick={() => void jalankanFulfill(fulfillFailed)}
-                  className="border-[#e6c9bd] text-[#8c3c1f] hover:bg-clay-soft">
-                  <RotateCcw className="h-4 w-4" /> {t.retryFailed} ({fulfillFailed.length})
-                </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <Button
+                    onClick={() => {
+                      // Email ke pembeli WAJIB dicentang sadar SETIAP kali dialog
+                      // dibuka. Tanpa reset ini, centang dari run sebelumnya
+                      // menempel diam-diam — dan "Ya" berikutnya mengirim ratusan
+                      // email yang tidak pernah diminta di run itu.
+                      setNotifyBuyer(false);
+                      setAskFulfill(true);
+                    }}
+                    disabled={fulfilling || fulfillItems.length === 0}
+                    title={fulfillItems.length === 0 ? t.fulfillNone : undefined}
+                    className={cn("whitespace-nowrap", runGlow && "hf-glow-done")}
+                  >
+                    {fulfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
+                    {fulfilling
+                      ? fulfillProgress
+                        ? `${t.fulfilling} ${fulfillProgress.done}/${fulfillProgress.total}`
+                        : t.fulfilling
+                      : `${t.fulfill} (${fulfillItems.length})`}
+                  </Button>
+                  {/* Coba-ulang HANYA yang gagal — pengaman preventif, bukan jalur
+                      utama: sistemnya sendiri sudah mengulang di dalam run dan
+                      memverifikasi balik ke Shopify. Aman ditekan berulang karena
+                      idempoten. */}
+                  {!fulfilling && fulfillFailed.length > 0 && (
+                    <Button variant="outline" onClick={() => void jalankanFulfill(fulfillFailed)}
+                      className="whitespace-nowrap border-[#e6c9bd] bg-clay-soft/40 text-[#8c3c1f] hover:bg-clay-soft">
+                      <RotateCcw className="h-4 w-4" /> {t.retryFailed}
+                      <span className="rounded-full bg-[#8c3c1f] px-1.5 text-[11px] font-semibold tabular-nums text-white">
+                        {fulfillFailed.length}
+                      </span>
+                    </Button>
+                  )}
+                </div>
               )}
               {/* Paling depan: satu-satunya jalur yang tidak melewati
                   pengunggah Google Drive, yang kerap gagal di Safari. */}
-              <Button variant="outline" onClick={salinUntukSheet}>
-                <ClipboardCopy className="h-4 w-4" /> {t.copySheet}
-              </Button>
-              <Button variant="outline" onClick={() => unduh("csv")}>
-                <FileDown className="h-4 w-4" /> {t.csv}
-              </Button>
-              <Button variant="outline" onClick={() => unduh("xlsx")}>
-                <FileSpreadsheet className="h-4 w-4" /> {t.xlsx}
-              </Button>
+              <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
+                <Button variant="ghost" size="sm" onClick={salinUntukSheet} className="whitespace-nowrap">
+                  <ClipboardCopy className="h-4 w-4" /> {t.copySheet}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => unduh("csv")} className="whitespace-nowrap">
+                  <FileDown className="h-4 w-4" /> {t.csv}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => unduh("xlsx")} className="whitespace-nowrap">
+                  <FileSpreadsheet className="h-4 w-4" /> {t.xlsx}
+                </Button>
+              </div>
             </div>
             {/* Bilah kemajuan: scaleX inline (GPU), muncul hanya selagi run. */}
             {fulfilling && fulfillProgress && (
-              <div className="hf-progress-track mt-3 h-1 rounded-full bg-forest-100" aria-hidden>
+              <div className="hf-progress-track h-1 rounded-full bg-forest-100" aria-hidden>
                 <div
                   className="hf-progress-fill h-full rounded-full bg-forest-600"
                   style={{ transform: `scaleX(${fulfillProgress.total ? fulfillProgress.done / fulfillProgress.total : 0})` }}
@@ -1353,8 +1773,9 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             images={images}
             edits={edits}
             verified={verified}
-            onEdit={onEdit}
+            onEdit={handleEdit}
             onVerify={onVerify}
+            rematch={rematch}
             fulfillResult={fulfillResult}
             checkingPages={checkingPages}
             spotlightPages={spotlightPages}
@@ -1363,6 +1784,11 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
             onPickOrder={pilihOrder}
             twinInfo={twinInfo}
             onJumpTo={lompatKe}
+            canLinkOrder={matchInputsRef.current.size > 0}
+            onLookupOrders={lookupOrders}
+            onLinkOrder={linkOrder}
+            onUnlinkOrder={unlinkOrder}
+            claimedBy={claimedBy}
           />
           )}
 

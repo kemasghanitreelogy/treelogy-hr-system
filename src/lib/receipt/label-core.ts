@@ -74,6 +74,11 @@ export interface LabelRecord {
   alternates?: AltOrder[];
   /** Halaman-halaman (termasuk ini) dari pembeli yang sama yang ordernya dibagi otomatis. */
   twinPages?: number[];
+  /** Order-nya ditemukan lewat nomor HP yang DIKETIK di kartu, bukan dari pembacaan label. */
+  manualMatch?: boolean;
+  /** Order-nya DIPILIH langsung oleh pemakai (rekomendasi / cari kode order),
+   *  karena data label dari kurir tidak cukup untuk dicocokkan otomatis. */
+  manualPick?: boolean;
 }
 
 /** Format resi yang dikenal — J&T (JD…), Lion Parcel (…LP…). Tambah bila perlu. */

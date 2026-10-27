@@ -799,3 +799,175 @@ export async function matchAll(inputs: MatchInput[]): Promise<Map<number, MatchR
   spreadTwins(inputs, idx, out, rankedBy);
   return out;
 }
+
+/**
+ * PENCOCOKAN ULANG DARI NOMOR HP YANG DIKETIK MANUSIA.
+ *
+ * Label yang 4 digit HP-nya tidak terbaca hanya punya nama + kodepos sebagai
+ * bukti, dan itu sering tidak cukup untuk "certain" — kartunya jatuh ke
+ * "Manual / WA" tanpa order, sehingga tidak pernah ikut fulfill. Dulu nomor
+ * yang lalu diketik di kartu hanya masuk ke ekspor; ordernya tidak pernah
+ * dicari ulang.
+ *
+ * Di sini nomor itu menjadi bukti `phoneLast4`, lalu SEMUA penjaga keras yang
+ * sama berlaku. Satu syarat tambahan: hasil hanya "certain" kalau 4 digit
+ * nomor ketikan itu PERSIS sama dengan HP order — manusia mengetik nomor
+ * justru untuk memastikan, jadi kecocokan yang tidak bersandar padanya bukan
+ * jawaban atas ketikannya.
+ *
+ * `claimed` = order yang sudah dipegang halaman lain di batch ini. Kalau
+ * pemenangnya sudah diklaim, dicari order lain pembeli yang sama yang belum
+ * terkirim (pola yang sama dengan spreadTwins); kalau tidak ada, pemenang
+ * aslinya dikembalikan dan penjaga kembar-order di klien yang menahannya.
+ *
+ * `poolDate` = tanggal acuan pool batch ini (dihitung klien dengan cara yang
+ * sama seperti matchAll), supaya kena cache dan memakai jendela yang sama.
+ */
+export async function matchManual(
+  input: MatchInput,
+  claimed: string[],
+  poolDate: string,
+): Promise<MatchResult> {
+  const store = process.env.STORE_NAME;
+  const token = process.env.ADMIN_API_KEY;
+  if (!store || !token) return emptyResult("Shopify belum dikonfigurasi");
+
+  const pool = await fetchPool(store, token, poolDate || input.shipDate || new Date().toISOString().slice(0, 10));
+  const idx = buildIndex(pool);
+  const { ranked, ditolakGate } = rankCandidates(input, idx);
+  const taken = new Set(claimed);
+
+  let hasil = buildResult(input, idx, ranked, ditolakGate);
+  if (hasil.confidence === "certain" && hasil.legacyId && taken.has(hasil.legacyId)) {
+    const pilihan = ranked.find((c) => c.o.legacyId && !taken.has(c.o.legacyId) && !c.o.fulfilled);
+    if (pilihan) {
+      const ulang = buildResult(input, idx, [pilihan, ...ranked.filter((c) => c !== pilihan)], ditolakGate);
+      if (ulang.confidence === "certain") hasil = ulang;
+    }
+  }
+
+  if (hasil.confidence === "certain" && !hasil.reasons.includes("HP-4 ✓")) {
+    return { ...emptyResult("nomor HP ini tidak cocok persis dengan order yang mirip", pool.length), alternates: [] };
+  }
+  return hasil;
+}
+
+/* ───────────────────────── PILIH ORDER MANUAL ─────────────────────────
+ *
+ * Kartu "Manual / WA" bisa saja order Shopify yang labelnya ditulis keliru
+ * oleh kurir: nama disingkat, HP salah ketik, kodepos meleset. Penjaga keras
+ * di atas memang dirancang untuk MENOLAK kasus begitu — jadi di sini, untuk
+ * orang yang sudah menyatakan "ini order Shopify", penjaganya dilonggarkan
+ * menjadi SKOR saja. Keputusannya tetap di tangan manusia: sistem hanya
+ * mengurutkan, tidak pernah memasang sendiri.
+ */
+
+/** Satu kandidat rekomendasi beserta seberapa mirip (0–100). */
+export interface SuggestedOrder extends AltOrder {
+  similarity: number;
+}
+
+/** Kemiripan nama longgar: porsi token label yang punya pasangan (≤1 huruf beda). */
+function nameSimilarity(aRaw: string, bRaw: string): number {
+  const a = [...nameTokens(aRaw)], b = [...nameTokens(bRaw)];
+  if (!a.length || !b.length) return 0;
+  const [pendek, panjang] = a.length <= b.length ? [a, b] : [b, a];
+  const kena = pendek.filter((t) =>
+    panjang.some(
+      (u) => u === t || u.startsWith(t) || t.startsWith(u) || (Math.max(t.length, u.length) >= 4 && lev(t, u) <= 1),
+    ),
+  ).length;
+  return kena / pendek.length;
+}
+
+const MAX_SUGGESTIONS = 6;
+
+export async function suggestOrders(input: MatchInput, poolDate: string): Promise<SuggestedOrder[]> {
+  const store = process.env.STORE_NAME;
+  const token = process.env.ADMIN_API_KEY;
+  if (!store || !token) return [];
+  const pool = await fetchPool(store, token, poolDate || input.shipDate || new Date().toISOString().slice(0, 10));
+  const inPlace = placeTokens(input.destCity ?? "");
+  const acuan = input.labelDate || input.shipDate;
+
+  const scored: { o: PoolOrder; score: number; reasons: string[] }[] = [];
+  for (const o of pool) {
+    let score = 0;
+    const reasons: string[] = [];
+
+    const nama = nameSimilarity(input.name, o.shipName);
+    if (nama >= 1) { score += 4; reasons.push("nama sama"); }
+    else if (nama >= 0.5) { score += 2.5; reasons.push("nama mirip"); }
+
+    const ph = phoneTail(o.phone, input.phoneLast4);
+    if (ph === "exact") { score += 4; reasons.push("HP-4 ✓"); }
+    else if (ph === "fuzzy") { score += 2; reasons.push("HP-4 ~"); }
+
+    if (input.zip && o.zip) {
+      if (o.zip === input.zip) { score += 3; reasons.push("kodepos"); }
+      else if (lev(o.zip, input.zip) <= 1) { score += 1.5; reasons.push("kodepos ~"); }
+    }
+
+    if (inPlace.size && o.place && placeAgrees(inPlace, placeTokens(o.place))) { score += 1.5; reasons.push("kota"); }
+
+    // Tanpa satu pun sinyal identitas, kedekatan tanggal saja bukan kemiripan.
+    if (score === 0) continue;
+
+    if (acuan && withinWindow(o.createdAt, acuan)) { score += 1; reasons.push("tanggal dekat"); }
+    if (!o.fulfilled) { score += 1; reasons.push("belum terkirim"); }
+    scored.push({ o, score, reasons });
+  }
+
+  // Stabil: seri tetap pada urutan pool (terbaru dulu).
+  scored.sort((a, b) => b.score - a.score);
+  const MAKS = 4 + 4 + 3 + 1.5 + 1 + 1;
+  return scored.slice(0, MAX_SUGGESTIONS).map(({ o, score, reasons }) => ({
+    ...toAlt(o, reasons),
+    similarity: Math.round((score / MAKS) * 100),
+  }));
+}
+
+const SEARCH_QUERY = `query FindOrders($q: String!) {
+  orders(first: 8, query: $q, sortKey: CREATED_AT, reverse: true) {
+    edges { node { name legacyResourceId createdAt displayFulfillmentStatus shippingAddress { name address1 city province zip phone } } }
+  }
+}`;
+
+/**
+ * Cari order menurut kode ordernya (mis. "8496" atau "#8496") — di SELURUH
+ * toko, bukan hanya pool tanggal, karena justru order yang luput dari pool
+ * yang biasanya dicari dengan cara ini.
+ */
+export async function searchOrders(raw: string): Promise<AltOrder[]> {
+  const store = process.env.STORE_NAME;
+  const token = process.env.ADMIN_API_KEY;
+  if (!store || !token) return [];
+  const kode = raw.replace(/[^0-9A-Za-z-]/g, "");
+  if (!kode) return [];
+  const res = await fetch(`https://${store}/admin/api/${API_VERSION}/graphql.json`, {
+    method: "POST",
+    headers: { "X-Shopify-Access-Token": token, "Content-Type": "application/json" },
+    body: JSON.stringify({ query: SEARCH_QUERY, variables: { q: `name:#${kode} OR name:${kode}` } }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const json: any = await res.json().catch(() => null);
+  if (!json || json.errors) {
+    const ditolak = (json?.errors ?? []).some(
+      (e: any) => e?.extensions?.code === "ACCESS_DENIED" || /access denied/i.test(e?.message ?? ""),
+    );
+    throw new Error(ditolak ? "shopify_forbidden" : "shopify_error");
+  }
+  return (json.data?.orders?.edges ?? []).map((e: any) => {
+    const a = e.node.shippingAddress ?? {};
+    return {
+      orderName: e.node.name,
+      legacyId: String(e.node.legacyResourceId ?? ""),
+      createdAt: e.node.createdAt,
+      fulfilled: e.node.displayFulfillmentStatus === "FULFILLED",
+      phone: a.phone || null,
+      name: a.name || null,
+      address: [a.address1, a.city, a.province, a.zip].filter(Boolean).join(", ") || null,
+      reasons: [],
+    } satisfies AltOrder;
+  });
+}
