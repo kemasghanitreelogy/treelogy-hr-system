@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  CheckCircle2, ClipboardCopy, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
+  CheckCircle2, ClipboardCopy, FileDown, FileSpreadsheet, FileText, Loader2, MessageCircleMore, PackageSearch, Plus,
   PackageCheck, RotateCcw, ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
 import type { LabelField, LabelRecord } from "@/lib/receipt/label-core";
@@ -24,6 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/toast";
 import { ALL_FIELDS, ReviewPanel, type Edits, type OrderLookup, type RematchState } from "./review-panel";
 import { DiagnosticsPanel } from "./diagnostics-panel";
+import { ResiBlastSheet, type ResiBlastItem } from "@/components/wa-blast/resi-blast-sheet";
 
 interface MatchResult {
   phone: string | null;
@@ -599,6 +600,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     setTimeout(() => setSpotlightPages(new Set()), 4000);
   }
   const [askFulfill, setAskFulfill] = useState(false);
+  /** Sheet blast WhatsApp resi. */
+  const [askBlast, setAskBlast] = useState(false);
   const [notifyBuyer, setNotifyBuyer] = useState(false);
   /** Hasil fulfill per halaman — ditempel ke kartunya masing-masing. */
   const [fulfillResult, setFulfillResult] = useState<Record<number, { ok: boolean; text: string; seq?: number }>>({});
@@ -1274,6 +1277,29 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     }
   }
 
+  /**
+   * Bahan blast WhatsApp resi — nilai TERKINI tiap kartu (hasil edit menang
+   * atas hasil baca), plus apakah nomor resinya sudah pasti. Aturan "pasti"
+   * sama dengan fulfill: barcode/teks PDF, atau dicentang "sudah diperiksa".
+   * Penyaringan & alasannya dikerjakan sheet-nya, supaya halaman yang tidak
+   * ikut tetap DISEBUT, bukan hilang diam-diam.
+   */
+  const blastItems = useMemo<ResiBlastItem[]>(() => {
+    if (!result) return [];
+    return result.records.map((r) => {
+      const e = edits[r.page] ?? {};
+      return {
+        page: r.page,
+        name: (e.recipient_name ?? r.fields.recipient_name?.value ?? "").trim(),
+        phone: (e.phone ?? r.fields.phone?.value ?? "").trim(),
+        awb: (e.tracking_number ?? r.fields.tracking_number?.value ?? "").trim(),
+        courier: e.courier ?? r.fields.courier?.value ?? null,
+        awbConfirmed: r.fields.tracking_number?.confidence === "certain" || Boolean(verified[r.page]),
+      };
+    });
+  }, [result, edits, verified]);
+  const blastReady = blastItems.filter((x) => x.phone && x.awb).length;
+
   const exportRows = useMemo<ReceiptExportRow[]>(() => {
     if (!result) return [];
     return result.records.map((r) => {
@@ -1699,6 +1725,18 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
                   )}
                 </div>
               )}
+              {/* Blast WhatsApp resi — menggantikan rutinitas ekspor Excel →
+                  unggah CSV ke Qontak. Terbuka untuk semua pemegang
+                  receipt.view (keputusan pemilik produk). */}
+              <Button
+                variant="secondary"
+                onClick={() => setAskBlast(true)}
+                disabled={blastReady === 0}
+                className="whitespace-nowrap"
+              >
+                <MessageCircleMore className="h-4 w-4" />
+                {locale === "en" ? "WhatsApp tracking" : "Blast WA resi"} ({blastReady})
+              </Button>
               {/* Paling depan: satu-satunya jalur yang tidak melewati
                   pengunggah Google Drive, yang kerap gagal di Safari. */}
               <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
@@ -1794,6 +1832,8 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
 
         </>
       )}
+
+      <ResiBlastSheet open={askBlast} onClose={() => setAskBlast(false)} items={blastItems} />
 
       {/* Konfirmasi dengan bobot yang sepadan: ini menulis ke pesanan sungguhan
           dan bisa mengirim email ke pembeli. Pilihan emailnya BAWAANNYA MATI —

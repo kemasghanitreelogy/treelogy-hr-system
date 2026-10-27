@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Layers,
   Mails,
+  MessageCircleMore,
   Network,
   Package,
   Plane,
@@ -54,6 +55,9 @@ const ITEMS: Record<string, NavItem> = {
   "/payment-requests": { href: "/payment-requests", label: "Pengajuan Pembayaran", labelEn: "Payment Requests", icon: ReceiptText, perm: "payment.request" },
   "/travel": { href: "/travel", label: "Perjalanan Dinas", labelEn: "Business Travel", icon: Plane, perm: "travel.view" },
   "/receipt-sales": { href: "/receipt-sales", label: "Receipt Sales", labelEn: "Receipt Sales", icon: ScanBarcode, perm: "receipt.view" },
+  // Blast WhatsApp mengikuti izin Receipt Sales — siapa pun yang membuka
+  // Receipt Sales boleh blast (keputusan pemilik produk, 27 Okt 2026).
+  "/wa-blast": { href: "/wa-blast", label: "Blast WhatsApp", labelEn: "WhatsApp Blast", icon: MessageCircleMore, perm: "receipt.view" },
   "/tokopedia-reviews": { href: "/tokopedia-reviews", label: "Review Marketplace", labelEn: "Marketplace Reviews", icon: Star, perm: "reviews.view" },
   "/eligible-customers": { href: "/eligible-customers", label: "Pelanggan Eligible", labelEn: "Eligible Customers", icon: BadgePercent, perm: "customers.view" },
   "/access": { href: "/access", label: "Peran & Akses", labelEn: "Roles & Access", icon: ShieldCheck, perm: "access.roles" },
@@ -84,8 +88,8 @@ export function audienceFromPermissions(permissions: string[]): Audience {
 // Order by real-world usage frequency for each audience (Hick's Law + Serial Position:
 // most-used first = primacy; rarely-used config last).
 const ORDER: Record<Audience, string[]> = {
-  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/travel", "/payment-requests", "/receipt-sales", "/tokopedia-reviews", "/eligible-customers", "/inventory", "/documents", "/letters", "/access", "/super-admin"],
-  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/travel", "/payment-requests", "/receipt-sales", "/tokopedia-reviews", "/eligible-customers", "/inventory", "/documents", "/letters", "/employees", "/org-structure", "/access", "/super-admin"],
+  ops: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/employees", "/org-structure", "/shifts", "/holidays", "/travel", "/payment-requests", "/receipt-sales", "/wa-blast", "/tokopedia-reviews", "/eligible-customers", "/inventory", "/documents", "/letters", "/access", "/super-admin"],
+  self: ["/dashboard", "/attendance", "/leave", "/overtime", "/payroll", "/holidays", "/shifts", "/travel", "/payment-requests", "/receipt-sales", "/wa-blast", "/tokopedia-reviews", "/eligible-customers", "/inventory", "/documents", "/letters", "/employees", "/org-structure", "/access", "/super-admin"],
 };
 
 // Most-frequent destinations for the mobile thumb-zone bar (4 = sweet spot).

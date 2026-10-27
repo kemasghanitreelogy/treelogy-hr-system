@@ -183,6 +183,20 @@ const MESSAGES: Record<string, Msg> = {
   query_failed: { id: "Gagal mengambil data.", en: "Failed to query data." },
   request_failed: { id: "Permintaan gagal. Coba lagi.", en: "The request failed. Try again." },
   server_error: { id: "Terjadi kesalahan di server. Coba lagi.", en: "A server error occurred. Try again." },
+
+  // --- Blast WhatsApp (Qontak) ---
+  load_failed: { id: "Gagal memuat data. Coba lagi.", en: "Failed to load data. Try again." },
+  not_running: { id: "Kampanye ini tidak sedang berjalan.", en: "This campaign isn't running." },
+  qontak_not_configured: { id: "Qontak belum dikonfigurasi (CLIENT_ID_QONTAK / CLIENT_SECRET_QONTAK).", en: "Qontak isn't configured (CLIENT_ID_QONTAK / CLIENT_SECRET_QONTAK)." },
+  qontak_scope_missing: { id: "Kredensial Qontak tidak punya izin untuk tindakan ini — aktifkan scope di Mekari Developer Center.", en: "The Qontak credentials lack the scope for this — enable it in Mekari Developer Center." },
+  qontak_unauthorized: { id: "Qontak menolak kredensial. Periksa CLIENT_ID_QONTAK / CLIENT_SECRET_QONTAK.", en: "Qontak rejected the credentials. Check CLIENT_ID_QONTAK / CLIENT_SECRET_QONTAK." },
+  qontak_rate_limited: { id: "Batas kirim Qontak (60/menit) sedang penuh. Coba lagi sebentar.", en: "Qontak's send limit (60/min) is full right now. Try again shortly." },
+  qontak_failed: { id: "Gagal menghubungi Qontak. Coba lagi.", en: "Couldn't reach Qontak. Try again." },
+  template_unsupported: { id: "Template ini belum bisa dikirim dari sini (header teks bervariabel / bahasa tidak didukung).", en: "This template can't be sent from here (variable text header / unsupported language)." },
+  media_required: { id: "Template ini butuh URL gambar/berkas untuk header-nya.", en: "This template needs an image/file URL for its header." },
+  no_channel: { id: "Tidak ada channel WhatsApp aktif di Qontak.", en: "No active WhatsApp channel in Qontak." },
+  too_many_recipients: { id: "Maksimal 5.000 penerima per kampanye.", en: "At most 5,000 recipients per campaign." },
+  no_valid_recipients: { id: "Tidak ada penerima yang valid — periksa nomor HP dan variabelnya.", en: "No valid recipients — check the phone numbers and variables." },
 };
 
 /** Translate an error code (+ optional HTTP status) into a precise message. */

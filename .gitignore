@@ -22,3 +22,6 @@ next-env.d.ts
 *.pdf
 *.mov
 OFFICE_EMPLOYEE MASTER FILE*.xlsx
+
+# Dokumentasi API pihak ketiga (unduhan lokal, bukan bagian kode)
+Qontak-API-*.yaml
