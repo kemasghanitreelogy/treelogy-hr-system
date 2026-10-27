@@ -5,7 +5,7 @@ import {
   CheckCircle2, ClipboardCopy, FileDown, FileSpreadsheet, FileText, Loader2, PackageSearch, Plus,
   PackageCheck, RotateCcw, ScanBarcode, ScanText, ShieldCheck, Smartphone, Upload, X,
 } from "lucide-react";
-import type { LabelRecord } from "@/lib/receipt/label-core";
+import type { LabelField, LabelRecord } from "@/lib/receipt/label-core";
 import { flagDuplicateTracking, formatPhoneId, normalizeShipDate, reconcile, type AltOrder } from "@/lib/receipt/label-core";
 import { courierTracking } from "@/lib/receipt/courier-tracking";
 import { extractZip } from "@/lib/receipt/local-extract";
@@ -723,7 +723,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
     const snap = manualSnapshots.current.get(page)!;
     manualDigits.current.set(page, phoneDigits);
 
-    const fields = {
+    const fields: Record<string, LabelField> = {
       ...snap.fields,
       phone: { value: m.phone, source: "shopify" as const, confidence: "certain" as const, flag: null },
       ...(m.name ? { recipient_name: { value: m.name, source: "shopify" as const, confidence: "certain" as const, flag: null } } : {}),
@@ -906,7 +906,7 @@ export function ReceiptSalesView({ canFulfill = false }: { canFulfill?: boolean 
 
     const shop = (value: string | null) =>
       ({ value, source: "shopify" as const, confidence: "certain" as const, flag: null });
-    const fields = {
+    const fields: Record<string, LabelField> = {
       ...snap.fields,
       // Tanpa HP di order, kolomnya tetap milik pemakai — bukan dikosongkan.
       phone: o.phone ? shop(o.phone) : { value: null, source: "none" as const, confidence: "high" as const, flag: null },
