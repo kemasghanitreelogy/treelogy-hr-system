@@ -199,7 +199,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
       if (!res.ok) throw Object.assign(new Error("switch"), { code: j?.error, status: res.status });
       await fetch(`/api/wa-blast/campaigns/${switching.id}`, { method: "DELETE" }).catch(() => undefined);
       setBases((b) => {
-        const next = { ...b, [j.id]: { tpl, recipients: old.recipients } };
+        const next: typeof b = { ...b, [String(j.id)]: { tpl, recipients: old.recipients } };
         delete next[switching.id];
         return next;
       });
