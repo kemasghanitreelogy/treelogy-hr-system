@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
+import { deliveryState, MAYBE_ARRIVED, type DeliveryState } from "@/lib/qontak/delivery";
 import { displayWaPhone } from "@/lib/qontak/phone";
 import { humanTemplateName, renderPreview } from "@/lib/qontak/template";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,7 @@ import { WaBubble, WaPhone } from "./wa-bubble";
 
 export interface Counts {
   total: number; queued: number; sending: number; sent: number; failed: number; skipped: number; unknown: number;
-  delivered: number; read: number; undelivered: number;
+  delivered: number; read: number; undelivered: number; awaiting: number; unconfirmed: number;
 }
 interface Campaign {
   id: string; name: string; template_name: string; template_body: string; status: string; stop_reason: string | null;
@@ -60,21 +61,32 @@ const STR: Record<Locale, Record<string, string>> = {
     changeTpl: "Ganti template",
     confirmMsg: "Dari {from} memakai template {tpl}. Pesan yang sudah terkirim tidak bisa ditarik kembali. Perkiraan selesai: {eta}.",
     sending: "Mengirim",
-    sentQontak: "Diterima Qontak",
-    delivered: "Sampai di WA",
-    failed: "Gagal",
+    sentQontak: "diterima Qontak",
+    delivered: "Sampai di WhatsApp",
+    awaiting: "Menunggu laporan WA",
+    failed: "Gagal / tidak pasti",
     queued: "Antre",
+    readN: "dibaca",
     closeOk: "Halaman ini boleh ditutup — pengiriman tetap berjalan di server.",
     remaining: "sisa ±",
     retry: "Kirim ulang yang gagal",
+    retryOne: "Kirim ulang",
+    retryTitle: "Kirim ulang {n} pesan?",
+    retryMsg: "Pesan yang terbukti sampai tidak ikut dikirim ulang.",
+    retryMaybe: "{m} di antaranya mungkin SUDAH sampai (status tidak pasti / tidak pernah dilaporkan WhatsApp) — pelanggan itu bisa menerima pesan dua kali.",
+    retried: "{n} pesan masuk antrean lagi",
     stop: "Hentikan sisa antrean",
     stopTitle: "Hentikan sisa antrean?",
     stopMsg: "Pesan yang belum terkirim tidak akan dikirim. Yang sudah terkirim tetap terkirim.",
     stopped: "Sisa antrean dihentikan.",
     problems: "Perlu perhatian",
-    doneTitle: "Selesai",
-    doneAll: "Semua pesan sudah diterima Qontak.",
-    donePartial: "Sebagian pesan gagal — lihat alasannya di bawah.",
+    doneTitle: "Semua pesan sampai di WhatsApp",
+    doneAll: "Setiap pesan dilaporkan sampai oleh WhatsApp.",
+    waitTitle: "Menunggu laporan WhatsApp",
+    waitMsg: "{d} sudah sampai · {w} sudah diterima Qontak, laporan sampai/tidaknya belum datang — dicek otomatis.",
+    badTitle: "Selesai dengan masalah",
+    donePartial: "{b} pesan gagal atau tidak pasti — alasannya di bawah, dan bisa dikirim ulang.",
+    noneSent: "Tidak ada pesan yang dikirim.",
     stoppedBy: "Pengiriman berhenti:",
     activity: "Aktivitas terakhir",
     nothing: "Tidak ada yang perlu dikirim — semua penerima dilewati.",
@@ -83,8 +95,10 @@ const STR: Record<Locale, Record<string, string>> = {
     minutes: "menit",
     seconds: "detik",
     unknownHint: "Status tidak pasti (koneksi terputus saat mengirim) — mungkin sudah sampai. Tidak dikirim ulang otomatis.",
-    statusQueued: "Antre", statusSending: "Mengirim", statusSent: "Terkirim", statusFailed: "Gagal", statusSkipped: "Dilewati", statusUnknown: "Tidak pasti",
-    deliveredBadge: "Sampai", readBadge: "Dibaca", undeliveredBadge: "Ditolak WA",
+    unconfirmedHint: "Diterima Qontak, tetapi WhatsApp tidak pernah melaporkan pesan ini sampai dalam 48 jam.",
+    undeliveredHint: "Ditolak WhatsApp",
+    statusQueued: "Antre", statusSending: "Mengirim", statusAccepted: "Diterima Qontak", statusSentWa: "Terkirim, belum sampai", statusFailed: "Gagal", statusSkipped: "Dilewati", statusUnknown: "Tidak pasti",
+    deliveredBadge: "Sampai", readBadge: "Dibaca", undeliveredBadge: "Ditolak WhatsApp", unconfirmedBadge: "Tidak terkonfirmasi",
   },
   en: {
     loading: "Preparing preview…",
@@ -104,21 +118,32 @@ const STR: Record<Locale, Record<string, string>> = {
     changeTpl: "Change template",
     confirmMsg: "From {from} using template {tpl}. Sent messages can't be recalled. Estimated finish: {eta}.",
     sending: "Sending",
-    sentQontak: "Accepted by Qontak",
-    delivered: "Delivered",
-    failed: "Failed",
+    sentQontak: "accepted by Qontak",
+    delivered: "Delivered on WhatsApp",
+    awaiting: "Awaiting WhatsApp report",
+    failed: "Failed / uncertain",
     queued: "Queued",
+    readN: "read",
     closeOk: "You can close this page — sending continues on the server.",
     remaining: "≈",
     retry: "Resend failed",
+    retryOne: "Resend",
+    retryTitle: "Resend {n} messages?",
+    retryMsg: "Messages proven delivered are never resent.",
+    retryMaybe: "{m} of them may ALREADY have arrived (uncertain / never reported by WhatsApp) — those customers could get the message twice.",
+    retried: "{n} messages queued again",
     stop: "Stop the rest",
     stopTitle: "Stop the remaining queue?",
     stopMsg: "Messages not yet sent won't be sent. Already-sent ones stay sent.",
     stopped: "Remaining queue stopped.",
     problems: "Needs attention",
-    doneTitle: "Done",
-    doneAll: "Every message was accepted by Qontak.",
-    donePartial: "Some messages failed — see why below.",
+    doneTitle: "Every message reached WhatsApp",
+    doneAll: "WhatsApp reported every message as delivered.",
+    waitTitle: "Waiting for WhatsApp reports",
+    waitMsg: "{d} delivered · {w} accepted by Qontak, delivery not reported yet — checked automatically.",
+    badTitle: "Finished with problems",
+    donePartial: "{b} messages failed or are uncertain — reasons below, and they can be resent.",
+    noneSent: "No message was sent.",
     stoppedBy: "Sending stopped:",
     activity: "Latest activity",
     nothing: "Nothing to send — every recipient was skipped.",
@@ -127,8 +152,10 @@ const STR: Record<Locale, Record<string, string>> = {
     minutes: "min",
     seconds: "sec",
     unknownHint: "Uncertain (connection dropped mid-send) — it may have arrived. Not resent automatically.",
-    statusQueued: "Queued", statusSending: "Sending", statusSent: "Sent", statusFailed: "Failed", statusSkipped: "Skipped", statusUnknown: "Uncertain",
-    deliveredBadge: "Delivered", readBadge: "Read", undeliveredBadge: "Rejected by WA",
+    unconfirmedHint: "Accepted by Qontak, but WhatsApp never reported it delivered within 48 hours.",
+    undeliveredHint: "Rejected by WhatsApp",
+    statusQueued: "Queued", statusSending: "Sending", statusAccepted: "Accepted by Qontak", statusSentWa: "Sent, not delivered yet", statusFailed: "Failed", statusSkipped: "Skipped", statusUnknown: "Uncertain",
+    deliveredBadge: "Delivered", readBadge: "Read", undeliveredBadge: "Rejected by WhatsApp", unconfirmedBadge: "Unconfirmed",
   },
 };
 
@@ -149,19 +176,40 @@ function skippedReason(r: RecipientRow, locale: Locale): string | null {
   return null;
 }
 
+type Tone = "neutral" | "gold" | "clay" | "sky" | "matcha" | "forest";
+
+/** Badge hanya mengklaim apa yang sudah DILAPORKAN (lihat lib/qontak/delivery). */
 function StatusBadge({ r, t }: { r: RecipientRow; t: Record<string, string> }) {
-  if (r.status === "sent") {
-    if (r.delivery_status === "read") return <Badge tone="forest" dot>{t.readBadge}</Badge>;
-    if (r.delivery_status === "delivered") return <Badge tone="matcha" dot>{t.deliveredBadge}</Badge>;
-    if (r.delivery_status === "failed") return <Badge tone="clay" dot>{t.undeliveredBadge}</Badge>;
-    return <Badge tone="sky" dot>{t.statusSent}</Badge>;
-  }
-  const map: Record<string, ["neutral" | "gold" | "clay" | "sky", string]> = {
-    queued: ["neutral", t.statusQueued], sending: ["sky", t.statusSending], failed: ["clay", t.statusFailed],
-    skipped: ["neutral", t.statusSkipped], unknown: ["gold", t.statusUnknown],
+  const st = deliveryState(r);
+  const map: Record<DeliveryState, [Tone, string]> = {
+    queued: ["neutral", t.statusQueued],
+    sending: ["sky", t.statusSending],
+    skipped: ["neutral", t.statusSkipped],
+    failed: ["clay", t.statusFailed],
+    unknown: ["gold", t.statusUnknown],
+    accepted: ["sky", t.statusAccepted],
+    sent_wa: ["sky", t.statusSentWa],
+    delivered: ["matcha", t.deliveredBadge],
+    read: ["forest", t.readBadge],
+    undelivered: ["clay", t.undeliveredBadge],
+    unconfirmed: ["gold", t.unconfirmedBadge],
   };
-  const [tone, label] = map[r.status] ?? ["neutral", r.status];
-  return <Badge tone={tone}>{r.status === "sending" && <Loader2 className="h-3 w-3 animate-spin" />}{label}</Badge>;
+  const [tone, label] = map[st];
+  return (
+    <Badge tone={tone} dot={st !== "sending"}>
+      {st === "sending" && <Loader2 className="h-3 w-3 animate-spin" />}{label}
+    </Badge>
+  );
+}
+
+/** Kenapa pesan ini perlu perhatian — kalimat, bukan kode. */
+function problemReason(r: RecipientRow, t: Record<string, string>): string {
+  switch (deliveryState(r)) {
+    case "unknown": return t.unknownHint;
+    case "unconfirmed": return t.unconfirmedHint;
+    case "undelivered": return r.delivery_error ? `${t.undeliveredHint}: ${r.delivery_error}` : t.undeliveredHint;
+    default: return r.last_error || t.statusFailed;
+  }
 }
 
 /**
@@ -194,6 +242,8 @@ export function CampaignRunner({
   const [shown, setShown] = useState(PAGE);
   const [ask, setAsk] = useState(false);
   const [askStop, setAskStop] = useState(false);
+  const [askRetry, setAskRetry] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const doneAnnounced = useRef(false);
   // Toast & daftar id distabilkan: objek toast dibuat ulang tiap kali
@@ -244,12 +294,15 @@ export function CampaignRunner({
 
   const all = useMemo(() => campaignIds.map((id) => data[id]).filter(Boolean) as Loaded[], [campaignIds, data]);
   const total = useMemo(() => {
-    const c = { queued: 0, sending: 0, sent: 0, failed: 0, skipped: 0, unknown: 0, delivered: 0, undelivered: 0, total: 0 };
+    const c = { queued: 0, sending: 0, sent: 0, failed: 0, skipped: 0, unknown: 0, delivered: 0, read: 0, undelivered: 0, awaiting: 0, unconfirmed: 0, total: 0 };
     for (const d of all) for (const k of Object.keys(c) as (keyof typeof c)[]) c[k] += d.counts[k] ?? 0;
     return c;
   }, [all]);
   const running = all.some((d) => d.campaign.status === "sending");
   const finished = phase === "running" && all.length > 0 && !running;
+  // Laporan WhatsApp datang belakangan (detik–menit) — selama masih ada yang
+  // menunggu, layar terus memperbarui diri, tidak berhenti di "diterima Qontak".
+  const awaiting = total.awaiting > 0;
 
   // Poll: cepat saat antrean jalan, lebih santai sesudahnya untuk menunggu
   // status "sampai di WA" yang datang belakangan, lalu berhenti.
@@ -262,12 +315,13 @@ export function CampaignRunner({
       try { await load(false); } catch { /* jaringan sesaat — coba lagi di putaran berikut */ }
       if (stop) return;
       const idleFor = Date.now() - startedIdle;
-      if (!running && idleFor > 3 * 60_000) return;
-      setTimeout(tick, running ? 2000 : 5000);
+      if (!running && !awaiting && idleFor > 3 * 60_000) return;
+      if (idleFor > 60 * 60_000) return;
+      setTimeout(tick, running ? 2000 : awaiting ? 6000 : 10000);
     };
     const h = setTimeout(tick, 1200);
     return () => { stop = true; clearTimeout(h); };
-  }, [phase, running, load]);
+  }, [phase, running, awaiting, load]);
 
   useEffect(() => {
     if (finished && !doneAnnounced.current) {
@@ -309,25 +363,33 @@ export function CampaignRunner({
     }
   }
 
-  async function retryFailed() {
+  /** Kirim ulang — semua yang boleh, atau satu penerima (`row`). */
+  async function retry(row?: RecipientRow) {
     setBusy(true);
+    if (row) setRetrying(row.id);
     try {
       let n = 0;
       for (const d of all) {
-        if (!d.counts.failed && !d.counts.unknown && !d.counts.undelivered && d.campaign.status !== "failed") continue;
-        const res = await fetch(`/api/wa-blast/campaigns/${d.campaign.id}/retry`, { method: "POST" });
+        if (row ? !(d.problems ?? []).some((p) => p.id === row.id) : !(d.problems ?? []).length && d.campaign.status !== "failed") continue;
+        const res = await fetch(`/api/wa-blast/campaigns/${d.campaign.id}/retry`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(row ? { ids: [row.id] } : {}),
+        });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error("retry"), { code: json?.error, status: res.status });
         n += json.requeued ?? 0;
       }
       doneAnnounced.current = false;
-      toast.success(locale === "en" ? `${n} queued again` : `${n} pesan masuk antrean lagi`);
+      setAskRetry(false);
+      toast.success(t.retried.replace("{n}", String(n)));
       await load(false);
     } catch (e) {
       const err = e as { code?: string; status?: number };
       toast.error(apiErrorMessage(err.code, locale, err.status));
     } finally {
       setBusy(false);
+      setRetrying(null);
     }
   }
 
@@ -362,59 +424,74 @@ export function CampaignRunner({
     const problems = all.flatMap((d) => d.problems ?? []);
     const recent = all.flatMap((d) => d.recent ?? []).slice(0, 8);
     const stopReason = all.find((d) => d.campaign.stop_reason)?.campaign.stop_reason;
-    const allGood = finished && !total.failed && !total.unknown && !total.undelivered && !stopReason;
+    const bad = total.failed + total.unknown + total.undelivered + total.unconfirmed;
+    const maybe = problems.filter((r) => MAYBE_ARRIVED.includes(deliveryState(r))).length;
+    // Centang hijau HANYA bila WhatsApp melaporkan setiap pesan sampai.
+    const allGood = finished && !stopReason && bad === 0 && !awaiting && total.sent > 0 && total.delivered === total.sent;
+    const title = !finished ? `${t.sending}…`
+      : stopReason ? t.stoppedBy
+      : bad ? t.badTitle
+      : awaiting ? t.waitTitle
+      : total.sent === 0 ? t.noneSent
+      : t.doneTitle;
+    const sub = !finished ? <>{t.remaining} {formatEta(total.queued + total.sending, t)} · {t.closeOk}</>
+      : stopReason ? stopReason
+      : bad ? t.donePartial.replace("{b}", String(bad))
+      : awaiting ? t.waitMsg.replace("{d}", String(total.delivered)).replace("{w}", String(total.awaiting))
+      : total.sent === 0 ? "" : t.doneAll;
 
     return (
       <div className="space-y-4">
         <section className={cn("rounded-2xl border border-line bg-panel p-4 sm:p-5", finished && "hf-done-panel")}>
           <div className="flex items-start gap-4">
             <div className="relative grid h-16 w-16 shrink-0 place-items-center">
-              <svg viewBox="0 0 48 48" className={cn("absolute inset-0 h-16 w-16", finished && allGood && "hf-done-ring")} aria-hidden>
+              <svg viewBox="0 0 48 48" className={cn("absolute inset-0 h-16 w-16", allGood && "hf-done-ring")} aria-hidden>
                 <circle cx="24" cy="24" r="20" fill="none" stroke="var(--color-sand, #ece6d9)" strokeWidth="4" />
                 <circle
                   cx="24" cy="24" r="20" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
-                  className={cn("text-forest-600 transition-[stroke-dashoffset] duration-500", !finished && "origin-center -rotate-90")}
+                  className={cn("transition-[stroke-dashoffset] duration-500", bad && finished ? "text-[#c2603f]" : "text-forest-600", !allGood && "origin-center -rotate-90")}
                   strokeDasharray={126}
-                  strokeDashoffset={finished && allGood ? undefined : 126 * (1 - pct)}
+                  strokeDashoffset={allGood ? undefined : 126 * (1 - pct)}
                 />
-                {finished && allGood && <path d="M16 24.5l5.5 5.5L32.5 19" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="text-forest-600" />}
+                {allGood && <path d="M16 24.5l5.5 5.5L32.5 19" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="text-forest-600" />}
               </svg>
-              {!(finished && allGood) && <span className="text-sm font-bold tabular-nums text-ink">{Math.round(pct * 100)}%</span>}
+              {!allGood && (finished && awaiting && !bad
+                ? <Clock className="h-5 w-5 text-sky" aria-hidden />
+                : <span className="text-sm font-bold tabular-nums text-ink">{Math.round(pct * 100)}%</span>)}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-base font-semibold text-ink">
-                {finished ? t.doneTitle : `${t.sending}…`}
+                {title}
                 <span className="ml-2 text-sm font-normal text-muted">{tplNames}</span>
               </p>
-              <p className="mt-0.5 text-sm text-muted">
-                {finished
-                  ? stopReason ? `${t.stoppedBy} ${stopReason}` : allGood ? t.doneAll : t.donePartial
-                  : <>{t.remaining} {formatEta(total.queued + total.sending, t)} · {t.closeOk}</>}
-              </p>
+              {sub && <p className="mt-0.5 text-sm text-muted">{sub}</p>}
               <div className="hf-progress-track mt-3 h-1.5 rounded-full bg-sand">
                 <div className="hf-progress-fill h-full rounded-full bg-forest-500" style={{ transform: `scaleX(${pct})` }} />
               </div>
+              <p className="mt-1.5 text-xs text-faint tabular-nums">
+                {total.sent} {t.sentQontak}{total.read ? ` · ${total.read} ${t.readN}` : ""}
+              </p>
             </div>
           </div>
 
           <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
-              { label: t.sentQontak, n: total.sent, tone: "text-forest-700" },
               { label: t.delivered, n: total.delivered, tone: "text-forest-700" },
-              { label: t.failed, n: total.failed + total.unknown + total.undelivered, tone: total.failed + total.unknown + total.undelivered ? "text-[#8c3c1f]" : "text-ink" },
+              { label: t.awaiting, n: total.awaiting, tone: total.awaiting ? "text-sky" : "text-ink" },
+              { label: t.failed, n: bad, tone: bad ? "text-[#8c3c1f]" : "text-ink" },
               { label: t.queued, n: total.queued + total.sending, tone: "text-ink" },
-            ].map((s, i) => (
-              <div key={s.label} className="hf-done-row rounded-xl bg-cream/60 px-3 py-2" style={{ ["--i" as string]: i }}>
-                <dt className="text-[11px] font-medium uppercase tracking-wide text-faint">{s.label}</dt>
-                <dd className={cn("text-xl font-bold tabular-nums", s.tone)}>{s.n}</dd>
+            ].map((x, i) => (
+              <div key={x.label} className="hf-done-row rounded-xl bg-cream/60 px-3 py-2" style={{ ["--i" as string]: i }}>
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-faint">{x.label}</dt>
+                <dd className={cn("text-xl font-bold tabular-nums", x.tone)}>{x.n}</dd>
               </div>
             ))}
           </dl>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {(total.failed > 0 || total.unknown > 0 || total.undelivered > 0 || stopReason) && (
-              <Button variant="secondary" size="sm" onClick={retryFailed} disabled={busy}>
-                <RotateCcw className="h-3.5 w-3.5" /> {t.retry}
+            {(problems.length > 0 || stopReason) && (
+              <Button variant="secondary" size="sm" onClick={() => setAskRetry(true)} disabled={busy}>
+                <RotateCcw className="h-3.5 w-3.5" /> {t.retry} {problems.length ? `(${problems.length})` : ""}
               </Button>
             )}
             {running && (
@@ -431,16 +508,20 @@ export function CampaignRunner({
               <AlertTriangle className="h-4 w-4" /> {t.problems} ({problems.length})
             </p>
             <ul className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
-              {problems.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-panel/80 px-3 py-2 text-xs">
-                  <span className="min-w-0">
+              {problems.map((r, i) => (
+                <li key={r.id} className="stagger-item flex flex-wrap items-center justify-between gap-2 rounded-lg bg-panel/80 px-3 py-2 text-xs" style={{ ["--i" as string]: Math.min(i, 8) }}>
+                  <span className="min-w-0 flex-1">
                     <span className="font-medium text-ink">{r.name || "—"}</span>{" "}
                     <span className="font-mono text-muted">{displayWaPhone(r.phone)}</span>
-                    <span className="block text-[#8c3c1f]">
-                      {r.status === "unknown" ? t.unknownHint : r.delivery_error || r.last_error || r.delivery_status}
-                    </span>
+                    {r.awb && <span className="font-mono text-faint"> · {r.awb}</span>}
+                    <span className="block text-[#8c3c1f]">{problemReason(r, t)}</span>
                   </span>
-                  <StatusBadge r={r} t={t} />
+                  <span className="flex shrink-0 items-center gap-2">
+                    <StatusBadge r={r} t={t} />
+                    <Button variant="outline" size="sm" onClick={() => retry(r)} disabled={busy} aria-label={`${t.retryOne} ${r.name || r.phone}`}>
+                      {retrying === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} {t.retryOne}
+                    </Button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -454,13 +535,16 @@ export function CampaignRunner({
               {recent.map((r) => (
                 <li key={r.id} className={cn("flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm", r.status === "sending" && "hf-checking")}>
                   <span className="flex min-w-0 items-center gap-2">
-                    {r.status === "sent" ? (
-                      <span className="hf-check-draw grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#e9f0d8] text-forest-700"><Check className="h-3 w-3" /></span>
-                    ) : r.status === "sending" ? (
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-forest-600" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 shrink-0 text-[#8c3c1f]" />
-                    )}
+                    {(() => {
+                      // Centang hanya untuk yang DILAPORKAN sampai; diterima
+                      // Qontak saja = jam (menunggu), bukan tanda sukses.
+                      const st = deliveryState(r);
+                      if (st === "delivered" || st === "read")
+                        return <span className="hf-check-draw grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#e9f0d8] text-forest-700"><Check className="h-3 w-3" /></span>;
+                      if (st === "sending") return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-forest-600" />;
+                      if (st === "accepted" || st === "sent_wa" || st === "queued") return <Clock className="h-4 w-4 shrink-0 text-sky" />;
+                      return <AlertTriangle className="h-4 w-4 shrink-0 text-[#8c3c1f]" />;
+                    })()}
                     <span className="truncate text-ink">{r.name || displayWaPhone(r.phone)}</span>
                     {r.awb && <span className="hidden truncate font-mono text-xs text-faint sm:inline">{r.awb}</span>}
                   </span>
@@ -471,6 +555,16 @@ export function CampaignRunner({
           </section>
         )}
 
+        <ConfirmDialog
+          open={askRetry}
+          title={t.retryTitle.replace("{n}", String(problems.length))}
+          message={[t.retryMsg, maybe ? t.retryMaybe.replace("{m}", String(maybe)) : ""].filter(Boolean).join(" ")}
+          confirmLabel={t.retry}
+          icon={<RotateCcw className="h-5 w-5" />}
+          busy={busy}
+          onConfirm={() => retry()}
+          onCancel={() => setAskRetry(false)}
+        />
         <ConfirmDialog
           open={askStop}
           title={t.stopTitle}

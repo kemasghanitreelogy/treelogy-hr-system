@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { QontakError, getDeliveryStatus, sendDirect } from "./client";
+import { CONFIRM_WINDOW_MS, FINAL_DELIVERY } from "./delivery";
 import { drainDirect, PER_MINUTE, type CampaignInfo, type DrainResult, type DrainStore, type QueueRow, type SendError } from "./engine";
 
 /** DrainStore di atas Supabase (service role) — RPC dari migrasi 0087. */
@@ -63,7 +64,6 @@ export function toSendError(e: unknown): SendError {
 }
 
 /** Status pengiriman final menurut WhatsApp — tidak perlu ditanya lagi. */
-const FINAL_DELIVERY = ["delivered", "read", "failed"];
 
 /**
  * Tanyakan status pengiriman pesan yang sudah diterima Qontak.
@@ -77,7 +77,7 @@ export async function syncDelivery(db: SupabaseClient, limit = 10): Promise<numb
   const { data: budget } = await db.rpc("wa_rate_budget", { p_per_minute: PER_MINUTE });
   const n = Math.min(limit, Number(budget ?? 0) - 5);
   if (n <= 0) return 0;
-  const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+  const since = new Date(Date.now() - CONFIRM_WINDOW_MS).toISOString();
   const recheck = Date.now() - 30_000;
   const { data: rows } = await db
     .from("wa_campaign_recipients")
@@ -85,7 +85,7 @@ export async function syncDelivery(db: SupabaseClient, limit = 10): Promise<numb
     .eq("status", "sent")
     .not("qontak_ref", "is", null)
     .gte("sent_at", since)
-    .or("delivery_status.is.null,delivery_status.in.(todo,pending,sent)")
+    .or(`delivery_status.is.null,delivery_status.not.in.(${FINAL_DELIVERY.join(",")})`)
     .order("delivery_checked_at", { ascending: true, nullsFirst: true })
     .limit(n * 3);
   const due = (rows ?? []).filter((r) => !r.delivery_checked_at || +new Date(r.delivery_checked_at) < recheck).slice(0, n);

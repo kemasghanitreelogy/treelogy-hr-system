@@ -131,18 +131,19 @@ export async function createCampaign(
   if (!rows.length) return { ok: false, error: "no_valid_recipients" };
 
   // Anti blast ganda: resi yang SUDAH terkirim dalam 14 hari dilewati —
-  // melindungi dari klik dua kali dan batch label yang dibaca ulang.
+  // melindungi dari klik dua kali dan batch label yang dibaca ulang. Pesan
+  // yang DITOLAK WhatsApp tidak dihitung terkirim: resinya boleh dikirim lagi.
   const awbs = [...new Set(rows.map((r) => r.awb).filter(Boolean))];
   const sentBefore = new Map<string, string>();
   const since = new Date(Date.now() - RESEND_GUARD_DAYS * 86400_000).toISOString();
   for (let i = 0; i < awbs.length; i += 200) {
     const { data } = await db
       .from("wa_campaign_recipients")
-      .select("awb, sent_at")
+      .select("awb, sent_at, delivery_status")
       .eq("status", "sent")
       .gte("sent_at", since)
       .in("awb", awbs.slice(i, i + 200));
-    for (const d of data ?? []) sentBefore.set(d.awb as string, d.sent_at as string);
+    for (const d of data ?? []) if (d.delivery_status !== "failed") sentBefore.set(d.awb as string, d.sent_at as string);
   }
 
   const { data: camp, error } = await db

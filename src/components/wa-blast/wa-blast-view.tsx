@@ -54,8 +54,9 @@ const STR: Record<Locale, Record<string, string>> = {
     historyEmpty: "Belum ada kampanye.",
     by: "oleh",
     newAgain: "Buat kampanye lain",
-    statusSending: "Mengirim", statusDone: "Selesai", statusPartial: "Sebagian gagal", statusFailed: "Gagal", statusCancelled: "Dihentikan",
-    sent: "terkirim", delivered: "sampai", failedN: "gagal",
+    statusSending: "Mengirim", statusDone: "Sampai semua", statusPartial: "Ada yang gagal", statusFailed: "Gagal semua", statusCancelled: "Dihentikan",
+    statusAwaiting: "Menunggu laporan WA", statusNone: "Tidak ada yang dikirim",
+    sent: "diterima Qontak", delivered: "sampai", failedN: "gagal/tidak pasti", awaitingN: "menunggu",
     detail: "Detail kampanye",
     preview: "Contoh pesan",
     clear: "Hapus daftar",
@@ -94,8 +95,9 @@ const STR: Record<Locale, Record<string, string>> = {
     historyEmpty: "No campaigns yet.",
     by: "by",
     newAgain: "Start another campaign",
-    statusSending: "Sending", statusDone: "Done", statusPartial: "Partly failed", statusFailed: "Failed", statusCancelled: "Stopped",
-    sent: "sent", delivered: "delivered", failedN: "failed",
+    statusSending: "Sending", statusDone: "All delivered", statusPartial: "Some failed", statusFailed: "All failed", statusCancelled: "Stopped",
+    statusAwaiting: "Awaiting WhatsApp", statusNone: "Nothing sent",
+    sent: "accepted by Qontak", delivered: "delivered", failedN: "failed/uncertain", awaitingN: "waiting",
     detail: "Campaign detail",
     preview: "Sample message",
     clear: "Clear list",
@@ -254,15 +256,21 @@ function TemplateCard({ tpl, onPick, t }: { tpl: WaTemplate; onPick: () => void;
   );
 }
 
-const STATUS_TONE: Record<string, "sky" | "matcha" | "gold" | "clay" | "neutral"> = {
-  sending: "sky", done: "matcha", partial: "gold", failed: "clay", cancelled: "neutral",
-};
+type HistTone = "sky" | "matcha" | "gold" | "clay" | "neutral";
 
-function statusLabel(status: string, t: Record<string, string>): string {
-  const m: Record<string, string> = {
-    sending: t.statusSending, done: t.statusDone, partial: t.statusPartial, failed: t.statusFailed, cancelled: t.statusCancelled,
-  };
-  return m[status] ?? status;
+/**
+ * Status riwayat dinilai dari LAPORAN WhatsApp, bukan dari status antrean —
+ * "selesai mengirim ke Qontak" belum berarti pesannya sampai.
+ */
+function historyStatus(status: string, c: Counts, t: Record<string, string>): [HistTone, string] {
+  if (status === "sending") return ["sky", t.statusSending];
+  const bad = c.failed + c.unknown + c.undelivered + c.unconfirmed;
+  if (status === "cancelled" && !bad) return ["neutral", t.statusCancelled];
+  if (bad && bad >= c.total - c.skipped) return ["clay", t.statusFailed];
+  if (bad) return ["gold", t.statusPartial];
+  if (c.awaiting) return ["sky", t.statusAwaiting];
+  if (!c.sent) return ["neutral", t.statusNone];
+  return ["matcha", t.statusDone];
 }
 
 interface HistoryItem {
@@ -467,12 +475,14 @@ export function WaBlastView() {
                 <span className="flex shrink-0 flex-wrap items-center gap-2 text-xs tabular-nums">
                   <span className="text-forest-700"><b>{h.counts.sent}</b> {t.sent}</span>
                   <span className="text-forest-700"><b>{h.counts.delivered}</b> {t.delivered}</span>
-                  {h.counts.failed + h.counts.unknown + h.counts.undelivered > 0 && (
-                    <span className="text-[#8c3c1f]"><b>{h.counts.failed + h.counts.unknown + h.counts.undelivered}</b> {t.failedN}</span>
+                  {h.counts.awaiting > 0 && <span className="text-sky"><b>{h.counts.awaiting}</b> {t.awaitingN}</span>}
+                  {h.counts.failed + h.counts.unknown + h.counts.undelivered + h.counts.unconfirmed > 0 && (
+                    <span className="text-[#8c3c1f]"><b>{h.counts.failed + h.counts.unknown + h.counts.undelivered + h.counts.unconfirmed}</b> {t.failedN}</span>
                   )}
-                  <Badge tone={STATUS_TONE[h.status] ?? "neutral"} dot>
-                    {statusLabel(h.status, t)}
-                  </Badge>
+                  {(() => {
+                    const [tone, label] = historyStatus(h.status, h.counts, t);
+                    return <Badge tone={tone} dot>{label}</Badge>;
+                  })()}
                 </span>
               </button>
             ))

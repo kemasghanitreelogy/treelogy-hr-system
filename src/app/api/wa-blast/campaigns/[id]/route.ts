@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { countsFor, emptyCounts } from "@/lib/qontak/counts";
+import { CONFIRM_WINDOW_MS, deliveryState, FINAL_DELIVERY, RETRYABLE } from "@/lib/qontak/delivery";
 import { guard } from "../../guard";
 
 export const runtime = "nodejs";
@@ -31,13 +32,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ campaign: camp, counts, recipients });
   }
 
-  const [{ data: recent }, { data: problems }] = await Promise.all([
+  const lewat = new Date(Date.now() - CONFIRM_WINDOW_MS).toISOString();
+  const [{ data: recent }, { data: bad }, { data: silent }] = await Promise.all([
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id).not("last_attempt_at", "is", null)
       .order("last_attempt_at", { ascending: false }).limit(12),
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id)
       .or("status.in.(failed,unknown),delivery_status.eq.failed").order("seq").limit(300),
+    // Diterima Qontak tapi tidak pernah dikonfirmasi WhatsApp dalam 48 jam.
+    g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id).eq("status", "sent").lt("sent_at", lewat)
+      .or(`delivery_status.is.null,delivery_status.not.in.(${FINAL_DELIVERY.join(",")})`).order("seq").limit(300),
   ]);
-  return NextResponse.json({ campaign: camp, counts, recent: recent ?? [], problems: problems ?? [] });
+  const problems = [...(bad ?? []), ...(silent ?? [])]
+    .filter((r) => RETRYABLE.includes(deliveryState(r)))
+    .sort((a, b) => a.seq - b.seq);
+  return NextResponse.json({ campaign: camp, counts, recent: recent ?? [], problems });
 }
 
 /** Batalkan. Draft dihapus; kampanye berjalan: sisa antrean dilewati
