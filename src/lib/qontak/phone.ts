@@ -22,6 +22,7 @@ export type PhoneFix =
   | "intl_prefix"     // 0062812… → awalan internasional 00
   | "missing_zero"    // 812… → nol depan hilang (sel angka Excel)
   | "multiple"        // "0812… / 0813…" → dua nomor dalam satu sel, dipakai yang pertama
+  | "country_code"    // 6586271943 → kode negara luar ditulis tanpa "+"
   | "junk";           // apostrof Excel, spasi tak terlihat, huruf/teks lain
 
 export type PhoneResult =
@@ -31,6 +32,38 @@ export type PhoneResult =
 /** Nomor seluler Indonesia: 62 8xx, total 11–15 digit termasuk 62. */
 const ID_MIN = 11;
 const ID_MAX = 15;
+
+/**
+ * Kode telepon negara (ISO-3166 alfa-2 → kode panggil) untuk negara tujuan
+ * kiriman yang masuk akal bagi toko ini. Negara yang tidak ada di sini tidak
+ * ditebak — nomornya dibiarkan apa adanya.
+ */
+export const CALLING_CODE: Record<string, string> = {
+  ID: "62", SG: "65", MY: "60", BN: "673", TH: "66", PH: "63", VN: "84", KH: "855", LA: "856", MM: "95", TL: "670",
+  HK: "852", MO: "853", TW: "886", CN: "86", JP: "81", KR: "82", IN: "91", PK: "92", BD: "880", LK: "94", NP: "977",
+  AU: "61", NZ: "64", US: "1", CA: "1", GB: "44", IE: "353", NL: "31", BE: "32", DE: "49", FR: "33", IT: "39",
+  ES: "34", PT: "351", CH: "41", AT: "43", SE: "46", NO: "47", DK: "45", FI: "358", PL: "48", CZ: "420", RU: "7",
+  TR: "90", AE: "971", SA: "966", QA: "974", KW: "965", BH: "973", OM: "968", EG: "20", ZA: "27", BR: "55", MX: "52",
+};
+const KODE_LUAR = [...new Set(Object.values(CALLING_CODE))].filter((k) => k !== "62").sort((a, b) => b.length - a.length);
+
+/**
+ * Lengkapi nomor dari alamat Shopify dengan kode negaranya. Pembeli luar
+ * negeri sering mengetik nomor lokal ("8627 1943" untuk Singapura) — tanpa
+ * kode negara nomor itu terbaca sebagai nomor Indonesia yang kurang digit.
+ * Negara alamat adalah bukti yang tidak dimiliki nomornya sendiri.
+ * Indonesia / negara tak dikenal / nomor yang sudah internasional: tidak diubah.
+ */
+export function withCountryCode(raw: string | null | undefined, country: string | null | undefined): string {
+  const teks = (raw ?? "").trim();
+  const kode = country ? CALLING_CODE[country.toUpperCase()] : undefined;
+  if (!teks || !kode || kode === "62") return teks;
+  if (/^(\+|00)/.test(teks)) return teks;
+  const d = teks.replace(/\D/g, "");
+  if (!d) return teks;
+  if (d.startsWith(kode) && d.length >= kode.length + 7) return "+" + d;
+  return "+" + kode + d.replace(/^0+/, "");
+}
 
 const INVISIBLE = /[​-‍⁠﻿  ]/g;
 
@@ -70,6 +103,17 @@ export function normalizeWaPhone(raw: string | number | null | undefined): Phone
     return { ok: true, phone: d, fixes };
   }
 
+  // 6586271943 / 60123456789 — kode negara luar tanpa "+". Nomor Indonesia
+  // selalu berawal 0, 8, atau 62, jadi awalan lain yang cocok dengan kode
+  // negara yang dikenal bukan tebakan: tidak mungkin nomor Indonesia.
+  if (!/^(0|8|62)/.test(d)) {
+    const kode = KODE_LUAR.find((k) => d.startsWith(k));
+    if (kode && d.length >= kode.length + 7 && d.length <= 15) {
+      fixes.push("country_code");
+      return { ok: true, phone: d, fixes };
+    }
+  }
+
   if (d.startsWith("620")) { d = "62" + d.slice(3); fixes.push("double_zero"); }
   else if (d.startsWith("0")) d = "62" + d.slice(1);
   else if (d.startsWith("8")) { d = "62" + d; fixes.push("missing_zero"); }
@@ -96,6 +140,7 @@ export const PHONE_FIX_TEXT: Record<PhoneFix, { id: string; en: string }> = {
   intl_prefix: { id: "awalan 00 diganti kode negara", en: "replaced the 00 prefix" },
   missing_zero: { id: "nol depan yang hilang dikembalikan", en: "restored the missing leading 0" },
   multiple: { id: "dua nomor dalam satu sel — dipakai yang pertama", en: "two numbers in one cell — used the first" },
+  country_code: { id: "kode negara luar dikenali (tanpa +)", en: "recognised a foreign country code (no +)" },
   junk: { id: "karakter asing dibersihkan", en: "stray characters removed" },
 };
 

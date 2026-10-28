@@ -11,7 +11,7 @@
  */
 import { signRequest } from "../src/lib/qontak/sign.ts";
 import { buildDirectParameters, courierKey, guessMeaning, renderPreview, slotId, toWaTemplate } from "../src/lib/qontak/template.ts";
-import { displayWaPhone, normalizeWaPhone } from "../src/lib/qontak/phone.ts";
+import { displayWaPhone, normalizeWaPhone, withCountryCode } from "../src/lib/qontak/phone.ts";
 
 let gagal = 0;
 const cek = (ok: boolean, msg: string) => { console.log((ok ? "✓ " : "✗ ") + msg); if (!ok) gagal++; };
@@ -88,6 +88,26 @@ for (const masuk of ["+6586271943", "0812 3456 7890", "+60 12-345 6789", "628123
   const b = a.ok ? normalizeWaPhone("+" + a.phone) : a;
   cek(a.ok && b.ok && b.phone === a.phone, `normalisasi ulang di server stabil: ${masuk} → ${a.ok ? a.phone : "?"}`);
 }
+
+// Auto-fix tanpa campur tangan pemakai: kode negara tanpa "+", dan nomor lokal
+// pembeli luar negeri dilengkapi dari negara alamat Shopify.
+for (const [masuk, harap] of [
+  ["6586271943", "6586271943"], ["60123456789", "60123456789"], ["0812 3456 7890", "6281234567890"],
+  ["812345678901", "62812345678901"], ["12345", null],
+] as const) {
+  const r = normalizeWaPhone(masuk);
+  cek(harap === null ? !r.ok : r.ok && r.phone === harap, `tanpa "+": ${masuk} → ${r.ok ? r.phone : "ditolak"}`);
+}
+for (const [hp, negara, harap] of [
+  ["8627 1943", "SG", "+6586271943"], ["+6586271943", "SG", "+6586271943"], ["6586271943", "SG", "+6586271943"],
+  ["012-345 6789", "MY", "+60123456789"], ["0812 3456 7890", "ID", "0812 3456 7890"], ["0812 3456 7890", null, "0812 3456 7890"],
+  ["5551234", "ZZ", "5551234"],
+] as const) {
+  const v = withCountryCode(hp, negara);
+  cek(v === harap, `kode negara dari alamat: ${hp} (${negara}) → ${v}`);
+}
+const sg = normalizeWaPhone(withCountryCode("8627 1943", "SG"));
+cek(sg.ok && sg.phone === "6586271943", "nomor lokal Singapura dari Shopify lolos ke Qontak sebagai 6586271943");
 
 // ── Kurir → template ──
 cek(courierKey("J&T Express") === "JNT" && courierKey("Lion Parcel") === "LION" && courierKey("JNE") === "JNE" && courierKey("SiCepat") === null,

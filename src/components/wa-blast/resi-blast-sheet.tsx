@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronDown, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { apiErrorMessage } from "@/lib/api-error";
-import { normalizeWaPhone, PHONE_PROBLEM_TEXT } from "@/lib/qontak/phone";
+import { displayWaPhone, normalizeWaPhone, PHONE_PROBLEM_TEXT } from "@/lib/qontak/phone";
 import { courierKey, RESI_TEMPLATE_BY_COURIER, slotId, type WaTemplate } from "@/lib/qontak/template";
 import { useLocale } from "@/components/layout/locale-context";
 import { Sheet } from "@/components/ui/sheet";
@@ -43,6 +43,7 @@ const T = {
     noTemplate: "template resi kurir ini tidak ada di Qontak",
     nothing: "Tidak ada halaman yang bisa dikirimi.",
     page: "hal.",
+    autoFixed: "nomor dirapikan otomatis",
   },
   en: {
     title: "WhatsApp tracking blast",
@@ -57,6 +58,7 @@ const T = {
     noTemplate: "this courier's tracking template isn't in Qontak",
     nothing: "No page can be messaged.",
     page: "p.",
+    autoFixed: "numbers fixed automatically",
   },
 };
 
@@ -76,6 +78,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
   const [excluded, setExcluded] = useState<{ page: number; name: string; reason: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showExcluded, setShowExcluded] = useState(false);
+  const [fixed, setFixed] = useState<{ page: number; from: string; to: string }[]>([]);
   // Satu batch draft per pembukaan sheet — bukan per render.
   const started = useRef(false);
   const snapshot = useMemo(() => (open ? items : []), [open, items]);
@@ -83,7 +86,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
   useEffect(() => {
     if (!open) {
       started.current = false;
-      setIds(null); setExcluded([]); setError(null); setShowExcluded(false);
+      setIds(null); setExcluded([]); setFixed([]); setError(null); setShowExcluded(false);
       return;
     }
     if (started.current) return;
@@ -97,6 +100,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
         const byName = new Map((json.templates as WaTemplate[]).map((x) => [x.name, x]));
 
         const out: { page: number; name: string; reason: string }[] = [];
+        const rapi: { page: number; from: string; to: string }[] = [];
         const groups = new Map<string, { tpl: WaTemplate; recipients: { phone: string; name: string; awb: string; vals: Record<string, string> }[] }>();
         for (const it of snapshot) {
           const name = tidyName(it.name);
@@ -105,6 +109,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
           const p = normalizeWaPhone(it.phone);
           if (!it.phone.trim()) { skip(t.noPhone); continue; }
           if (!p.ok) { skip(PHONE_PROBLEM_TEXT[p.problem][locale]); continue; }
+          if (p.fixes.length) rapi.push({ page: it.page, from: it.phone, to: displayWaPhone(p.phone) });
           if (!awb) { skip(t.noAwb); continue; }
           if (!it.awbConfirmed) { skip(t.unconfirmed); continue; }
           const ck = courierKey(it.courier);
@@ -123,6 +128,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
           groups.set(tpl.id, g);
         }
         setExcluded(out);
+        setFixed(rapi);
         if (!groups.size) { setIds([]); return; }
 
         const created: string[] = [];
@@ -158,6 +164,17 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
   return (
     <Sheet open={open} onClose={onClose} title={t.title} description={t.desc} width="lg">
       <div className="space-y-4">
+        {fixed.length > 0 && (
+          <details className="rounded-2xl border border-line bg-matcha/10 px-4 py-3 text-sm text-forest-700">
+            <summary className="flex cursor-pointer items-center gap-1.5 font-medium"><Sparkles className="h-4 w-4" /> {fixed.length} {t.autoFixed}</summary>
+            <ul className="mt-2 space-y-1 text-xs">
+              {fixed.slice(0, 30).map((f) => (
+                <li key={f.page}>{t.page} {f.page}: <span className="font-mono">{f.from}</span> → <span className="font-mono font-medium">{f.to}</span></li>
+              ))}
+            </ul>
+          </details>
+        )}
+
         {excluded.length > 0 && (
           <div className="rounded-2xl border border-[#e8d9a8] bg-gold-soft/60 px-4 py-3 text-sm text-[#8a6512]">
             <button type="button" onClick={() => setShowExcluded((v) => !v)} className="flex w-full cursor-pointer items-center justify-between gap-2 text-left font-medium" aria-expanded={showExcluded}>

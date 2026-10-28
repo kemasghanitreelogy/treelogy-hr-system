@@ -19,6 +19,7 @@
  */
 
 import type { AltOrder } from "./label-core";
+import { withCountryCode } from "../qontak/phone";
 
 export interface MatchResult {
   phone: string | null;
@@ -225,7 +226,7 @@ function phoneTail(phone: string, last4: string): "exact" | "fuzzy" | null {
 const POOL_QUERY = `query Pool($q: String!, $c: String) {
   orders(first: 100, after: $c, query: $q, sortKey: CREATED_AT, reverse: true) {
     pageInfo { hasNextPage endCursor }
-    edges { node { name legacyResourceId createdAt displayFulfillmentStatus shippingAddress { name address1 city province zip phone } } }
+    edges { node { name legacyResourceId createdAt displayFulfillmentStatus shippingAddress { name address1 city province zip phone countryCodeV2 } } }
   }
 }`;
 
@@ -288,7 +289,10 @@ async function fetchShard(
         address: [a.address1, a.city, a.province, a.zip].filter(Boolean).join(", "),
         city: a.city ?? "",
         zip: digits(a.zip ?? ""),
-        phone: a.phone ?? "",
+        // Nomor lokal pembeli luar negeri ("8627 1943") dilengkapi kode
+        // negara alamatnya di sini, sekali, supaya tampilan, ekspor, dan blast
+        // WhatsApp semuanya memakai nomor yang benar.
+        phone: withCountryCode(a.phone, a.countryCodeV2),
       });
     }
     cursor = conn?.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
@@ -929,7 +933,7 @@ export async function suggestOrders(input: MatchInput, poolDate: string): Promis
 
 const SEARCH_QUERY = `query FindOrders($q: String!) {
   orders(first: 8, query: $q, sortKey: CREATED_AT, reverse: true) {
-    edges { node { name legacyResourceId createdAt displayFulfillmentStatus shippingAddress { name address1 city province zip phone } } }
+    edges { node { name legacyResourceId createdAt displayFulfillmentStatus shippingAddress { name address1 city province zip phone countryCodeV2 } } }
   }
 }`;
 
@@ -964,7 +968,7 @@ export async function searchOrders(raw: string): Promise<AltOrder[]> {
       legacyId: String(e.node.legacyResourceId ?? ""),
       createdAt: e.node.createdAt,
       fulfilled: e.node.displayFulfillmentStatus === "FULFILLED",
-      phone: a.phone || null,
+      phone: withCountryCode(a.phone, a.countryCodeV2) || null,
       name: a.name || null,
       address: [a.address1, a.city, a.province, a.zip].filter(Boolean).join(", ") || null,
       reasons: [],

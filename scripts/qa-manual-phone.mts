@@ -38,6 +38,13 @@ globalThis.fetch = (async (_url: string, init: any) => {
   return new Response(JSON.stringify({ data: { orders: { pageInfo: { hasNextPage: false, endCursor: null }, edges } } }), { status: 200 });
 }) as any;
 
+// Kode aplikasi mengimpor tanpa ekstensi (gaya Next); Node butuh ".ts".
+const { registerHooks } = await import("node:module");
+registerHooks({
+  resolve(spec, ctx, next) {
+    try { return next(spec, ctx); } catch (e) { if (spec.startsWith(".")) return next(spec + ".ts", ctx); throw e; }
+  },
+});
 const { matchAll, matchManual } = await import("../src/lib/receipt/shopify.ts");
 
 const DATE = "2026-10-26";
