@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Loader2, RotateCcw, Search, Send, ShieldCheck, Square, Users,
+  AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Loader2, Replace, RotateCcw, Search, Send, ShieldCheck, Square, Users,
 } from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
@@ -56,6 +56,8 @@ const STR: Record<Locale, Record<string, string>> = {
     send: "Kirim",
     messages: "pesan",
     confirmTitle: "Kirim {n} pesan WhatsApp?",
+    template: "Template",
+    changeTpl: "Ganti template",
     confirmMsg: "Dari {from} memakai template {tpl}. Pesan yang sudah terkirim tidak bisa ditarik kembali. Perkiraan selesai: {eta}.",
     sending: "Mengirim",
     sentQontak: "Diterima Qontak",
@@ -98,6 +100,8 @@ const STR: Record<Locale, Record<string, string>> = {
     send: "Send",
     messages: "messages",
     confirmTitle: "Send {n} WhatsApp messages?",
+    template: "Template",
+    changeTpl: "Change template",
     confirmMsg: "From {from} using template {tpl}. Sent messages can't be recalled. Estimated finish: {eta}.",
     sending: "Sending",
     sentQontak: "Accepted by Qontak",
@@ -169,10 +173,13 @@ export function CampaignRunner({
   campaignIds,
   mode = "preview",
   onFinished,
+  onChangeTemplate,
 }: {
   campaignIds: string[];
   mode?: "preview" | "status";
   onFinished?: () => void;
+  /** Ada = tombol "Ganti template" tampil di pratinjau (kampanye draft). */
+  onChangeTemplate?: (campaignId: string, sample: RecipientRow | null) => void;
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -195,6 +202,18 @@ export function CampaignRunner({
   const toastRef = useRef(toast);
   toastRef.current = toast;
   const idsKey = campaignIds.join(",");
+
+  // Kampanye yang templatenya diganti mendapat id baru di posisi yang sama —
+  // tab yang sedang dibuka ikut pindah, tidak terlempar ke tab pertama.
+  const prevIds = useRef(campaignIds);
+  useEffect(() => {
+    if (!campaignIds.includes(tab)) {
+      const i = prevIds.current.indexOf(tab);
+      setTab(campaignIds[i >= 0 && i < campaignIds.length ? i : 0]);
+      setCursor(0); setQuery(""); setShown(PAGE);
+    }
+    prevIds.current = campaignIds;
+  }, [campaignIds, tab]);
 
   const load = useCallback(
     async (full: boolean) => {
@@ -503,6 +522,23 @@ export function CampaignRunner({
               {humanTemplateName(d.campaign.template_name)} · {d.counts.queued}
             </button>
           ))}
+        </div>
+      )}
+
+      {cur && (
+        <div key={cur.campaign.id} className="fulfill-pop flex items-center justify-between gap-3 rounded-2xl border border-line bg-panel px-3.5 py-2.5">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-faint">{t.template}</p>
+            <p className="truncate text-sm font-semibold text-ink">
+              {humanTemplateName(cur.campaign.template_name)}
+              <span className="ml-1.5 font-mono text-[11px] font-normal text-faint">{cur.campaign.template_name}</span>
+            </p>
+          </div>
+          {onChangeTemplate && cur.campaign.status === "draft" && (
+            <Button variant="outline" size="sm" className="shrink-0" onClick={() => onChangeTemplate(cur.campaign.id, focus ?? null)} disabled={busy}>
+              <Replace className="h-3.5 w-3.5" /> {t.changeTpl}
+            </Button>
+          )}
         </div>
       )}
 

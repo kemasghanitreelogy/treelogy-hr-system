@@ -4,11 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { apiErrorMessage } from "@/lib/api-error";
 import { displayWaPhone, normalizeWaPhone, PHONE_PROBLEM_TEXT } from "@/lib/qontak/phone";
-import { courierKey, RESI_TEMPLATE_BY_COURIER, slotId, type WaTemplate } from "@/lib/qontak/template";
+import { courierKey, humanTemplateName, RESI_TEMPLATE_BY_COURIER, slotId, type WaTemplate } from "@/lib/qontak/template";
 import { useLocale } from "@/components/layout/locale-context";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
-import { CampaignRunner } from "./campaign-runner";
+import { CampaignRunner, type RecipientRow } from "./campaign-runner";
+import { slotValue, TemplateSwitcher, type SwitchSample } from "./template-switcher";
+
+type Base = { phone: string; name: string; awb: string };
 
 export interface ResiBlastItem {
   page: number;
@@ -44,6 +47,7 @@ const T = {
     nothing: "Tidak ada halaman yang bisa dikirimi.",
     page: "hal.",
     autoFixed: "nomor dirapikan otomatis",
+    switched: "Template diganti ke",
   },
   en: {
     title: "WhatsApp tracking blast",
@@ -59,6 +63,7 @@ const T = {
     nothing: "No page can be messaged.",
     page: "p.",
     autoFixed: "numbers fixed automatically",
+    switched: "Template changed to",
   },
 };
 
@@ -79,6 +84,11 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
   const [error, setError] = useState<string | null>(null);
   const [showExcluded, setShowExcluded] = useState(false);
   const [fixed, setFixed] = useState<{ page: number; from: string; to: string }[]>([]);
+  const [templates, setTemplates] = useState<WaTemplate[]>([]);
+  // Penerima dasar tiap kampanye draft — bahan menyusun ulang saat template diganti.
+  const [bases, setBases] = useState<Record<string, { tpl: WaTemplate; recipients: Base[] }>>({});
+  const [switching, setSwitching] = useState<{ id: string; sample: SwitchSample | null } | null>(null);
+  const [switchBusy, setSwitchBusy] = useState(false);
   // Satu batch draft per pembukaan sheet — bukan per render.
   const started = useRef(false);
   const snapshot = useMemo(() => (open ? items : []), [open, items]);
@@ -87,6 +97,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
     if (!open) {
       started.current = false;
       setIds(null); setExcluded([]); setFixed([]); setError(null); setShowExcluded(false);
+      setTemplates([]); setBases({}); setSwitching(null);
       return;
     }
     if (started.current) return;
@@ -97,6 +108,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
         const res = await fetch("/api/wa-blast/templates", { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error("tpl"), { code: json?.error, status: res.status });
+        setTemplates(json.templates as WaTemplate[]);
         const byName = new Map((json.templates as WaTemplate[]).map((x) => [x.name, x]));
 
         const out: { page: number; name: string; reason: string }[] = [];
@@ -132,6 +144,7 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
         if (!groups.size) { setIds([]); return; }
 
         const created: string[] = [];
+        const made: Record<string, { tpl: WaTemplate; recipients: Base[] }> = {};
         for (const g of groups.values()) {
           const r = await fetch("/api/wa-blast/campaigns", {
             method: "POST",
@@ -141,10 +154,12 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
           const j = await r.json().catch(() => ({}));
           if (!r.ok) throw Object.assign(new Error("create"), { code: j?.error, status: r.status });
           created.push(j.id);
+          made[j.id] = { tpl: g.tpl, recipients: g.recipients.map(({ phone, name, awb }) => ({ phone, name, awb })) };
           // Penolakan server (mis. duplikat) ikut disebut, tidak disembunyikan.
           for (const rej of j.rejected ?? []) out.push({ page: 0, name: rej.name, reason: rej.reason });
         }
         setExcluded([...out]);
+        setBases(made);
         setIds(created);
       } catch (e) {
         const err = e as { code?: string; status?: number };
@@ -154,6 +169,60 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
       }
     })();
   }, [open, snapshot, locale, t]);
+
+  /**
+   * Ganti template satu kampanye: draft BARU dibuat dulu dengan penerima yang
+   * sama (variabel diisi ulang menurut makna template baru), baru draft lama
+   * dihapus. Gagal di tengah = draft lama tetap utuh; tidak ada yang terkirim.
+   */
+  async function switchTemplate(tpl: WaTemplate, consts: Record<string, string>, media: string | null) {
+    if (!switching || !ids) return;
+    const old = bases[switching.id];
+    if (!old) return;
+    setSwitchBusy(true);
+    try {
+      const recipients = old.recipients.map((b) => ({
+        ...b,
+        vals: Object.fromEntries(tpl.slots.map((s) => [slotId(s), slotValue(s, b, consts)])),
+      }));
+      const res = await fetch("/api/wa-blast/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "receipt",
+          templateId: tpl.id,
+          media: media ? { url: media, filename: media.split("/").pop() ?? "" } : null,
+          recipients,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error("switch"), { code: j?.error, status: res.status });
+      await fetch(`/api/wa-blast/campaigns/${switching.id}`, { method: "DELETE" }).catch(() => undefined);
+      setBases((b) => {
+        const next = { ...b, [j.id]: { tpl, recipients: old.recipients } };
+        delete next[switching.id];
+        return next;
+      });
+      setIds((cur) => (cur ?? []).map((x) => (x === switching.id ? j.id : x)));
+      if (j.rejected?.length) setExcluded((ex) => [...ex, ...j.rejected.map((rej: { name: string; reason: string }) => ({ page: 0, name: rej.name, reason: rej.reason }))]);
+      setSwitching(null);
+      toastRef.current.success(`${t.switched} ${humanTemplateName(tpl.name)}`);
+    } catch (e) {
+      const err = e as { code?: string; status?: number };
+      toastRef.current.error(apiErrorMessage(err.code, locale, err.status));
+    } finally {
+      setSwitchBusy(false);
+    }
+  }
+
+  function openSwitch(id: string, focus: RecipientRow | null) {
+    const b = bases[id]?.recipients[0];
+    const s = focus ?? null;
+    setSwitching({
+      id,
+      sample: s ? { name: s.name, awb: s.awb, phone: displayWaPhone(s.phone) } : b ? { name: b.name, awb: b.awb, phone: displayWaPhone(b.phone.replace(/\D/g, "")) } : null,
+    });
+  }
 
   const groupsExcluded = useMemo(() => {
     const m = new Map<string, typeof excluded>();
@@ -204,7 +273,23 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
         ) : ids.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">{t.nothing}</p>
         ) : (
-          <CampaignRunner campaignIds={ids} />
+          <>
+            {switching && bases[switching.id] && (
+              <TemplateSwitcher
+                templates={templates}
+                currentId={bases[switching.id].tpl.id}
+                count={bases[switching.id].recipients.length}
+                sample={switching.sample}
+                busy={switchBusy}
+                onCancel={() => setSwitching(null)}
+                onApply={switchTemplate}
+              />
+            )}
+            {/* Tetap terpasang saat memilih template — kembali tanpa memuat ulang. */}
+            <div className={switching ? "hidden" : undefined}>
+              <CampaignRunner campaignIds={ids} onChangeTemplate={openSwitch} />
+            </div>
+          </>
         )}
       </div>
     </Sheet>
