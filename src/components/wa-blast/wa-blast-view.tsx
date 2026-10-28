@@ -389,7 +389,8 @@ export function WaBlastView() {
           source: "upload",
           templateId: tpl.id,
           media: tpl.mediaHeader ? { url: media.trim(), filename: media.trim().split("/").pop() ?? "" } : null,
-          recipients: built.ok.map((r) => ({ phone: r.phone, name: r.name, awb: r.awb, vals: r.vals })),
+          // "+" supaya normalisasi ulang di server tidak menolak nomor luar negeri.
+          recipients: built.ok.map((r) => ({ phone: "+" + r.phone, name: r.name, awb: r.awb, vals: r.vals })),
         }),
       });
       const json = await res.json().catch(() => ({}));

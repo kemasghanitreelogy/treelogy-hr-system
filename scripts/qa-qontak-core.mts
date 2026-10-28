@@ -81,6 +81,13 @@ for (const [masuk, harap] of hp) {
   cek(harap === null ? !r.ok : r.ok && r.phone === harap, `HP ${JSON.stringify(masuk)} → ${r.ok ? r.phone + (r.fixes.length ? " [" + r.fixes.join(",") + "]" : "") : "ditolak (" + r.problem + ")"}`);
 }
 cek(displayWaPhone("6281139603993") === "+62 811-3960-3993", "tampilan +62 811-3960-3993");
+// Klien mengirim "+" + hasil normalisasi, server menormalisasi ULANG — harus
+// menghasilkan nomor yang sama (dulu +65 lolos di layar lalu ditolak server).
+for (const masuk of ["+6586271943", "0812 3456 7890", "+60 12-345 6789", "6281234567890.0"]) {
+  const a = normalizeWaPhone(masuk);
+  const b = a.ok ? normalizeWaPhone("+" + a.phone) : a;
+  cek(a.ok && b.ok && b.phone === a.phone, `normalisasi ulang di server stabil: ${masuk} → ${a.ok ? a.phone : "?"}`);
+}
 
 // ── Kurir → template ──
 cek(courierKey("J&T Express") === "JNT" && courierKey("Lion Parcel") === "LION" && courierKey("JNE") === "JNE" && courierKey("SiCepat") === null,

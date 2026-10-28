@@ -117,7 +117,9 @@ export function ResiBlastSheet({ open, onClose, items }: { open: boolean; onClos
           const vals: Record<string, string> = {};
           for (const s of tpl.slots) vals[slotId(s)] = s.meaning === "name" ? name : s.meaning === "awb" ? awb : "";
           const g = groups.get(tpl.id) ?? { tpl, recipients: [] };
-          g.recipients.push({ phone: p.phone, name, awb, vals });
+          // "+" wajib: server menormalisasi ulang, dan tanpa "+" nomor
+          // luar negeri (65…, 60…) tak bisa dibedakan dari nomor lokal rusak.
+          g.recipients.push({ phone: "+" + p.phone, name, awb, vals });
           groups.set(tpl.id, g);
         }
         setExcluded(out);
