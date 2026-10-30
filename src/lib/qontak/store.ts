@@ -1,7 +1,8 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { QontakError, getDeliveryStatus, sendDirect } from "./client";
+import { QontakError, getBroadcastLog, sendDirect } from "./client";
+import { drainBulk } from "./bulk";
 import { CONFIRM_WINDOW_MS, FINAL_DELIVERY } from "./delivery";
 import { drainDirect, PER_MINUTE, type CampaignInfo, type DrainResult, type DrainStore, type QueueRow, type SendError } from "./engine";
 
@@ -63,10 +64,12 @@ export function toSendError(e: unknown): SendError {
   return { code: "upstream", status: 0, message: e instanceof Error ? e.message : String(e), retryAfterMs: null };
 }
 
-/** Status pengiriman final menurut WhatsApp — tidak perlu ditanya lagi. */
-
 /**
  * Tanyakan status pengiriman pesan yang sudah diterima Qontak.
+ *
+ * Satu broadcast (`qontak_ref`) = satu log Qontak berisi status per nomor:
+ * jalur direct punya satu nomor per broadcast, jalur bulk banyak. Log dibaca
+ * sekali per broadcast lalu dicocokkan ke penerima lewat nomornya.
  *
  * Memakai anggaran rate yang SAMA dengan kiriman dan hanya bila masih ada
  * sisa — sinkronisasi status tidak boleh merebut kuota blast yang sedang
@@ -79,28 +82,52 @@ export async function syncDelivery(db: SupabaseClient, limit = 10): Promise<numb
   if (n <= 0) return 0;
   const since = new Date(Date.now() - CONFIRM_WINDOW_MS).toISOString();
   const recheck = Date.now() - 30_000;
+  const open = `delivery_status.is.null,delivery_status.not.in.(${FINAL_DELIVERY.join(",")})`;
   const { data: rows } = await db
     .from("wa_campaign_recipients")
-    .select("id, qontak_ref, delivery_checked_at")
+    .select("qontak_ref, delivery_checked_at")
     .eq("status", "sent")
     .not("qontak_ref", "is", null)
     .gte("sent_at", since)
-    .or(`delivery_status.is.null,delivery_status.not.in.(${FINAL_DELIVERY.join(",")})`)
+    .or(open)
     .order("delivery_checked_at", { ascending: true, nullsFirst: true })
-    .limit(n * 3);
-  const due = (rows ?? []).filter((r) => !r.delivery_checked_at || +new Date(r.delivery_checked_at) < recheck).slice(0, n);
+    .limit(n * 20);
+  const refs: string[] = [];
+  for (const r of rows ?? []) {
+    if (r.delivery_checked_at && +new Date(r.delivery_checked_at) >= recheck) continue;
+    if (!refs.includes(r.qontak_ref as string)) refs.push(r.qontak_ref as string);
+    if (refs.length >= n) break;
+  }
   let done = 0;
-  for (const r of due) {
+  for (const ref of refs) {
+    const { data: members } = await db
+      .from("wa_campaign_recipients")
+      .select("id, phone")
+      .eq("qontak_ref", ref)
+      .eq("status", "sent")
+      .or(open);
+    if (!members?.length) continue;
+    const checkedAt = new Date().toISOString();
     try {
-      const d = await getDeliveryStatus(r.qontak_ref as string);
-      await db
-        .from("wa_campaign_recipients")
-        .update({ delivery_status: d.status ?? "pending", delivery_error: d.error, delivery_checked_at: new Date().toISOString() })
-        .eq("id", r.id);
-      if (d.status && FINAL_DELIVERY.includes(d.status)) done++;
+      const log = await getBroadcastLog(ref);
+      const byPhone = new Map(log.map((l) => [l.phone, l]));
+      // Kelompokkan per hasil → satu UPDATE per kelompok, bukan per penerima.
+      const groups = new Map<string, { patch: Record<string, unknown>; ids: string[] }>();
+      for (const m of members) {
+        const e = byPhone.get(m.phone) ?? (log.length === 1 && members.length === 1 ? log[0] : null);
+        const status = e?.status ?? "pending";
+        const key = `${status}|${e?.error ?? ""}`;
+        const g = groups.get(key) ?? { patch: { delivery_status: status, delivery_error: e?.error ?? null, delivery_checked_at: checkedAt }, ids: [] };
+        g.ids.push(m.id);
+        groups.set(key, g);
+        if (FINAL_DELIVERY.includes(status)) done++;
+      }
+      for (const g of groups.values()) {
+        for (let i = 0; i < g.ids.length; i += 200) await db.from("wa_campaign_recipients").update(g.patch).in("id", g.ids.slice(i, i + 200));
+      }
     } catch (e) {
       if (e instanceof QontakError && e.code === "rate_limited") break;
-      await db.from("wa_campaign_recipients").update({ delivery_checked_at: new Date().toISOString() }).eq("id", r.id);
+      await db.from("wa_campaign_recipients").update({ delivery_checked_at: checkedAt }).in("id", members.map((m) => m.id));
     }
   }
   return done;
@@ -110,7 +137,13 @@ export async function syncDelivery(db: SupabaseClient, limit = 10): Promise<numb
 export async function runDrain(deadlineMs: number): Promise<DrainResult | { error: string }> {
   const db = createAdminClient();
   if (!db) return { error: "unavailable" };
-  const res = await drainDirect(deadlineMs, {
+  const started = Date.now();
+  // Kampanye bulk dulu: beberapa request saja per kampanye, selesai cepat.
+  const bulk = await drainBulk(db, deadlineMs).catch((e) => {
+    console.error("[wa-bulk]", e);
+    return { sent: 0 };
+  });
+  const res = await drainDirect(Math.max(5_000, deadlineMs - (Date.now() - started)), {
     store: supabaseDrainStore(db),
     toError: toSendError,
     send: (row, c) =>
@@ -125,5 +158,5 @@ export async function runDrain(deadlineMs: number): Promise<DrainResult | { erro
       }),
   });
   if (!res.busy) await syncDelivery(db).catch(() => 0);
-  return res;
+  return { ...res, sent: res.sent + bulk.sent };
 }

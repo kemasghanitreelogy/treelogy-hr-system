@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { listChannels, listTemplates } from "./client";
+import { bulkAvailable, listChannels, listTemplates } from "./client";
+import { bulkEligible } from "./bulk-core";
 import { normalizeWaPhone, PHONE_PROBLEM_TEXT } from "./phone";
 import { buildDirectParameters, humanTemplateName, missingSlots } from "./template";
 
@@ -146,6 +147,10 @@ export async function createCampaign(
     for (const d of data ?? []) if (d.delivery_status !== "failed") sentBefore.set(d.awb as string, d.sent_at as string);
   }
 
+  // Bulk = satu contact list + satu broadcast (satu kampanye di Qontak);
+  // direct hanya bila scope contact list tidak ada atau template bertombol.
+  const engine = bulkEligible(rows.map((r) => r.params)) && (await bulkAvailable()) ? "bulk" : "direct";
+
   const { data: camp, error } = await db
     .from("wa_campaigns")
     .insert({
@@ -157,7 +162,7 @@ export async function createCampaign(
       channel_integration_id: channel.id,
       channel_phone: channel.phone,
       template_body: tpl.body,
-      engine: "direct",
+      engine,
       status: "draft",
       created_by: me.id,
       created_by_name: me.name,

@@ -23,7 +23,7 @@ export interface Counts {
 }
 interface Campaign {
   id: string; name: string; template_name: string; template_body: string; status: string; stop_reason: string | null;
-  channel_phone: string | null; created_at: string; started_at: string | null; finished_at: string | null;
+  channel_phone: string | null; created_at: string; engine?: "bulk" | "direct"; started_at: string | null; finished_at: string | null;
 }
 export interface RecipientRow {
   id: string; seq: number; phone: string; name: string; awb: string; vals: Record<string, string>;
@@ -54,6 +54,7 @@ const STR: Record<Locale, Record<string, string>> = {
     skippedHint: "Resi ini sudah pernah dikirimi dalam 14 hari terakhir — dilewati supaya pelanggan tidak menerima pesan ganda.",
     eta: "Perkiraan",
     etaNote: "Qontak membatasi 60 pesan/menit per akun",
+    etaNoteBulk: "Dikirim sekaligus sebagai satu broadcast Qontak",
     send: "Kirim",
     messages: "pesan",
     confirmTitle: "Kirim {n} pesan WhatsApp?",
@@ -97,6 +98,7 @@ const STR: Record<Locale, Record<string, string>> = {
     unknownHint: "Status tidak pasti (koneksi terputus saat mengirim) — mungkin sudah sampai. Tidak dikirim ulang otomatis.",
     unconfirmedHint: "Diterima Qontak, tetapi WhatsApp tidak pernah melaporkan pesan ini sampai dalam 48 jam.",
     undeliveredHint: "Ditolak WhatsApp",
+    undeliverableHint: "Ditolak WhatsApp: nomor ini tidak bisa menerima WhatsApp (tidak terdaftar/tidak aktif di WhatsApp, atau aplikasinya belum diperbarui). Cek nomor ke pembeli sebelum kirim ulang.",
     statusQueued: "Antre", statusSending: "Mengirim", statusAccepted: "Diterima Qontak", statusSentWa: "Terkirim, belum sampai", statusFailed: "Gagal", statusSkipped: "Dilewati", statusUnknown: "Tidak pasti",
     deliveredBadge: "Sampai", readBadge: "Dibaca", undeliveredBadge: "Ditolak WhatsApp", unconfirmedBadge: "Tidak terkonfirmasi",
   },
@@ -111,6 +113,7 @@ const STR: Record<Locale, Record<string, string>> = {
     skippedHint: "This tracking number was already messaged in the last 14 days — skipped so the customer doesn't get a duplicate.",
     eta: "Estimate",
     etaNote: "Qontak allows 60 messages/min per account",
+    etaNoteBulk: "Sent at once as a single Qontak broadcast",
     send: "Send",
     messages: "messages",
     confirmTitle: "Send {n} WhatsApp messages?",
@@ -154,12 +157,15 @@ const STR: Record<Locale, Record<string, string>> = {
     unknownHint: "Uncertain (connection dropped mid-send) — it may have arrived. Not resent automatically.",
     unconfirmedHint: "Accepted by Qontak, but WhatsApp never reported it delivered within 48 hours.",
     undeliveredHint: "Rejected by WhatsApp",
+    undeliverableHint: "Rejected by WhatsApp: this number can't receive WhatsApp (not registered/active, or an outdated app). Confirm the number with the buyer before resending.",
     statusQueued: "Queued", statusSending: "Sending", statusAccepted: "Accepted by Qontak", statusSentWa: "Sent, not delivered yet", statusFailed: "Failed", statusSkipped: "Skipped", statusUnknown: "Uncertain",
     deliveredBadge: "Delivered", readBadge: "Read", undeliveredBadge: "Rejected by WhatsApp", unconfirmedBadge: "Unconfirmed",
   },
 };
 
-export function formatEta(n: number, t: Record<string, string>): string {
+export function formatEta(n: number, t: Record<string, string>, bulk = false): string {
+  // Bulk: satu contact list + satu broadcast — tidak dibatasi 60/menit.
+  if (bulk) return n ? t.lessMinute : "—";
   const secs = Math.ceil((n * 60) / RATE);
   if (secs < 60) return n ? `${secs} ${t.seconds}` : "—";
   const min = Math.ceil(secs / 60);
@@ -207,7 +213,13 @@ function problemReason(r: RecipientRow, t: Record<string, string>): string {
   switch (deliveryState(r)) {
     case "unknown": return t.unknownHint;
     case "unconfirmed": return t.unconfirmedHint;
-    case "undelivered": return r.delivery_error ? `${t.undeliveredHint}: ${r.delivery_error}` : t.undeliveredHint;
+    case "undelivered": {
+      // 131026 dari WhatsApp: nomor tidak terdaftar/aktif di WhatsApp, belum
+      // setuju ketentuan baru, atau aplikasinya terlalu lama. Kirim ulang ke
+      // nomor yang sama hampir pasti gagal lagi — sebutkan itu terus terang.
+      if (r.delivery_error && /undeliverable/i.test(r.delivery_error)) return t.undeliverableHint;
+      return r.delivery_error ? `${t.undeliveredHint}: ${r.delivery_error}` : t.undeliveredHint;
+    }
     default: return r.last_error || t.statusFailed;
   }
 }
@@ -341,6 +353,8 @@ export function CampaignRunner({
   const focus = filtered[Math.min(cursor, Math.max(0, filtered.length - 1))];
   const channel = all.find((d) => d.campaign.channel_phone)?.campaign.channel_phone ?? null;
   const fromLabel = channel ? displayWaPhone(String(channel).replace(/\D/g, "")) : "Qontak";
+  const bulk = all.length > 0 && all.every((d) => d.campaign.engine === "bulk");
+  const etaNote = bulk ? t.etaNoteBulk : t.etaNote;
   const tplNames = [...new Set(all.map((d) => d.campaign.template_name))].join(", ");
 
   async function sendAll() {
@@ -434,7 +448,7 @@ export function CampaignRunner({
       : awaiting ? t.waitTitle
       : total.sent === 0 ? t.noneSent
       : t.doneTitle;
-    const sub = !finished ? <>{t.remaining} {formatEta(total.queued + total.sending, t)} · {t.closeOk}</>
+    const sub = !finished ? <>{t.remaining} {formatEta(total.queued + total.sending, t, bulk)} · {t.closeOk}</>
       : stopReason ? stopReason
       : bad ? t.donePartial.replace("{b}", String(bad))
       : awaiting ? t.waitMsg.replace("{d}", String(total.delivered)).replace("{w}", String(total.awaiting))
@@ -593,9 +607,9 @@ export function CampaignRunner({
           <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-faint"><ShieldCheck className="h-3 w-3" /> {t.skipped}</p>
           <p className="text-2xl font-bold tabular-nums text-ink">{total.skipped}</p>
         </div>
-        <div className="rounded-xl border border-line bg-panel px-3 py-2.5" title={t.etaNote}>
+        <div className="rounded-xl border border-line bg-panel px-3 py-2.5" title={etaNote}>
           <p className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-faint"><Clock className="h-3 w-3" /> {t.eta}</p>
-          <p className="text-2xl font-bold tabular-nums text-ink">{formatEta(total.queued, t)}</p>
+          <p className="text-2xl font-bold tabular-nums text-ink">{formatEta(total.queued, t, bulk)}</p>
         </div>
       </div>
 
@@ -715,7 +729,7 @@ export function CampaignRunner({
       {/* Tombol kirim — berlabel tindakan dan angkanya, bukan "OK". */}
       <div className="sticky bottom-0 -mx-1 flex flex-col gap-2 rounded-2xl border border-line bg-panel/95 p-3 shadow-[0_-8px_24px_-16px_rgba(29,42,34,0.35)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted">
-          {total.queued ? <>{t.etaNote}. </> : t.nothing}
+          {total.queued ? <>{etaNote}. </> : t.nothing}
         </p>
         <Button size="lg" onClick={() => setAsk(true)} disabled={!total.queued || busy} className="sm:min-w-56">
           <Send className="h-4 w-4" /> {t.send} {total.queued} {t.messages}
@@ -725,7 +739,7 @@ export function CampaignRunner({
       <ConfirmDialog
         open={ask}
         title={t.confirmTitle.replace("{n}", String(total.queued))}
-        message={t.confirmMsg.replace("{from}", fromLabel).replace("{tpl}", tplNames).replace("{eta}", formatEta(total.queued, t))}
+        message={t.confirmMsg.replace("{from}", fromLabel).replace("{tpl}", tplNames).replace("{eta}", formatEta(total.queued, t, bulk))}
         confirmLabel={`${t.send} ${total.queued} ${t.messages}`}
         icon={<Send className="h-5 w-5" />}
         busy={busy}

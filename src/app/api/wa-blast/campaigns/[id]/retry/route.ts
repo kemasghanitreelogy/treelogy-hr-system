@@ -41,7 +41,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!data || data.length < 1000) break;
   }
 
-  const reset = { status: "queued", attempts: 0, next_attempt_at: null, last_error: null, delivery_status: null, delivery_error: null, delivery_checked_at: null, qontak_ref: null, sent_at: null };
+  const reset = { status: "queued", attempts: 0, next_attempt_at: null, last_error: null, delivery_status: null, delivery_error: null, delivery_checked_at: null, qontak_ref: null, sent_at: null, bulk_list_id: null };
   let n = 0;
   for (let i = 0; i < pick.length; i += 200) {
     const { data } = await g.db.from("wa_campaign_recipients").update(reset).in("id", pick.slice(i, i + 200)).select("id");
@@ -51,7 +51,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { count: open } = await g.db.from("wa_campaign_recipients").select("id", { count: "exact", head: true }).eq("campaign_id", id).eq("status", "queued");
   if (!open) return NextResponse.json({ ok: true, requeued: 0 });
 
-  await g.db.from("wa_campaigns").update({ status: "sending", stop_reason: null, finished_at: null }).eq("id", id);
+  await g.db.from("wa_campaigns").update({ status: "sending", stop_reason: null, finished_at: null, bulk_list_id: null }).eq("id", id);
   after(() => runDrain(50_000));
   return NextResponse.json({ ok: true, requeued: n || open });
 }

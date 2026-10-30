@@ -199,16 +199,95 @@ export async function bulkAvailable(): Promise<boolean> {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+
+// ── Jalur bulk: contact list + satu broadcast ────────────────────────
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/**
- * Status pengiriman satu broadcast direct. 201 saat kirim hanya berarti
- * diterima Qontak; hasil sebenarnya (delivered/read/failed) ada di log ini.
- */
-export async function getDeliveryStatus(broadcastId: string): Promise<{ status: string | null; error: string | null }> {
-  const res = await qontakRequest<{ data?: any[] }>("GET", `/broadcasts/${encodeURIComponent(broadcastId)}/whatsapp/log`);
-  const log = res?.data?.[0];
-  if (!log) return { status: null, error: null };
-  const err = typeof log.whatsapp_error_message === "string" && log.whatsapp_error_message !== "n/a" ? log.whatsapp_error_message : null;
-  return { status: typeof log.status === "string" ? log.status : null, error: err };
+/** Semua halaman endpoint ber-cursor Qontak (limit 100). */
+async function pageAll(path: string, query: Record<string, string> = {}, maxPages = 100): Promise<any[]> {
+  const out: any[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < maxPages; i++) {
+    const res = await qontakRequest<any>("GET", path, { query: { ...query, limit: 100, cursor, cursor_direction: cursor ? "after" : undefined } });
+    const data: any[] = Array.isArray(res?.data) ? res.data : [];
+    out.push(...data);
+    const next = res?.meta?.pagination?.cursor?.next;
+    if (data.length < 100 || !next || next === cursor) break;
+    cursor = String(next);
+  }
+  return out;
+}
+
+export interface QontakContactList {
+  id: string;
+  /** processing | success | failed (nama dari Qontak, apa adanya). */
+  progress: string;
+  count: number;
+  failed: number;
+  errors: unknown;
+}
+
+function toContactList(d: any): QontakContactList {
+  return {
+    id: String(d?.id ?? ""),
+    progress: String(d?.progress ?? ""),
+    count: Number(d?.contacts_count ?? 0),
+    failed: Number(d?.contacts_count_failed ?? 0),
+    errors: d?.error_messages ?? null,
+  };
+}
+
+/** Unggah CSV sebagai contact list (diproses asinkron oleh Qontak). */
+export async function createContactList(name: string, csv: string): Promise<QontakContactList> {
+  const form = new FormData();
+  form.set("name", name.slice(0, 100));
+  form.set("source_type", "spreadsheet");
+  form.set("file", new Blob([csv], { type: "text/csv" }), "contacts.csv");
+  const res = await qontakRequest<any>("POST", "/contacts/contact_lists/async", { form });
+  return toContactList(res?.data);
+}
+
+export async function getContactList(id: string): Promise<QontakContactList> {
+  const res = await qontakRequest<any>("GET", `/contacts/contact_lists/${encodeURIComponent(id)}`);
+  return toContactList(res?.data);
+}
+
+/** Kontak di list yang GAGAL diimpor → nomor (digit) → alasan. */
+export async function failedContacts(listId: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const c of await pageAll(`/contacts/contact_lists/contacts/${encodeURIComponent(listId)}`)) {
+    if (c?.status === "success" && c?.is_valid !== false) continue;
+    const why = c?.error_messages && Object.keys(c.error_messages).length ? JSON.stringify(c.error_messages) : `status ${c?.status ?? "?"}`;
+    out.set(String(c?.phone_number ?? "").replace(/\D/g, ""), why.slice(0, 300));
+  }
+  return out;
+}
+
+/** SATU broadcast untuk seluruh contact list. Mengembalikan id broadcast. */
+export async function createBulkBroadcast(payload: {
+  name: string;
+  message_template_id: string;
+  contact_list_id: string;
+  channel_integration_id: string;
+  language: { code: string };
+  parameters: unknown;
+}): Promise<string | null> {
+  const res = await qontakRequest<any>("POST", "/broadcasts/whatsapp", { json: { ...payload, name: payload.name.slice(0, 100), execute_type: "immediately" } });
+  return res?.data?.id ? String(res.data.id) : null;
+}
+
+export interface LogEntry {
+  phone: string;
+  status: string | null;
+  error: string | null;
+}
+
+/** Log broadcast lengkap (semua penerima) — status per nomor dari WhatsApp. */
+export async function getBroadcastLog(broadcastId: string): Promise<LogEntry[]> {
+  return (await pageAll(`/broadcasts/${encodeURIComponent(broadcastId)}/whatsapp/log`)).map((l) => ({
+    phone: String(l?.contact_phone_number ?? "").replace(/\D/g, ""),
+    status: typeof l?.status === "string" ? l.status : null,
+    error: typeof l?.whatsapp_error_message === "string" && l.whatsapp_error_message !== "n/a" ? l.whatsapp_error_message : null,
+  }));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
