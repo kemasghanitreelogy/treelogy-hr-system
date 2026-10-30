@@ -160,8 +160,19 @@ export async function sendDirect(payload: {
   channel_integration_id: string;
   language: { code: string };
   parameters: unknown;
+  /** Nama broadcast di dashboard Qontak (opsional di API direct). */
+  name?: string;
 }): Promise<string | null> {
-  const res = await qontakRequest<any>("POST", "/broadcasts/whatsapp/direct", { json: payload });
+  const { name, ...base } = payload;
+  let res: any;
+  try {
+    res = await qontakRequest<any>("POST", "/broadcasts/whatsapp/direct", { json: name ? { ...base, name: name.slice(0, 100) } : base });
+  } catch (e) {
+    // 400/422 (mungkin karena `name`): kirim ulang tanpa label — ditolak berarti belum terkirim,
+    // jadi tidak ada risiko pesan ganda. Label tidak boleh menggagalkan blast.
+    if (!name || !(e instanceof QontakError) || e.code !== "invalid" || e.status === 404) throw e;
+    res = await qontakRequest<any>("POST", "/broadcasts/whatsapp/direct", { json: base });
+  }
   return res?.data?.id ? String(res.data.id) : null;
 }
 

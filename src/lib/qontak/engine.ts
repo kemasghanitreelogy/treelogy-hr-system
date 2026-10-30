@@ -37,6 +37,9 @@ export interface CampaignInfo {
   template_id: string;
   channel_integration_id: string;
   language: string;
+  /** Nama kampanye — dikirim sebagai `name` broadcast supaya semua pesan satu
+   *  kampanye berlabel sama di dashboard Qontak. */
+  name?: string;
 }
 
 export interface SendError {

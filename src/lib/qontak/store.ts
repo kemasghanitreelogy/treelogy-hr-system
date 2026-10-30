@@ -26,7 +26,7 @@ export function supabaseDrainStore(db: SupabaseClient): DrainStore {
     },
     async campaigns(ids) {
       const rows = must(
-        await db.from("wa_campaigns").select("id, template_id, channel_integration_id, language").in("id", ids),
+        await db.from("wa_campaigns").select("id, name, template_id, channel_integration_id, language").in("id", ids),
       ) as (CampaignInfo & { id: string })[];
       return new Map(rows.map((r) => [r.id, r]));
     },
@@ -121,6 +121,7 @@ export async function runDrain(deadlineMs: number): Promise<DrainResult | { erro
         channel_integration_id: c.channel_integration_id,
         language: { code: c.language },
         parameters: row.params ?? {},
+        name: c.name,
       }),
   });
   if (!res.busy) await syncDelivery(db).catch(() => 0);
