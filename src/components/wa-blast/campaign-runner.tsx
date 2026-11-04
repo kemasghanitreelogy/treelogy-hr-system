@@ -632,7 +632,15 @@ export function CampaignRunner({
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{t.activity}</p>
             <ul className="max-h-96 space-y-1 overflow-y-auto pr-1">
               {recent.map((r) => (
-                <li key={r.id} className={cn("flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm", r.status === "sending" && "hf-checking")}>
+                <li
+                  key={r.id}
+                  className={cn(
+                    "flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm",
+                    r.status === "sending" && "hf-checking",
+                    AWAITING.includes(deliveryState(r)) && "hf-awaiting-row",
+                  )}
+                  aria-busy={open(r) || undefined}
+                >
                   <span className="flex min-w-0 items-center gap-2">
                     {(() => {
                       // Centang hanya untuk yang DILAPORKAN sampai; diterima
@@ -641,7 +649,9 @@ export function CampaignRunner({
                       if (st === "delivered" || st === "read")
                         return <span className="hf-check-draw grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#e9f0d8] text-forest-700"><Check className="h-3 w-3" /></span>;
                       if (st === "sending") return <Loader2 className="h-4 w-4 shrink-0 animate-spin text-forest-600" />;
-                      if (st === "accepted" || st === "sent_wa" || st === "queued") return <Clock className="h-4 w-4 shrink-0 text-sky" />;
+                      // Menunggu laporan WhatsApp: busur berputar = masih diproses.
+                      if (st === "accepted" || st === "sent_wa") return <span className="hf-await" role="img" aria-label={t.statusSentWa}><Clock className="h-3 w-3" /></span>;
+                      if (st === "queued") return <Clock className="h-4 w-4 shrink-0 text-sky" />;
                       return <AlertTriangle className="h-4 w-4 shrink-0 text-[#8c3c1f]" />;
                     })()}
                     <span className="truncate text-ink">{r.name || displayWaPhone(r.phone)}</span>

@@ -425,6 +425,51 @@ body.camera-open .app-chrome {
 }
 .hf-spotlight { animation: hf-spotlight 1s cubic-bezier(0.215, 0.61, 0.355, 1) 2 both; }
 
+/* ═══ MENUNGGU LAPORAN WHATSAPP ═══
+   Pesan sudah diterima Qontak, laporan sampai/tidaknya belum datang. Satu
+   busur langit mengitari jam (rotate, 1,4 dtk) + sapuan tipis di barisnya
+   — tanda "masih diproses" yang tenang. Begitu laporan datang, kelasnya
+   lepas dan centang hf-check-draw menggambar dirinya: gerak BERHENTI = beres.
+   Hanya transform/opacity/background-position. */
+@keyframes hf-orbit { to { transform: rotate(360deg); } }
+@keyframes hf-tick {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.hf-await {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--color-sky-soft);
+  color: var(--color-sky);
+}
+.hf-await > svg { animation: hf-tick 1.4s ease-in-out infinite; }
+.hf-await::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  border-top-color: var(--color-sky);
+  animation: hf-orbit 1.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+.hf-awaiting-row {
+  background-image: linear-gradient(100deg,
+    rgba(74, 123, 166, 0) 20%, rgba(74, 123, 166, 0.09) 45%,
+    rgba(74, 123, 166, 0) 70%);
+  background-size: 220% 100%;
+  animation: hf-sheen 2.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-await > svg, .hf-await::after, .hf-awaiting-row { animation: none; }
+  .hf-await::after { border-top-color: transparent; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fulfill-pop, .hf-checking, .hf-glow-done { animation: none; }
   .hf-spotlight { animation: none; box-shadow: 0 0 0 3px rgba(138, 101, 18, 0.45); }
