@@ -36,6 +36,8 @@ interface Loaded {
   recipients?: RecipientRow[];
   recent?: RecipientRow[];
   problems?: RecipientRow[];
+  /** Antre jatah broadcast bulk Qontak: `until` = jadwal kirim, `from` = broadcast sebelumnya. */
+  bulkWait?: { until: string; from: string | null } | null;
 }
 
 const PAGE = 50;
@@ -55,6 +57,11 @@ const STR: Record<Locale, Record<string, string>> = {
     eta: "Perkiraan",
     etaNote: "Qontak membatasi 60 pesan/menit per akun",
     etaNoteBulk: "Satu broadcast Qontak per template. Qontak memberi jeda 5 menit antar-broadcast bulk, jadi template berikutnya menyusul otomatis",
+    nextBroadcast: "Broadcast berikutnya",
+    nextIn: "dikirim otomatis dalam",
+    sendingNext: "Mengirim broadcast",
+    moreQueued: "{n} template lagi menyusul setelahnya",
+    bulkWaitNote: "Qontak hanya mengizinkan satu broadcast bulk dalam satu waktu — sisa waktunya dari Qontak. Panel boleh ditutup, pengiriman tetap jalan.",
     send: "Kirim",
     messages: "pesan",
     confirmTitle: "Kirim {n} pesan WhatsApp?",
@@ -114,6 +121,11 @@ const STR: Record<Locale, Record<string, string>> = {
     eta: "Estimate",
     etaNote: "Qontak allows 60 messages/min per account",
     etaNoteBulk: "One Qontak broadcast per template. Qontak spaces bulk broadcasts 5 minutes apart, so the next template follows automatically",
+    nextBroadcast: "Next broadcast",
+    nextIn: "sends automatically in",
+    sendingNext: "Sending broadcast",
+    moreQueued: "{n} more template(s) follow after this",
+    bulkWaitNote: "Qontak allows only one bulk broadcast at a time — the remaining time comes from Qontak. You can close this panel; sending continues.",
     send: "Send",
     messages: "messages",
     confirmTitle: "Send {n} WhatsApp messages?",
@@ -207,6 +219,48 @@ function StatusBadge({ r, t }: { r: RecipientRow; t: Record<string, string> }) {
     <Badge tone={tone} dot={st !== "sending"}>
       {st === "sending" && <Loader2 className="h-3 w-3 animate-spin" />}{label}
     </Badge>
+  );
+}
+
+/**
+ * Hitung mundur ke broadcast bulk berikutnya. Progress bar berjalan dari
+ * broadcast sebelumnya (`from`) ke jadwal kirim dari Qontak (`until`).
+ */
+function BulkWaitCard({ tpl, until, from, more, t }: { tpl: string; until: string; from: string | null; more: number; t: Record<string, string> }) {
+  const [now, setNow] = useState(() => Date.now());
+  const firstSeen = useRef(now);
+  useEffect(() => {
+    const h = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(h);
+  }, []);
+  const end = +new Date(until);
+  const f = from ? +new Date(from) : NaN;
+  const start = Number.isFinite(f) && f < end ? f : Math.min(firstSeen.current, end - 1000);
+  const left = Math.max(0, Math.ceil((end - now) / 1000));
+  const pct = Math.min(1, Math.max(0, (now - start) / (end - start)));
+  const clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  return (
+    <section className="rounded-2xl border border-forest-200 bg-forest-50/60 p-4" aria-live="polite">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-forest-700">
+            <Clock className="h-3 w-3" /> {t.nextBroadcast}
+          </p>
+          <p className="mt-0.5 truncate text-sm font-semibold text-ink">
+            {left ? <>{tpl} <span className="font-normal text-muted">· {t.nextIn}</span></> : <>{t.sendingNext} {tpl}…</>}
+          </p>
+        </div>
+        {left
+          ? <p className="shrink-0 text-2xl font-bold tabular-nums text-forest-700" role="timer">{clock}</p>
+          : <Loader2 className="h-5 w-5 shrink-0 animate-spin text-forest-600" aria-hidden />}
+      </div>
+      <div className="hf-progress-track mt-3 h-1.5 rounded-full bg-sand">
+        <div className="hf-progress-fill h-full rounded-full bg-forest-500" style={{ transform: `scaleX(${pct})` }} />
+      </div>
+      <p className="mt-2 text-xs text-muted">
+        {more > 0 && <>{t.moreQueued.replace("{n}", String(more))}. </>}{t.bulkWaitNote}
+      </p>
+    </section>
   );
 }
 
@@ -519,6 +573,25 @@ export function CampaignRunner({
             )}
           </div>
         </section>
+
+        {(() => {
+          // Hanya broadcast terdekat yang dihitung mundur; sisanya menyusul.
+          const waits = all.filter((d) => d.campaign.status === "sending" && d.bulkWait)
+            .sort((a, b) => +new Date(a.bulkWait!.until) - +new Date(b.bulkWait!.until));
+          const next = waits[0];
+          if (!next) return null;
+          const later = all.filter((d) => d !== next && d.campaign.status === "sending" && d.campaign.engine === "bulk" && d.counts.queued > 0).length;
+          return (
+            <BulkWaitCard
+              key={next.bulkWait!.until}
+              tpl={humanTemplateName(next.campaign.template_name)}
+              until={next.bulkWait!.until}
+              from={next.bulkWait!.from}
+              more={later}
+              t={t}
+            />
+          );
+        })()}
 
         {problems.length > 0 && (
           <section className="rounded-2xl border border-[#ecd2c4] bg-clay-soft/40 p-4">

@@ -127,8 +127,15 @@ async function step(db: Db, c: BulkCampaign, endAt: number): Promise<number> {
     await closeList();
     return 0;
   }
-  // List sudah siap tapi masih dalam jeda 429 — tunggu, jangan ketuk Qontak lagi.
-  if (members.some((m) => m.next_attempt_at && +new Date(m.next_attempt_at) > Date.now())) return 0;
+  // List sudah siap tapi masih dalam jeda 429 — jangan ketuk Qontak lagi.
+  // Bila jedanya habis di dalam tick ini, tunggu di sini supaya broadcast
+  // berangkat tepat saat hitung mundur di layar selesai (bukan tick cron
+  // berikutnya, yang bisa telat sampai 1 menit).
+  const until = Math.max(0, ...members.map((m) => (m.next_attempt_at ? +new Date(m.next_attempt_at) : 0)));
+  if (until > Date.now()) {
+    if (until > endAt - 20_000) return 0;
+    await new Promise((r) => setTimeout(r, until - Date.now()));
+  }
 
   // 3 — Kontak yang ditolak Qontak saat impor: gagal, dengan alasannya.
   if (list.progress !== "success" && list.count - list.failed <= 0) {

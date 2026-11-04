@@ -33,7 +33,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 
   const lewat = new Date(Date.now() - CONFIRM_WINDOW_MS).toISOString();
-  const [{ data: recent }, { data: bad }, { data: silent }] = await Promise.all([
+  // Sedikit lewat jadwal tetap dikirim balik: layar menampilkan "Mengirim…"
+  // sampai worker benar-benar membuat broadcast-nya (tick cron ≤ 1 menit).
+  const waitFloor = new Date(Date.now() - 90_000).toISOString();
+  const [{ data: recent }, { data: bad }, { data: silent }, { data: waiting }] = await Promise.all([
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id).not("last_attempt_at", "is", null)
       .order("last_attempt_at", { ascending: false }).limit(12),
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id)
@@ -41,11 +44,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Diterima Qontak tapi tidak pernah dikonfirmasi WhatsApp dalam 48 jam.
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id).eq("status", "sent").lt("sent_at", lewat)
       .or(`delivery_status.is.null,delivery_status.not.in.(${FINAL_DELIVERY.join(",")})`).order("seq").limit(300),
+    // Antre jatah broadcast bulk Qontak (lihat lib/qontak/bulk.ts) — untuk hitung mundur.
+    g.db.from("wa_campaign_recipients").select("next_attempt_at").eq("campaign_id", id).eq("status", "queued")
+      .like("last_error", "rate_wait%").gt("next_attempt_at", waitFloor).order("next_attempt_at", { ascending: false }).limit(1),
   ]);
+  // Jeda dihitung dari broadcast terakhir yang diterima Qontak — itulah awal progress bar.
+  let bulkWait: { until: string; from: string | null } | null = null;
+  const until = waiting?.[0]?.next_attempt_at as string | undefined;
+  if (until) {
+    const { data: last } = await g.db.from("wa_campaign_recipients").select("sent_at").eq("status", "sent")
+      .lte("sent_at", until).gt("sent_at", new Date(+new Date(until) - 10 * 60_000).toISOString())
+      .order("sent_at", { ascending: false }).limit(1);
+    bulkWait = { until, from: (last?.[0]?.sent_at as string | undefined) ?? null };
+  }
   const problems = [...(bad ?? []), ...(silent ?? [])]
     .filter((r) => RETRYABLE.includes(deliveryState(r)))
     .sort((a, b) => a.seq - b.seq);
-  return NextResponse.json({ campaign: camp, counts, recent: recent ?? [], problems });
+  return NextResponse.json({ campaign: camp, counts, recent: recent ?? [], problems, bulkWait });
 }
 
 /** Batalkan. Draft dihapus; kampanye berjalan: sisa antrean dilewati
