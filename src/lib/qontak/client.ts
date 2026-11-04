@@ -108,7 +108,12 @@ export async function qontakRequest<T = any>(
   if (res.ok) return data as T;
 
   const msg = errorText(data) || `HTTP ${res.status}`;
-  if (res.status === 429) throw new QontakError(429, "rate_limited", msg, retryAfter(res.headers));
+  // Qontak menaruh sisa jeda di BADAN respons ("rate_limit_reset: 132"),
+  // bukan header — tanpa ini worker mencoba ulang terlalu cepat.
+  if (res.status === 429) {
+    const inBody = /rate_limit_reset:\s*(\d+)/.exec(msg);
+    throw new QontakError(429, "rate_limited", msg, retryAfter(res.headers) ?? (inBody ? Number(inBody[1]) * 1000 : null));
+  }
   // MAG-008 = aplikasi HMAC tidak punya scope untuk endpoint ini. Dibedakan
   // dari 401 biasa: obatnya mengaktifkan scope, bukan mengganti kredensial.
   if (/MAG-008/.test(msg)) throw new QontakError(res.status, "scope_missing", msg);

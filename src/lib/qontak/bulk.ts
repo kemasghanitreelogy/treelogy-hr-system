@@ -19,10 +19,22 @@ import { buildCsv, bulkParameters, pickRound, type BulkRow } from "./bulk-core";
  *  • Kontak yang ditolak Qontak saat impor → 'failed' dengan alasannya.
  *  • Scope/kredensial bulk dicabut → kampanye pindah ke jalur direct,
  *    penerima tetap di antrean (tidak ada yang hilang).
+ *
+ * Qontak hanya mengizinkan SATU broadcast bulk per 5 menit per organisasi
+ * (429 "rate_limit_limit: 1", sisa jeda di badan respons). Blast resi campur
+ * kurir = beberapa kampanye → yang kedua dst. pasti kena 429. Itu bukan
+ * kegagalan: belum ada yang terkirim, jadi penerima tetap antre sampai
+ * jedanya habis (tanpa menghabiskan jatah percobaan). Bila antre terlalu
+ * lama, kampanye pindah ke jalur direct supaya tetap terkirim.
  */
 
 const MAX_ATTEMPTS = 3;
 const POLL_MS = 2_000;
+/** Jeda bulk Qontak bila 429 tidak menyebut sisa waktunya. */
+const BULK_GAP_MS = 5 * 60_000;
+/** Antre jatah bulk lebih lama dari ini → lanjut lewat direct. */
+const MAX_BULK_WAIT_MS = 20 * 60_000;
+const RATE_WAIT = "rate_wait";
 
 interface BulkCampaign {
   id: string;
@@ -42,16 +54,18 @@ async function updateIds(db: Db, ids: string[], patch: Record<string, unknown>) 
   }
 }
 
-async function queuedRows(db: Db, campaignId: string, listId: string | null): Promise<(BulkRow & { attempts: number })[]> {
-  const out: (BulkRow & { attempts: number })[] = [];
+type Member = BulkRow & { attempts: number; next_attempt_at: string | null; last_error: string | null };
+
+async function queuedRows(db: Db, campaignId: string, listId: string | null): Promise<Member[]> {
+  const out: Member[] = [];
   const nowIso = new Date().toISOString();
   for (let from = 0; ; from += 1000) {
-    let q = db.from("wa_campaign_recipients").select("id, phone, name, params, attempts")
+    let q = db.from("wa_campaign_recipients").select("id, phone, name, params, attempts, next_attempt_at, last_error")
       .eq("campaign_id", campaignId).eq("status", "queued").order("seq").range(from, from + 999);
     q = listId ? q.eq("bulk_list_id", listId) : q.is("bulk_list_id", null).or(`next_attempt_at.is.null,next_attempt_at.lte.${nowIso}`);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
-    out.push(...((data ?? []) as (BulkRow & { attempts: number })[]));
+    out.push(...((data ?? []) as Member[]));
     if (!data || data.length < 1000) break;
   }
   return out;
@@ -113,6 +127,8 @@ async function step(db: Db, c: BulkCampaign, endAt: number): Promise<number> {
     await closeList();
     return 0;
   }
+  // List sudah siap tapi masih dalam jeda 429 — tunggu, jangan ketuk Qontak lagi.
+  if (members.some((m) => m.next_attempt_at && +new Date(m.next_attempt_at) > Date.now())) return 0;
 
   // 3 — Kontak yang ditolak Qontak saat impor: gagal, dengan alasannya.
   if (list.progress !== "success" && list.count - list.failed <= 0) {
@@ -162,10 +178,26 @@ async function step(db: Db, c: BulkCampaign, endAt: number): Promise<number> {
     } else if (lostAccess(err)) {
       await updateIds(db, ids, { status: "queued", attempts: attempts - 1, last_attempt_at: null });
       await fallbackToDirect(db, c, err.message);
-    } else if ((err.code === "rate_limited" || err.code === "upstream") && attempts < MAX_ATTEMPTS) {
+    } else if (err.code === "rate_limited") {
+      // Jatah bulk Qontak (1 per 5 menit) sedang terpakai — belum terkirim,
+      // jadi bukan percobaan yang gagal. List yang sama dipakai setelah jeda.
+      // `rate_wait:<iso>` menyimpan kapan antre pertama kali — dihitung per
+      // putaran, bukan dari awal kampanye (kirim ulang besok tetap boleh antre).
+      const since = members.map((m) => m.last_error?.startsWith(`${RATE_WAIT}:`) ? +new Date(m.last_error.slice(RATE_WAIT.length + 1)) : NaN)
+        .filter(Number.isFinite).sort((a, b) => a - b)[0] ?? Date.now();
+      if (Date.now() - since > MAX_BULK_WAIT_MS) {
+        await updateIds(db, ids, { status: "queued", attempts: attempts - 1, last_attempt_at: null, next_attempt_at: null, last_error: null });
+        await fallbackToDirect(db, c, `antre jatah bulk > ${MAX_BULK_WAIT_MS / 60_000} menit`);
+        return 0;
+      }
+      const wait = (err.retryAfterMs ?? BULK_GAP_MS) + 3_000;
+      await updateIds(db, ids, {
+        status: "queued", attempts: attempts - 1, last_attempt_at: null,
+        next_attempt_at: new Date(Date.now() + wait).toISOString(), last_error: `${RATE_WAIT}:${new Date(since).toISOString()}`,
+      });
+    } else if (err.code === "upstream" && attempts < MAX_ATTEMPTS) {
       // Ditolak = belum terkirim. List yang sama dipakai lagi di tick berikutnya.
-      const wait = err.retryAfterMs ?? 60_000;
-      await updateIds(db, ids, { status: "queued", next_attempt_at: new Date(Date.now() + wait).toISOString(), last_error: `${err.status}: ${err.message}`.slice(0, 500) });
+      await updateIds(db, ids, { status: "queued", next_attempt_at: new Date(Date.now() + 60_000).toISOString(), last_error: `${err.status}: ${err.message}`.slice(0, 500) });
     } else {
       await updateIds(db, ids, { status: "failed", bulk_list_id: null, last_error: (err.message || err.code).slice(0, 500) });
       await closeList();

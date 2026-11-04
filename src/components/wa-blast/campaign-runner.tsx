@@ -54,7 +54,7 @@ const STR: Record<Locale, Record<string, string>> = {
     skippedHint: "Resi ini sudah pernah dikirimi dalam 14 hari terakhir — dilewati supaya pelanggan tidak menerima pesan ganda.",
     eta: "Perkiraan",
     etaNote: "Qontak membatasi 60 pesan/menit per akun",
-    etaNoteBulk: "Dikirim sekaligus sebagai satu broadcast Qontak",
+    etaNoteBulk: "Satu broadcast Qontak per template. Qontak memberi jeda 5 menit antar-broadcast bulk, jadi template berikutnya menyusul otomatis",
     send: "Kirim",
     messages: "pesan",
     confirmTitle: "Kirim {n} pesan WhatsApp?",
@@ -113,7 +113,7 @@ const STR: Record<Locale, Record<string, string>> = {
     skippedHint: "This tracking number was already messaged in the last 14 days — skipped so the customer doesn't get a duplicate.",
     eta: "Estimate",
     etaNote: "Qontak allows 60 messages/min per account",
-    etaNoteBulk: "Sent at once as a single Qontak broadcast",
+    etaNoteBulk: "One Qontak broadcast per template. Qontak spaces bulk broadcasts 5 minutes apart, so the next template follows automatically",
     send: "Send",
     messages: "messages",
     confirmTitle: "Send {n} WhatsApp messages?",
@@ -163,9 +163,11 @@ const STR: Record<Locale, Record<string, string>> = {
   },
 };
 
-export function formatEta(n: number, t: Record<string, string>, bulk = false): string {
-  // Bulk: satu contact list + satu broadcast — tidak dibatasi 60/menit.
-  if (bulk) return n ? t.lessMinute : "—";
+/** `bulk` = jumlah broadcast bulk yang masih harus dibuat (0 = jalur direct). */
+export function formatEta(n: number, t: Record<string, string>, bulk = 0): string {
+  // Bulk: satu broadcast per kampanye, tidak dibatasi 60/menit — tetapi
+  // Qontak hanya mengizinkan satu broadcast bulk per 5 menit.
+  if (bulk) return !n ? "—" : bulk === 1 ? t.lessMinute : `± ${(bulk - 1) * 5} ${t.minutes}`;
   const secs = Math.ceil((n * 60) / RATE);
   if (secs < 60) return n ? `${secs} ${t.seconds}` : "—";
   const min = Math.ceil(secs / 60);
@@ -353,7 +355,9 @@ export function CampaignRunner({
   const focus = filtered[Math.min(cursor, Math.max(0, filtered.length - 1))];
   const channel = all.find((d) => d.campaign.channel_phone)?.campaign.channel_phone ?? null;
   const fromLabel = channel ? displayWaPhone(String(channel).replace(/\D/g, "")) : "Qontak";
-  const bulk = all.length > 0 && all.every((d) => d.campaign.engine === "bulk");
+  const bulk = all.length > 0 && all.every((d) => d.campaign.engine === "bulk")
+    ? Math.max(1, all.filter((d) => (d.counts.queued ?? 0) + (d.counts.sending ?? 0) > 0).length)
+    : 0;
   const etaNote = bulk ? t.etaNoteBulk : t.etaNote;
   const tplNames = [...new Set(all.map((d) => d.campaign.template_name))].join(", ");
 
