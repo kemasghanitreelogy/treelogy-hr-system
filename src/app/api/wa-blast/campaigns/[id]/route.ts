@@ -36,7 +36,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   // Sedikit lewat jadwal tetap dikirim balik: layar menampilkan "Mengirim…"
   // sampai worker benar-benar membuat broadcast-nya (tick cron ≤ 1 menit).
   const waitFloor = new Date(Date.now() - 90_000).toISOString();
-  const [{ data: recent }, { data: bad }, { data: silent }, { data: waiting }] = await Promise.all([
+  const [{ data: recent }, { data: bad }, { data: silent }, { data: waiting }, { data: pending }] = await Promise.all([
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id).not("last_attempt_at", "is", null)
       .order("last_attempt_at", { ascending: false }).limit(12),
     g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id)
@@ -47,6 +47,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Antre jatah broadcast bulk Qontak (lihat lib/qontak/bulk.ts) — untuk hitung mundur.
     g.db.from("wa_campaign_recipients").select("next_attempt_at").eq("campaign_id", id).eq("status", "queued")
       .like("last_error", "rate_wait%").gt("next_attempt_at", waitFloor).order("next_attempt_at", { ascending: false }).limit(1),
+    // Diterima Qontak, laporan sampai/tidaknya belum datang — selalu tampil
+    // di atas daftar aktivitas, walau dikirim lebih awal dari 12 terakhir.
+    g.db.from("wa_campaign_recipients").select(COLS).eq("campaign_id", id).eq("status", "sent").gte("sent_at", lewat)
+      .or(`delivery_status.is.null,delivery_status.not.in.(${FINAL_DELIVERY.join(",")})`).order("seq").limit(100),
   ]);
   // Jeda dihitung dari broadcast terakhir yang diterima Qontak — itulah awal progress bar.
   let bulkWait: { until: string; from: string | null } | null = null;
@@ -60,7 +64,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const problems = [...(bad ?? []), ...(silent ?? [])]
     .filter((r) => RETRYABLE.includes(deliveryState(r)))
     .sort((a, b) => a.seq - b.seq);
-  return NextResponse.json({ campaign: camp, counts, recent: recent ?? [], problems, bulkWait });
+  return NextResponse.json({ campaign: camp, counts, recent: recent ?? [], problems, bulkWait, pending: pending ?? [] });
 }
 
 /** Batalkan. Draft dihapus; kampanye berjalan: sisa antrean dilewati

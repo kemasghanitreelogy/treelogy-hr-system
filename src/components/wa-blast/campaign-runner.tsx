@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import type { Locale } from "@/lib/i18n";
 import { apiErrorMessage } from "@/lib/api-error";
-import { deliveryState, MAYBE_ARRIVED, type DeliveryState } from "@/lib/qontak/delivery";
+import { AWAITING, deliveryState, MAYBE_ARRIVED, type DeliveryState } from "@/lib/qontak/delivery";
 import { displayWaPhone } from "@/lib/qontak/phone";
 import { humanTemplateName, renderPreview } from "@/lib/qontak/template";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,8 @@ interface Loaded {
   counts: Counts;
   recipients?: RecipientRow[];
   recent?: RecipientRow[];
+  /** Diterima Qontak, belum ada laporan sampai — selalu di atas aktivitas. */
+  pending?: RecipientRow[];
   problems?: RecipientRow[];
   /** Antre jatah broadcast bulk Qontak: `until` = jadwal kirim, `from` = broadcast sebelumnya. */
   bulkWait?: { until: string; from: string | null } | null;
@@ -494,7 +496,13 @@ export function CampaignRunner({
     const resolved = total.sent + total.failed + total.skipped + total.unknown;
     const pct = total.total ? resolved / total.total : 0;
     const problems = all.flatMap((d) => d.problems ?? []);
-    const recent = all.flatMap((d) => d.recent ?? []).slice(0, 8);
+    // Yang belum sampai (mengirim / menunggu laporan) SELALU di atas, berapa
+    // pun jumlahnya; sisa tempat diisi aktivitas terbaru yang sudah selesai.
+    const pendingRows = all.flatMap((d) => d.pending ?? []);
+    const seen = new Set(pendingRows.map((r) => r.id));
+    const latest = all.flatMap((d) => d.recent ?? []).filter((r) => !seen.has(r.id));
+    const open = (r: RecipientRow) => ["sending", "queued", ...AWAITING].includes(deliveryState(r));
+    const recent = [...latest.filter(open), ...pendingRows, ...latest.filter((r) => !open(r)).slice(0, 8)];
     const stopReason = all.find((d) => d.campaign.stop_reason)?.campaign.stop_reason;
     const bad = total.failed + total.unknown + total.undelivered + total.unconfirmed;
     const maybe = problems.filter((r) => MAYBE_ARRIVED.includes(deliveryState(r))).length;
@@ -622,7 +630,7 @@ export function CampaignRunner({
         {recent.length > 0 && (
           <section className="rounded-2xl border border-line bg-panel p-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{t.activity}</p>
-            <ul className="space-y-1">
+            <ul className="max-h-96 space-y-1 overflow-y-auto pr-1">
               {recent.map((r) => (
                 <li key={r.id} className={cn("flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm", r.status === "sending" && "hf-checking")}>
                   <span className="flex min-w-0 items-center gap-2">
