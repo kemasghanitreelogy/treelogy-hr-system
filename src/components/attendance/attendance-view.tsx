@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, LayoutGrid, LogIn, LogOut, PartyPopper, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, ChevronRight, Clock, Download, Hourglass, LayoutGrid, LogIn, LogOut, PartyPopper, X } from "lucide-react";
 import type { AttendanceRecord, ClockApprovalRequest, Employee, RequestStatus, Team } from "@/lib/types";
 import { TEAMS, TEAM_META } from "@/lib/constants";
 import { exportAttendanceXlsx } from "@/lib/attendance-xlsx";
@@ -51,6 +51,9 @@ const STR: Record<
     thOvertime: string;
     thDistance: string;
     thStatus: string;
+    awaiting: string;
+    awaitingOut: string;
+    awaitingHint: string;
     processFailed: string;
     approvedOk: string;
     rejectedOk: string;
@@ -105,6 +108,9 @@ const STR: Record<
     thOvertime: "Lembur",
     thDistance: "Jarak",
     thStatus: "Status",
+    awaiting: "Menunggu persetujuan",
+    awaitingOut: "Clock-out menunggu HR",
+    awaitingHint: "Dikirim di luar area / hari libur — tercatat setelah HR menyetujui.",
     processFailed: "Gagal memproses. Pastikan Anda HR/admin.",
     approvedOk: "Absensi dikonfirmasi ✓",
     rejectedOk: "Pengajuan ditolak ✓",
@@ -158,6 +164,9 @@ const STR: Record<
     thOvertime: "Overtime",
     thDistance: "Distance",
     thStatus: "Status",
+    awaiting: "Awaiting approval",
+    awaitingOut: "Clock-out awaiting HR",
+    awaitingHint: "Sent out of area / on a day off — recorded once HR approves.",
     processFailed: "Failed to process. Make sure you are HR/admin.",
     approvedOk: "Attendance confirmed ✓",
     rejectedOk: "Request rejected ✓",
@@ -192,6 +201,10 @@ type EmpLite = Pick<Employee, "id" | "nik" | "name" | "team" | "position" | "wor
 
 interface Row extends AttendanceRecord {
   emp: EmpLite;
+  /** Pengajuan clock milik baris ini yang masih menunggu HR. */
+  awaiting?: ClockApprovalRequest[];
+  /** True = belum ada rekaman absensi; baris disusun dari pengajuan pending. */
+  virtual?: boolean;
 }
 
 export function AttendanceView({
@@ -204,6 +217,7 @@ export function AttendanceView({
   holidays = [],
   currentUserName = "HR",
   currentEmployeeId = null,
+  myPending = [],
 }: {
   records: AttendanceRecord[];
   employees: EmpLite[];
@@ -217,6 +231,8 @@ export function AttendanceView({
   holidays?: string[];
   currentUserName?: string;
   currentEmployeeId?: string | null;
+  /** Pengajuan clock milik pengguna sendiri yang belum diputuskan HR. */
+  myPending?: ClockApprovalRequest[];
 }) {
   const locale = useLocale();
   const t = STR[locale];
@@ -246,18 +262,57 @@ export function AttendanceView({
 
   const empMap = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
 
+  // Tampilan mandiri: pengajuan yang belum diputuskan tetap terlihat di
+  // riwayat, supaya karyawan tidak mengira clock-in-nya hilang.
+  const pendingByDate = useMemo(() => {
+    const m = new Map<string, ClockApprovalRequest[]>();
+    if (reviewing || !currentEmployeeId) return m;
+    for (const a of myPending) {
+      if (a.employeeId !== currentEmployeeId || a.status !== "pending") continue;
+      m.set(a.date, [...(m.get(a.date) ?? []), a]);
+    }
+    return m;
+  }, [myPending, reviewing, currentEmployeeId]);
+
   const rows: Row[] = useMemo(() => {
-    return records
-      .filter((r) => !date || r.date === date)
+    const real: Row[] = records
       .filter((r) => reviewing || !currentEmployeeId || r.employeeId === currentEmployeeId)
-      .map((r) => ({ ...r, emp: empMap.get(r.employeeId)! }))
+      .map((r) => ({ ...r, emp: empMap.get(r.employeeId)!, awaiting: pendingByDate.get(r.date) }));
+    const recorded = new Set(real.map((r) => r.date));
+    const me = currentEmployeeId ? empMap.get(currentEmployeeId) : undefined;
+    const virtual: Row[] = me
+      ? [...pendingByDate]
+          .filter(([d]) => !recorded.has(d))
+          .map(([d, reqs]) => {
+            const inReq = reqs.find((a) => a.direction === "in");
+            const outReq = reqs.find((a) => a.direction === "out");
+            return {
+              id: `pending:${d}`,
+              employeeId: me.id,
+              date: d,
+              clockIn: inReq?.requestedAt ?? null,
+              clockOut: outReq?.requestedAt ?? inReq?.clockOutAt ?? null,
+              status: "present",
+              lateMinutes: 0,
+              overtimeMinutes: 0,
+              source: "mobile",
+              clockInDistanceM: inReq?.distanceM ?? null,
+              emp: me,
+              awaiting: reqs,
+              virtual: true,
+            };
+          })
+      : [];
+    return [...real, ...virtual]
+      .filter((r) => !date || r.date === date)
       .filter((r) => r.emp && (team === "all" || r.emp.team === team))
+      // Baris pending belum punya status hadir/telat — hanya ikut di "Semua".
       .filter((r) =>
-        punct === "all" ? true : punct === "late" ? r.status === "late" : r.status === "present",
+        punct === "all" ? true : r.virtual ? false : punct === "late" ? r.status === "late" : r.status === "present",
       )
       // Newest day first, then by name within a day.
       .sort((a, b) => b.date.localeCompare(a.date) || a.emp.name.localeCompare(b.emp.name));
-  }, [records, date, team, punct, empMap, reviewing, currentEmployeeId]);
+  }, [records, date, team, punct, empMap, reviewing, currentEmployeeId, pendingByDate]);
 
   const summary = useMemo(() => {
     const s = { present: 0, late: 0, absent: 0, leave: 0, off: 0, ot: 0 };
@@ -426,10 +481,17 @@ export function AttendanceView({
               {rows.map((r) => (
                 <tr
                   key={r.id}
-                  onClick={() => setSelected(r)}
-                  className="cursor-pointer transition-colors hover:bg-cream/60"
+                  onClick={r.virtual ? undefined : () => setSelected(r)}
+                  title={r.virtual ? t.awaitingHint : undefined}
+                  className={cn(
+                    "transition-colors",
+                    r.virtual ? "bg-gold-soft/25" : "cursor-pointer hover:bg-cream/60",
+                  )}
                 >
-                  <td className="px-5 py-3 whitespace-nowrap font-medium text-ink">{formatDate(r.date, "short", locale)}</td>
+                  <td className="px-5 py-3 whitespace-nowrap font-medium text-ink">
+                    {formatDate(r.date, "short", locale)}
+                    {r.virtual && <p className="mt-0.5 text-xs font-normal text-[#8a6512]">{t.awaitingHint}</p>}
+                  </td>
                   {reviewing && (
                     <>
                       <td className="px-5 py-3">
@@ -464,10 +526,14 @@ export function AttendanceView({
                     )}
                   </td>
                   <td className="px-5 py-3">
-                    <AttendanceBadge status={r.status} />
+                    <StatusCell row={r} />
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <ChevronRight className="ml-auto h-4 w-4 text-faint" />
+                    {r.virtual ? (
+                      <Hourglass className="ml-auto h-4 w-4 text-[#8a6512]" aria-hidden />
+                    ) : (
+                      <ChevronRight className="ml-auto h-4 w-4 text-faint" />
+                    )}
                   </td>
                 </tr>
               ))}
@@ -482,8 +548,13 @@ export function AttendanceView({
         {rows.map((r) => (
           <button
             key={r.id}
-            onClick={() => setSelected(r)}
-            className="card w-full p-4 text-left transition-colors active:bg-cream/60"
+            type="button"
+            onClick={r.virtual ? undefined : () => setSelected(r)}
+            aria-disabled={r.virtual || undefined}
+            className={cn(
+              "card w-full p-4 text-left transition-colors",
+              r.virtual ? "cursor-default border-gold/40 bg-gold-soft/20" : "active:bg-cream/60",
+            )}
           >
             <div className="flex items-center gap-3">
               {reviewing ? (
@@ -499,9 +570,10 @@ export function AttendanceView({
               )}
               <div className="flex shrink-0 flex-col items-end gap-1">
                 {reviewing && <span className="text-xs text-faint">{formatDate(r.date, "short", locale)}</span>}
-                <AttendanceBadge status={r.status} />
+                <StatusCell row={r} />
               </div>
             </div>
+            {r.virtual && <p className="mt-2 text-xs text-[#8a6512]">{t.awaitingHint}</p>}
             <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
               <Mini label={t.thIn} value={formatTime(r.clockIn)} />
               <Mini label={t.thOut} value={formatTime(r.clockOut)} />
@@ -696,6 +768,30 @@ function ClockApprovalsCard({
         onConfirm={(reason) => rejectId && decide(rejectId, "rejected", reason)}
       />
     </>
+  );
+}
+
+/** Lencana "menunggu HR" — jam pasir + teks, tidak hanya warna. */
+function AwaitingBadge({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-gold-soft px-2.5 py-1 text-xs font-medium text-[#8a6512] ring-1 ring-gold/30">
+      <Hourglass className="h-3.5 w-3.5 motion-safe:animate-[pulse_2s_ease-in-out_infinite]" aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+function StatusCell({ row }: { row: Row }) {
+  const locale = useLocale();
+  const t = STR[locale];
+  if (row.virtual) return <AwaitingBadge label={t.awaiting} />;
+  // Rekaman sudah ada, tapi clock-out-nya masih menunggu HR.
+  const outWaiting = row.awaiting?.some((a) => a.direction === "out");
+  return (
+    <div className="flex flex-col items-end gap-1 md:items-start">
+      <AttendanceBadge status={row.status} />
+      {outWaiting && <AwaitingBadge label={t.awaitingOut} />}
+    </div>
   );
 }
 

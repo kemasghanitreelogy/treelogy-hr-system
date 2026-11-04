@@ -50,7 +50,12 @@ export default async function AttendancePage() {
     workEnd: e.workEnd ?? "17:00",
     workDays: e.workDays ?? [1, 2, 3, 4, 5],
   }));
-  const dates = Array.from(new Set(records.map((r) => r.date))).sort();
+  // Tanggal pengajuan yang masih menunggu HR ikut dihitung, supaya pemilih
+  // tanggal bisa menjangkau baris "Menunggu persetujuan".
+  const myPendingDates = pendingApprovals
+    .filter((a) => user?.employeeId != null && a.employeeId === user.employeeId)
+    .map((a) => a.date);
+  const dates = Array.from(new Set([...records.map((r) => r.date), ...myPendingDates])).sort();
 
   // Pick the geofence of the division the current user is registered in.
   const me = user?.employeeId ? employeesAll.find((e) => e.id === user.employeeId) : undefined;
@@ -80,6 +85,7 @@ export default async function AttendancePage() {
       holidays={holidayDates}
       currentUserName={user?.name ?? "HR"}
       currentEmployeeId={user?.employeeId ?? null}
+      myPending={user?.employeeId ? pendingApprovals.filter((a) => a.employeeId === user.employeeId) : []}
     />
   );
 
