@@ -654,9 +654,12 @@ export function CampaignRunner({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+      {/* Dua kolom diukur dari lebar WADAH, bukan layar — di sheet sempit
+          (desktop lebar) daftar penerima dulu terjepit jadi beberapa piksel. */}
+      <div className="@container">
+      <div className="grid gap-4 @3xl:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
         {/* Ponsel — persis yang diterima pelanggan. */}
-        <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+        <div className="space-y-3 @3xl:sticky @3xl:top-4 @3xl:self-start">
           <WaPhone title={focus?.name || (focus ? displayWaPhone(focus.phone) : "—")} subtitle={focus ? displayWaPhone(focus.phone) : undefined}>
             {focus && cur && (
               <div key={focus.id} className="fulfill-pop">
@@ -728,6 +731,7 @@ export function CampaignRunner({
             </button>
           )}
         </div>
+      </div>
       </div>
 
       {/* Tombol kirim — berlabel tindakan dan angkanya, bukan "OK". */}
