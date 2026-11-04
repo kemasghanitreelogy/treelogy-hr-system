@@ -9,7 +9,7 @@ import { buildDirectParameters, humanTemplateName, missingSlots } from "./templa
  *  seharusnya lewat bulk, bukan antrean ini. */
 export const MAX_RECIPIENTS = 5000;
 /** Resi yang sudah dikirimi dalam jendela ini otomatis dilewati. */
-const RESEND_GUARD_DAYS = 14;
+export const RESEND_GUARD_DAYS = 14;
 
 export interface RecipientInput {
   phone: string;

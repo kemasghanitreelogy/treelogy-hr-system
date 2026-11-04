@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { RESEND_GUARD_DAYS } from "@/lib/qontak/campaigns";
 import { deliveryState, RETRYABLE } from "@/lib/qontak/delivery";
 import { runDrain } from "@/lib/qontak/store";
 import { guard } from "../../../guard";
@@ -32,14 +33,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // Status dinilai ulang di server dengan aturan yang sama dengan layar —
   // klien tidak bisa memaksa kirim ulang pesan yang sudah sampai.
   const pick: string[] = [];
+  const awbOf = new Map<string, string>();
   for (let from = 0; ; from += 1000) {
-    let q = g.db.from("wa_campaign_recipients").select("id, status, delivery_status, sent_at")
+    let q = g.db.from("wa_campaign_recipients").select("id, awb, status, delivery_status, sent_at")
       .eq("campaign_id", id).in("status", ["failed", "unknown", "sent"]).order("id").range(from, from + 999);
     if (only) q = q.in("id", only);
     const { data } = await q;
-    for (const r of data ?? []) if (RETRYABLE.includes(deliveryState(r))) pick.push(r.id);
+    for (const r of data ?? []) if (RETRYABLE.includes(deliveryState(r))) pick.push(r.id), awbOf.set(r.id, r.awb);
     if (!data || data.length < 1000) break;
   }
+
+  // Penjaga pesan ganda PER RESI (bukan per nomor — satu nomor bisa punya
+  // beberapa order): resi yang sudah terkirim lewat kampanye lain dalam
+  // 14 hari dilewati, sama seperti saat kampanye dibuat. Contoh nyata: Lion
+  // yang gagal karena jatah Qontak lalu dikirim lewat blast baru — tombol
+  // kirim ulang di kampanye lama tidak boleh mengirimnya dua kali.
+  const since = new Date(Date.now() - RESEND_GUARD_DAYS * 86400_000).toISOString();
+  const awbs = [...new Set([...awbOf.values()].filter(Boolean))];
+  const sentAt = new Map<string, string>();
+  for (let i = 0; i < awbs.length; i += 200) {
+    const { data } = await g.db.from("wa_campaign_recipients").select("awb, sent_at, delivery_status")
+      .neq("campaign_id", id).eq("status", "sent").gte("sent_at", since).in("awb", awbs.slice(i, i + 200));
+    for (const d of data ?? []) if (d.delivery_status !== "failed") sentAt.set(d.awb as string, d.sent_at as string);
+  }
+  const dupes = pick.filter((rid) => sentAt.has(awbOf.get(rid) ?? ""));
+  for (const rid of dupes) {
+    await g.db.from("wa_campaign_recipients")
+      .update({ status: "skipped", last_error: `already_sent:${sentAt.get(awbOf.get(rid)!)}` }).eq("id", rid);
+  }
+  if (dupes.length) pick.splice(0, pick.length, ...pick.filter((rid) => !dupes.includes(rid)));
 
   const reset = { status: "queued", attempts: 0, next_attempt_at: null, last_error: null, delivery_status: null, delivery_error: null, delivery_checked_at: null, qontak_ref: null, sent_at: null, bulk_list_id: null };
   let n = 0;
