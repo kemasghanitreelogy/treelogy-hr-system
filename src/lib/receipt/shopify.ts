@@ -92,8 +92,17 @@ const WINDOW_AFTER_DAYS = 10;
  * jadi ±3 permintaan, sementara cakupannya justru naik.
  */
 const POOL_SHARDS = 8;
-/** Maksimum halaman × 100 order per potongan. */
-const MAX_PAGES_PER_SHARD = 3;
+/**
+ * Maksimum halaman × 100 order per potongan — REM DARURAT, bukan ukuran normal.
+ *
+ * Dulu 3 (= 300 order). Begitu order melonjak (442 order dalam 10–11 Nov),
+ * tiap potongan terpotong diam-diam: kursor berjalan dari yang TERBARU, jadi
+ * order pagi hari yang hilang. Resi 10/11 tidak menemukan ordernya dan 80 dari
+ * 124 halaman jatuh ke "Manual / WA"; tanpa batas, 120 tercocok. Batas ini
+ * cukup untuk ±1.500 order per potongan (±300/hari) sambil tetap menjaga
+ * permintaan yang macet tidak berputar selamanya.
+ */
+const MAX_PAGES_PER_SHARD = 15;
 
 const digits = (s: string | null) => (s || "").replace(/\D/g, "");
 /**
@@ -298,6 +307,9 @@ async function fetchShard(
     cursor = conn?.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
     pages++;
   } while (cursor && pages < MAX_PAGES_PER_SHARD);
+  // Terpotong = ada order yang tidak pernah diperiksa; labelnya akan tampak
+  // "tidak ada order" padahal ada. Tinggalkan jejak di log server.
+  if (cursor) console.warn(`[receipt] pool ${from}..${to} terpotong di ${out.length} order`);
   return out;
 }
 

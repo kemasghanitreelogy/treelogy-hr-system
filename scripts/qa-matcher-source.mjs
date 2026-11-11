@@ -30,7 +30,7 @@ if (/\bemail\b/.test(tanpaAlamat)) gagal.push("POOL_QUERY meminta email di tingk
 // 2. Setiap bukti dirakit dari shippingAddress (variabel `a`).
 const parse = src.slice(src.indexOf("const a = e.node.shippingAddress"), src.indexOf("cursor = conn?.pageInfo"));
 for (const [medan, pola] of [
-  ["shipName", /shipName:\s*a\./], ["phone", /phone:\s*a\./],
+  ["shipName", /shipName:\s*a\./], ["phone", /phone:\s*(?:withCountryCode\()?a\./],
   ["zip", /zip:\s*digits\(a\./], ["place", /place:\s*\[a\?\.city, a\?\.province\]/],
 ]) if (!pola.test(parse)) gagal.push(`${medan} tidak diambil dari shippingAddress`);
 
